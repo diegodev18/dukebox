@@ -3,7 +3,7 @@ import type { AgentEvent, EnvelopedEvent } from '@dukebox/protocol'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { close, db, prepareDatabase, resetDatabase } from '../testing/database.js'
 import { closeRedis, redis } from '../testing/redis.js'
-import { EventBus } from './bus.js'
+import { EventBus, stripNullBytes } from './bus.js'
 
 const bus = new EventBus(db, redis)
 
@@ -41,7 +41,77 @@ async function createSession(): Promise<string> {
 
 const TEXT = (delta: string): AgentEvent => ({ type: 'assistant_text', delta })
 
+/**
+ * A NUL byte, built rather than written literally so it survives editors and
+ * shell arguments intact.
+ */
+const NUL = String.fromCharCode(0)
+
+describe('stripNullBytes', () => {
+  it('removes NUL bytes from a string', () => {
+    expect(stripNullBytes(`before${NUL}after`)).toBe('beforeafter')
+  })
+
+  it('leaves ordinary text alone, accents included', () => {
+    expect(stripNullBytes('añade un comentario')).toBe('añade un comentario')
+  })
+
+  it('reaches into nested objects, where tool inputs hide them', () => {
+    const cleaned = stripNullBytes({ input: { path: `a${NUL}.ts` } })
+    expect(cleaned).toEqual({ input: { path: 'a.ts' } })
+  })
+
+  it('reaches into arrays', () => {
+    expect(stripNullBytes([`a${NUL}`, `b${NUL}`])).toEqual(['a', 'b'])
+  })
+
+  it('leaves non-string values as they are', () => {
+    expect(stripNullBytes({ n: 1, b: true, nil: null })).toEqual({ n: 1, b: true, nil: null })
+  })
+})
+
 describe('append', () => {
+  it('stores an event containing a NUL byte', async () => {
+    const sessionId = await createSession()
+
+    // An agent's stdout carries these routinely — a binary file read, a
+    // truncated write. Postgres cannot store one in jsonb, and left alone it
+    // failed the insert and took the whole session down.
+    const appended = await bus.append(sessionId, {
+      type: 'assistant_text',
+      delta: `output${NUL}truncated`,
+    })
+
+    expect(appended.event).toEqual({ type: 'assistant_text', delta: 'outputtruncated' })
+    expect(await bus.replay(sessionId)).toHaveLength(1)
+  })
+
+  it('strips NUL bytes nested in a tool call', async () => {
+    const sessionId = await createSession()
+
+    await bus.append(sessionId, {
+      type: 'tool_call',
+      id: 'call_1',
+      name: 'Read',
+      input: { file_path: `/workspace/repo/a${NUL}.bin` },
+    })
+
+    const [stored] = await bus.replay(sessionId)
+    expect(stored?.event).toMatchObject({ input: { file_path: '/workspace/repo/a.bin' } })
+  })
+
+  it('leaves no gap in the sequence when an event needed cleaning', async () => {
+    const sessionId = await createSession()
+
+    // Sanitizing after claiming a number would burn one on a failed insert,
+    // and a client resuming across that hole waits forever for an event that
+    // never arrives.
+    await bus.append(sessionId, { type: 'assistant_text', delta: `a${NUL}` })
+    await bus.append(sessionId, { type: 'assistant_text', delta: 'b' })
+
+    expect((await bus.replay(sessionId)).map((event) => event.seq)).toEqual([1, 2])
+  })
+
   it('numbers the first event 1', async () => {
     const sessionId = await createSession()
     const appended = await bus.append(sessionId, TEXT('hello'))

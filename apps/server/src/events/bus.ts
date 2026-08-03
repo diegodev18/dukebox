@@ -15,6 +15,40 @@ import type Redis from 'ioredis'
  * laptop mid-turn must not lose anything.
  */
 
+/**
+ * Remove NUL bytes from anything bound for the event log.
+ *
+ * Postgres rejects U+0000 inside jsonb — it has no representation in text —
+ * and an agent's stdout carries them routinely: a binary file read, a truncated
+ * write, a tool that pads its output. Left alone, one of them fails the insert
+ * and takes the whole session down with an error about Unicode escapes that
+ * says nothing about what happened.
+ *
+ * Recursive because they turn up nested inside tool inputs and results, not
+ * just in top-level text.
+ */
+const NULL_BYTE = /\u0000/g
+
+export function stripNullBytes<T>(value: T): T {
+  if (typeof value === 'string') {
+    return value.replace(NULL_BYTE, '') as T
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => stripNullBytes(entry)) as T
+  }
+
+  if (value !== null && typeof value === 'object') {
+    const cleaned: Record<string, unknown> = {}
+    for (const [key, entry] of Object.entries(value)) {
+      cleaned[key] = stripNullBytes(entry)
+    }
+    return cleaned as T
+  }
+
+  return value
+}
+
 /** Redis stream key for a session. */
 export function streamKey(sessionId: string): string {
   return `session:${sessionId}:events`
@@ -55,6 +89,11 @@ export class EventBus {
       throw new Error(`refusing to store an invalid event: ${parsed.error.message}`)
     }
 
+    // Before the sequence number is claimed: an event Postgres cannot store
+    // would otherwise consume a number and leave a hole, and a client resuming
+    // across that hole waits forever for an event that will never arrive.
+    const storable = stripNullBytes(parsed.data)
+
     const [updated] = await this.db
       .update(sessions)
       .set({ lastSeq: sql`${sessions.lastSeq} + 1`, updatedAt: new Date() })
@@ -69,7 +108,7 @@ export class EventBus {
       seq: updated.seq,
       sessionId,
       ts: Date.now(),
-      event: parsed.data,
+      event: storable,
     }
 
     // Postgres first: it is the durable record. A crash between here and Redis
