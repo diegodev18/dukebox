@@ -19,8 +19,6 @@ if (!url) {
   throw new Error('DUKEBOX_DATABASE_URL is required; run these tests via docker/verify.sh')
 }
 
-// A single connection keeps every statement on the same session, so the
-// client_min_messages setting below applies to the truncates that follow.
 const { db, close } = createDatabase(url, { max: 1 })
 
 afterAll(() => close())
@@ -31,10 +29,6 @@ beforeAll(async () => {
   await migrate(db, {
     migrationsFolder: fileURLToPath(new URL('../migrations', import.meta.url)),
   })
-
-  // TRUNCATE ... CASCADE emits a NOTICE per cascaded table, which would bury
-  // the test output.
-  await db.execute(sql`set client_min_messages to warning`)
 })
 
 beforeEach(async () => {

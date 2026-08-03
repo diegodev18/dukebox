@@ -13,9 +13,8 @@ import { fileURLToPath } from 'node:url'
 /**
  * Shared test database setup.
  *
- * A single connection so `client_min_messages` applies to everything that
- * follows: migrations and TRUNCATE CASCADE are both chatty enough to bury the
- * actual test output.
+ * A single connection, so every test file works against the same session
+ * rather than racing each other through a pool.
  */
 
 const url = process.env.DUKEBOX_DATABASE_URL
@@ -43,8 +42,8 @@ export async function close(): Promise<void> {
 
 /** Apply migrations, so a clean Postgres is enough to run the tests. */
 export async function prepareDatabase(): Promise<void> {
-  await db.execute(sql`set client_min_messages to warning`)
-
+  // Notices are silenced by the connection itself, so nothing extra is needed
+  // here to keep migration and TRUNCATE chatter out of the test output.
   await migrate(db, {
     migrationsFolder: fileURLToPath(new URL('../../../../packages/db/migrations', import.meta.url)),
   })
