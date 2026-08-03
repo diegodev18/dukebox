@@ -24,6 +24,46 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)
 
+  apps/server:
+    dependencies:
+      '@dukebox/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
+      '@dukebox/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@dukebox/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      '@dukebox/sandbox':
+        specifier: workspace:*
+        version: link:../../packages/sandbox
+      '@dukebox/transport':
+        specifier: workspace:*
+        version: link:../../packages/transport
+      '@hono/node-server':
+        specifier: ^1.13.7
+        version: 1.19.17(hono@4.12.34)
+      drizzle-orm:
+        specifier: ^0.38.2
+        version: 0.38.4(postgres@3.4.9)
+      hono:
+        specifier: ^4.6.14
+        version: 4.12.34
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.5
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.1)
+
   packages/adapters:
     dependencies:
       '@dukebox/protocol':
@@ -713,6 +753,12 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
+  '@hono/node-server@1.19.17':
+    resolution: {integrity: sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ==}
+    engines: {node: '>=18.14.1'}
+    peerDependencies:
+      hono: ^4
+
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
 
@@ -1206,6 +1252,10 @@ packages:
 
   get-tsconfig@4.14.1:
     resolution: {integrity: sha512-Dz/6HxkrxgNehhxLVeyv8sad9UzF2xBVeaKBQNDfJ5XiSXmp2gTR0eO0RWiT2NCKS5aGP9jjkOMggTN90qU50A==}
+
+  hono@4.12.34:
+    resolution: {integrity: sha512-GqXJqY/xJkJmuloTrnV1ZEXG3fqte+VjkUqoRNZXcrUidiUOP4fMSIHHY4tsqZBK++kVyWmt/AAfSUuy57/eSA==}
+    engines: {node: '>=16.9.0'}
 
   ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
@@ -1815,6 +1865,10 @@ snapshots:
       protobufjs: 7.6.5
       yargs: 17.7.3
 
+  '@hono/node-server@1.19.17(hono@4.12.34)':
+    dependencies:
+      hono: 4.12.34
+
   '@jridgewell/sourcemap-codec@1.5.5': {}
 
   '@js-sdsl/ordered-map@4.4.2': {}
@@ -2261,6 +2315,8 @@ snapshots:
   get-tsconfig@4.14.1:
     dependencies:
       resolve-pkg-maps: 1.0.0
+
+  hono@4.12.34: {}
 
   ieee754@1.2.1: {}
 

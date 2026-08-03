@@ -75,6 +75,10 @@ services:
       - dukebox-dist-transport:/workspace/packages/transport/dist
       - dukebox-turbo-transport:/workspace/packages/transport/.turbo
 
+      - dukebox-nm-server:/workspace/apps/server/node_modules
+      - dukebox-dist-server:/workspace/apps/server/dist
+      - dukebox-turbo-server:/workspace/apps/server/.turbo
+
       # The sandbox tests drive Docker, so this container needs the daemon
       # socket. This is the ONLY container that ever gets it: mounting it into
       # an agent container would hand the agent root on the host.
@@ -116,3 +120,7 @@ volumes:
   dukebox-nm-transport:
   dukebox-dist-transport:
   dukebox-turbo-transport:
+
+  dukebox-nm-server:
+  dukebox-dist-server:
+  dukebox-turbo-server:

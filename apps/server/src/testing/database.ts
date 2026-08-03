@@ -1,0 +1,58 @@
+import {
+  createDatabase,
+  devices,
+  pairingCodes,
+  projects,
+  sessions,
+  type Database,
+} from '@dukebox/db'
+import { sql } from 'drizzle-orm'
+import { migrate } from 'drizzle-orm/postgres-js/migrator'
+import { fileURLToPath } from 'node:url'
+
+/**
+ * Shared test database setup.
+ *
+ * A single connection so `client_min_messages` applies to everything that
+ * follows: migrations and TRUNCATE CASCADE are both chatty enough to bury the
+ * actual test output.
+ */
+
+const url = process.env.DUKEBOX_DATABASE_URL
+if (!url) throw new Error('DUKEBOX_DATABASE_URL is required; run via docker/verify.sh')
+
+const connection = createDatabase(url, { max: 1 })
+
+// Annotated rather than inferred: the inferred type reaches into the db
+// package's internals and does not survive being written to a declaration file.
+export const db: Database = connection.db
+
+let closed = false
+
+/**
+ * Close the pool.
+ *
+ * Idempotent: every test file registers this in afterAll, and they share one
+ * connection, so it is called once per file.
+ */
+export async function close(): Promise<void> {
+  if (closed) return
+  closed = true
+  await connection.close()
+}
+
+/** Apply migrations, so a clean Postgres is enough to run the tests. */
+export async function prepareDatabase(): Promise<void> {
+  await db.execute(sql`set client_min_messages to warning`)
+
+  await migrate(db, {
+    migrationsFolder: fileURLToPath(new URL('../../../../packages/db/migrations', import.meta.url)),
+  })
+}
+
+/** Clear every table. Projects and devices cascade to the rest. */
+export async function resetDatabase(): Promise<void> {
+  await db.execute(
+    sql`truncate table ${projects}, ${sessions}, ${devices}, ${pairingCodes} restart identity cascade`,
+  )
+}
