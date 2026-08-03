@@ -18,7 +18,8 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b --pretty",
-    "test": "vitest run"
+    "test": "vitest run",
+    "smoke": "tsx src/cli.ts"
   },
   "dependencies": {
     "@dukebox/protocol": "workspace:*",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@types/dockerode": "^3.3.34",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }

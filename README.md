@@ -46,14 +46,31 @@ Agent integrations go through an adapter layer that normalizes each agent's outp
 
 ## Development
 
-Requires Docker. Everything except the desktop app runs in containers.
+Requires Docker, and nothing else. Dependencies, build output, and the test
+databases all live inside containers — none of it is installed on your machine.
 
 ```bash
-pnpm install
-pnpm verify        # typecheck, lint, and test inside a container
+./docker/verify.sh              # typecheck, format check, and tests
+./docker/verify.sh --shell      # a shell in the dev container
+./docker/verify.sh --down       # tear the stack down
 ```
 
-Working on the desktop app additionally requires Rust:
+Build the image agent sessions run in:
+
+```bash
+docker build -t dukebox/base-node:latest images/base-node
+```
+
+Then take the sandbox for a spin against a real repository. It clones, makes a
+change, reports the diff, prints the container's hardening, and cleans up:
+
+```bash
+./docker/verify.sh -- pnpm --filter @dukebox/sandbox smoke \
+  https://github.com/octocat/Hello-World.git master
+```
+
+Working on the desktop app additionally requires Rust, since it compiles a
+native binary:
 
 ```bash
 pnpm --filter @dukebox/desktop tauri dev
