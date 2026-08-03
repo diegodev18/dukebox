@@ -143,6 +143,38 @@ describe('Sandbox', () => {
     expect(mounts.some((bind) => bind.includes('docker.sock'))).toBe(false)
   })
 
+  it.each([
+    ['the Docker socket', '/var/run/docker.sock'],
+    ['a Docker socket elsewhere', '/tmp/nested/docker.sock'],
+    ['the proc filesystem', '/proc'],
+    ['the sys filesystem', '/sys/fs/cgroup'],
+    ['the host root', '/'],
+  ])('refuses to mount %s', async (_label, source) => {
+    // Rejected before the container is created, so a mistake in calling code
+    // cannot produce a container that owns the host.
+    await expect(
+      sandbox.create({
+        sessionId: randomUUID(),
+        image,
+        mounts: [{ source, target: '/mnt/whatever' }],
+      }),
+    ).rejects.toThrow('refusing to mount')
+  })
+
+  it('allows an ordinary mount, such as the credential socket', async () => {
+    const sessionId = randomUUID()
+    created.push(sessionId)
+
+    const container = await sandbox.create({
+      sessionId,
+      image,
+      mounts: [{ source: '/tmp', target: '/mnt/host-tmp', readOnly: true }],
+    })
+
+    const info = await container.inspect()
+    expect(info.HostConfig.Binds).toContain('/tmp:/mnt/host-tmp:ro')
+  })
+
   it('has no network access by default', async () => {
     const container = await createSession()
     const info = await container.inspect()

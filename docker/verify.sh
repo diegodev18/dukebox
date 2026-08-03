@@ -24,6 +24,18 @@ case "${1:-}" in
     "${compose[@]}" down --volumes --remove-orphans
     exit 0
     ;;
+  --clean-containers)
+    # Session containers a failed test run left behind. Harmless — the suites
+    # tolerate them — but they accumulate and hold disk.
+    ids="$(docker ps -aq --filter 'label=dev.dukebox.managed=true')"
+    if [ -n "$ids" ]; then
+      # shellcheck disable=SC2086
+      docker rm -f $ids
+    else
+      echo "no leftover session containers"
+    fi
+    exit 0
+    ;;
   --shell)
     in_container bash
     exit 0

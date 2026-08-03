@@ -103,6 +103,11 @@ const ORIGIN_SESSION_ID = 'origin-fixture'
 beforeAll(async () => {
   await prepareDatabase()
 
+  // The helper has a fixed name, so one left behind by an interrupted run
+  // would make this fail with a name conflict — and that failure would look
+  // like a bug in the code under test rather than leftover state.
+  await (await sandbox.get(ORIGIN_SESSION_ID))?.remove()
+
   originContainer = await sandbox.create({
     sessionId: ORIGIN_SESSION_ID,
     image: IMAGE,
@@ -150,14 +155,16 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-  await manager.stopAll()
+  // Cleanup runs even if stopping fails. A container left behind outlives this
+  // run and breaks the next one, which then looks like an unrelated failure.
+  await manager.stopAll().catch(() => undefined)
 
-  // Removed by label rather than by tracked id: a session that failed part way
-  // through provisioning still left a container behind, and those are exactly
-  // the ones the caller never got an id for.
-  for (const container of await sandbox.list()) {
-    if (container.sessionId === ORIGIN_SESSION_ID) continue
-    await container.remove()
+  // Only containers this suite created. Sweeping every managed container would
+  // delete ones another package's tests are using — Turbo runs packages in
+  // parallel, and both drive the same Docker daemon.
+  for (const sessionId of createdSessions) {
+    const container = await sandbox.get(sessionId).catch(() => null)
+    await container?.remove().catch(() => undefined)
   }
 
   createdSessions.length = 0

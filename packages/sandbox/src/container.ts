@@ -47,6 +47,14 @@ export interface CreateContainerOptions {
   env?: Record<string, string>
   /** Docker network to join. Defaults to none, isolating the container. */
   network?: string
+  /**
+   * Host paths to expose inside the container.
+   *
+   * Used for the credential proxy socket, which is how git authenticates
+   * without the token ever entering the container. Nothing here may be a path
+   * that grants control of the host — the Docker socket above all.
+   */
+  mounts?: { source: string; target: string; readOnly?: boolean }[]
 }
 
 /** Parse a memory string like '4g' or '512m' into bytes. */
@@ -203,6 +211,7 @@ export class Sandbox {
   async create(options: CreateContainerOptions): Promise<SessionContainer> {
     const limits = options.limits ?? DEFAULT_LIMITS
     const { period, quota } = cpuQuota(limits.cpus)
+    const binds = (options.mounts ?? []).map(toBind)
 
     const container = await this.docker.createContainer({
       name: `dukebox-session-${options.sessionId}`,
@@ -241,6 +250,8 @@ export class Sandbox {
         // lifecycle; restarting one behind our back would resurrect a session
         // the control plane believes is finished.
         RestartPolicy: { Name: 'no', MaximumRetryCount: 0 },
+
+        ...(binds.length > 0 ? { Binds: binds } : {}),
       },
     })
 
@@ -287,6 +298,26 @@ export class Sandbox {
 
 function toEnvArray(env: Record<string, string>): string[] {
   return Object.entries(env).map(([key, value]) => `${key}=${value}`)
+}
+
+/**
+ * Host paths that must never be exposed to a session container.
+ *
+ * The Docker socket is the one that matters: a container holding it can start
+ * a privileged container and own the host, which defeats every other control
+ * here. The rest are the usual routes to the same outcome.
+ */
+const FORBIDDEN_MOUNT_PATTERNS = [/docker\.sock$/, /^\/proc(\/|$)/, /^\/sys(\/|$)/, /^\/$/]
+
+/** Convert a mount to a Docker bind string, refusing dangerous sources. */
+function toBind(mount: { source: string; target: string; readOnly?: boolean }): string {
+  for (const pattern of FORBIDDEN_MOUNT_PATTERNS) {
+    if (pattern.test(mount.source)) {
+      throw new Error(`refusing to mount ${mount.source} into a session container`)
+    }
+  }
+
+  return `${mount.source}:${mount.target}${mount.readOnly ? ':ro' : ''}`
 }
 
 function isStatusCode(error: unknown, code: number): boolean {

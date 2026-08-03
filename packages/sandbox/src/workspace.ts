@@ -1,5 +1,6 @@
 import type { AgentEvent } from '@dukebox/protocol'
 import type { SessionContainer } from './container.js'
+import { HELPER_SCRIPT } from './credentials.js'
 
 /**
  * Repository setup and diffing inside a session container.
@@ -61,6 +62,42 @@ export class Workspace {
     }
 
     return result
+  }
+
+  /** Path to the credential helper inside the container. */
+  private static readonly HELPER_PATH = '/home/node/.dukebox/credential-helper'
+
+  /**
+   * Install the git credential helper.
+   *
+   * Must run before any git operation that talks to a remote. The helper asks
+   * the host for credentials over a Unix socket; no token is written into the
+   * container, so an agent reading its own filesystem finds nothing to steal.
+   */
+  async installCredentialHelper(): Promise<void> {
+    // Transferred base64-encoded. The script contains quotes, newlines and
+    // dollar signs, and every attempt to pass it through a shell literal ends
+    // up mangling one of them — a helper written as a single line with literal
+    // \n in it is not executable, and fails only when git first needs a
+    // credential.
+    const encoded = Buffer.from(HELPER_SCRIPT, 'utf8').toString('base64')
+
+    const result = await this.container.exec([
+      'sh',
+      '-c',
+      `mkdir -p "$(dirname ${Workspace.HELPER_PATH})" &&
+       echo '${encoded}' | base64 -d > ${Workspace.HELPER_PATH} &&
+       chmod +x ${Workspace.HELPER_PATH} &&
+       git config --global credential.helper ${Workspace.HELPER_PATH}`,
+    ])
+
+    if (result.exitCode !== 0) {
+      throw new WorkspaceError(
+        'failed to install the git credential helper',
+        result.stderr,
+        result.exitCode,
+      )
+    }
   }
 
   /**
