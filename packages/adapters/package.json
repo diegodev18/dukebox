@@ -18,13 +18,16 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b --pretty",
-    "test": "vitest run"
+    "test": "vitest run",
+    "inspect": "tsx src/claude-code/inspect.ts"
   },
   "dependencies": {
     "@dukebox/protocol": "workspace:*",
-    "@dukebox/sandbox": "workspace:*"
+    "@dukebox/sandbox": "workspace:*",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }
