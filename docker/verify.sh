@@ -35,6 +35,11 @@ case "${1:-}" in
     ;;
 esac
 
+# A package without container-only volumes writes its build output to the
+# host. That failure is silent, so check for it before anything runs.
+echo "==> Checking container mounts"
+"${repo_root}/docker/check-mounts.sh"
+
 # CI=true makes pnpm require a frozen lockfile. During development the lockfile
 # legitimately moves ahead of it, so allow it to update.
 echo "==> Installing dependencies"

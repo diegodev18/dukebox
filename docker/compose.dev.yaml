@@ -42,23 +42,39 @@ services:
       dockerfile: docker/verify.dockerfile
     working_dir: /workspace
     volumes:
+      # The repository is bind-mounted read-write so host edits apply
+      # immediately. Every directory holding generated content is then masked
+      # by a container-only volume, keeping node_modules and build output —
+      # Linux binaries, useless on macOS — off the host's filesystem.
+      #
+      # This list must cover every workspace package. `docker/check-mounts.sh`
+      # fails the build if one is missing, so a new package cannot silently
+      # start writing to the host.
       - ../:/workspace
-      # Every node_modules directory is masked by a container-only volume.
-      # Without one per workspace package they would land in the bind mount,
-      # putting Linux binaries on the host that are useless there.
-      # Add a line here when adding a package.
       - dukebox-node-modules:/workspace/node_modules
-      - dukebox-nm-protocol:/workspace/packages/protocol/node_modules
-      - dukebox-nm-db:/workspace/packages/db/node_modules
-      - dukebox-nm-sandbox:/workspace/packages/sandbox/node_modules
-      - dukebox-nm-adapters:/workspace/packages/adapters/node_modules
       - dukebox-pnpm-store:/pnpm-store
-      # Build output is Linux-specific too, and belongs to the container.
       - dukebox-turbo-cache:/workspace/.turbo
+
+      - dukebox-nm-protocol:/workspace/packages/protocol/node_modules
       - dukebox-dist-protocol:/workspace/packages/protocol/dist
+      - dukebox-turbo-protocol:/workspace/packages/protocol/.turbo
+
+      - dukebox-nm-db:/workspace/packages/db/node_modules
       - dukebox-dist-db:/workspace/packages/db/dist
+      - dukebox-turbo-db:/workspace/packages/db/.turbo
+
+      - dukebox-nm-sandbox:/workspace/packages/sandbox/node_modules
       - dukebox-dist-sandbox:/workspace/packages/sandbox/dist
+      - dukebox-turbo-sandbox:/workspace/packages/sandbox/.turbo
+
+      - dukebox-nm-adapters:/workspace/packages/adapters/node_modules
       - dukebox-dist-adapters:/workspace/packages/adapters/dist
+      - dukebox-turbo-adapters:/workspace/packages/adapters/.turbo
+
+      - dukebox-nm-transport:/workspace/packages/transport/node_modules
+      - dukebox-dist-transport:/workspace/packages/transport/dist
+      - dukebox-turbo-transport:/workspace/packages/transport/.turbo
+
       # The sandbox tests drive Docker, so this container needs the daemon
       # socket. This is the ONLY container that ever gets it: mounting it into
       # an agent container would hand the agent root on the host.
@@ -78,13 +94,25 @@ services:
 
 volumes:
   dukebox-node-modules:
-  dukebox-nm-protocol:
-  dukebox-nm-db:
-  dukebox-nm-sandbox:
-  dukebox-nm-adapters:
   dukebox-pnpm-store:
   dukebox-turbo-cache:
+
+  dukebox-nm-protocol:
   dukebox-dist-protocol:
+  dukebox-turbo-protocol:
+
+  dukebox-nm-db:
   dukebox-dist-db:
+  dukebox-turbo-db:
+
+  dukebox-nm-sandbox:
   dukebox-dist-sandbox:
+  dukebox-turbo-sandbox:
+
+  dukebox-nm-adapters:
   dukebox-dist-adapters:
+  dukebox-turbo-adapters:
+
+  dukebox-nm-transport:
+  dukebox-dist-transport:
+  dukebox-turbo-transport:
