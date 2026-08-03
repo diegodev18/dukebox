@@ -24,6 +24,22 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)
 
+  packages/adapters:
+    dependencies:
+      '@dukebox/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@dukebox/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.1)
+
   packages/db:
     dependencies:
       '@dukebox/protocol':

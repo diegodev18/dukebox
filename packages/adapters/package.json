@@ -1,0 +1,31 @@
+{
+  "name": "@dukebox/adapters",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Agent adapters that normalize agent output into AgentEvents",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dukebox/protocol": "workspace:*",
+    "@dukebox/sandbox": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
