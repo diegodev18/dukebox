@@ -1,5 +1,6 @@
 export * from './events.js'
 export * from './session.js'
+export * from './api.js'
 export * from './commands.js'
 export * from './config.js'
 export * from './pairing.js'

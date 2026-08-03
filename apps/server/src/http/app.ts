@@ -8,6 +8,11 @@ import {
   redeemPairingCode,
   revokeDevice,
 } from '../auth/pairing.js'
+import type { EventBus } from '../events/bus.js'
+import type { GitHubClient } from '../github/client.js'
+import type { SessionManager } from '../sessions/manager.js'
+import { projectRoutes } from './projects.js'
+import { sessionRoutes } from './sessions.js'
 
 /**
  * The control plane's HTTP surface.
@@ -20,6 +25,17 @@ import {
 export interface AppContext {
   db: Database
   serverName: string
+  /**
+   * Project and session routes, mounted when the server has what they need.
+   *
+   * Optional so tests covering pairing and auth can build an app without a
+   * Docker daemon or a GitHub login.
+   */
+  features?: {
+    github: GitHubClient
+    bus: EventBus
+    sessions: SessionManager
+  }
 }
 
 type Variables = { device: Device }
@@ -113,6 +129,39 @@ export function createApp(context: AppContext) {
 
     return c.json({ revoked: true })
   })
+
+  /**
+   * Turn an unhandled failure into a structured error.
+   *
+   * Without this, anything a route did not anticipate — GitHub returning an
+   * unexpected shape, the daemon refusing a request — reaches the client as
+   * "Internal Server Error" in plain text, which a JSON client cannot parse
+   * and a person cannot act on.
+   */
+  app.onError((error, c) => {
+    console.error('request failed:', error)
+
+    return c.json(
+      {
+        error: 'internal_error',
+        message: error instanceof Error ? error.message : 'something went wrong',
+      },
+      500,
+    )
+  })
+
+  // Mounted under /api, so the auth middleware above already covers them.
+  if (context.features) {
+    app.route('/api', projectRoutes({ db: context.db, github: context.features.github }))
+    app.route(
+      '/api',
+      sessionRoutes({
+        db: context.db,
+        bus: context.features.bus,
+        sessions: context.features.sessions,
+      }),
+    )
+  }
 
   return app
 }

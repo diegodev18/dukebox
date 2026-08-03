@@ -72,7 +72,12 @@ async function main() {
     cloneUrl: (repoFullName) => `https://github.com/${repoFullName}.git`,
   })
 
-  const app = createApp({ db, serverName: hostname() })
+  const app = createApp({
+    db,
+    serverName: hostname(),
+    features: { github, bus, sessions },
+  })
+
   const bind = await transport.bindAddress(config.server.port)
 
   const server = serve({ fetch: app.fetch, hostname: bind.host, port: bind.port }, (info) => {
