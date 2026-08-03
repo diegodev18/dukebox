@@ -229,6 +229,37 @@ describe('ClaudeCodeMapper', () => {
     })
   })
 
+  describe('thinking', () => {
+    function thinkingFrom(block: unknown): AgentEvent[] {
+      return new ClaudeCodeMapper().map({
+        type: 'assistant',
+        message: { role: 'assistant', content: [block] },
+      })
+    }
+
+    it('carries the reasoning text', () => {
+      const events = thinkingFrom({ type: 'thinking', thinking: 'considering the options' })
+      expect(events[0]).toEqual({ type: 'thinking', delta: 'considering the options' })
+    })
+
+    it('says so when reasoning is withheld rather than showing a blank bubble', () => {
+      // A redacted block means the model reasoned but the content is not
+      // available. An empty delta would render as an empty message.
+      const events = thinkingFrom({ type: 'redacted_thinking', data: 'encrypted' })
+
+      expect(events[0]).toMatchObject({ type: 'thinking' })
+      expect(events[0]?.type === 'thinking' && events[0].delta).not.toBe('')
+    })
+
+    it('handles a thinking block with no text at all', () => {
+      // Observed in a real session: the block arrived, the field did not.
+      const events = thinkingFrom({ type: 'thinking' })
+
+      expect(events).toHaveLength(1)
+      expect(events[0]?.type === 'thinking' && events[0].delta).not.toBe('')
+    })
+  })
+
   describe('malformed and unknown input', () => {
     it('reports an unparseable message without throwing', () => {
       const mapper = new ClaudeCodeMapper()

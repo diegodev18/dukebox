@@ -21,9 +21,17 @@ export const textBlock = z.object({
   text: z.string(),
 })
 
+/**
+ * Reasoning output.
+ *
+ * `thinking` is optional because a redacted block carries none: the model
+ * reasoned, but the content is withheld. Requiring the field would push those
+ * blocks into the catch-all, where they would be dropped silently rather than
+ * shown as the reasoning step they are.
+ */
 export const thinkingBlock = z.object({
-  type: z.literal('thinking'),
-  thinking: z.string(),
+  type: z.enum(['thinking', 'redacted_thinking']),
+  thinking: z.string().optional(),
 })
 
 export const toolUseBlock = z.object({

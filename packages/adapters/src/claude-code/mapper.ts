@@ -109,8 +109,22 @@ export class ClaudeCodeMapper {
           break
 
         case 'thinking':
-          events.push({ type: 'thinking', delta: blockString(block, 'thinking') })
+        case 'redacted_thinking': {
+          // Field name varies by block variant, and a redacted block carries
+          // no readable text at all — the model reasoned, but the content is
+          // withheld. Emitting an empty delta would put a blank bubble in the
+          // transcript, so say what happened instead.
+          const text =
+            blockString(block, 'thinking') ||
+            blockString(block, 'text') ||
+            blockString(block, 'data')
+
+          events.push({
+            type: 'thinking',
+            delta: text || '(reasoning withheld)',
+          })
           break
+        }
 
         case 'tool_use': {
           const tool = block as { id?: unknown; name?: unknown; input?: unknown }
