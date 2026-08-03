@@ -1,0 +1,58 @@
+# Installed to /etc/systemd/system/dukebox.service by install.sh.
+#
+# The control plane runs on the host rather than in a container: it needs the
+# Docker socket to manage session containers, the gh CLI's credentials, and a
+# credential socket the daemon can see. Putting it in a container would mean
+# giving that container the Docker socket — the one thing this project refuses
+# to do anywhere.
+[Unit]
+Description=Dukebox control plane
+Documentation=https://github.com/diegodev18/dukebox
+After=network-online.target docker.service tailscaled.service
+Wants=network-online.target
+Requires=docker.service
+
+# These belong in [Unit], not [Service]: systemd ignores them there, so the
+# restart limit silently would not apply. The dependencies are containers this
+# unit does not manage, so a failure to reach them is worth retrying.
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Service]
+Type=simple
+User=dukebox
+Group=dukebox
+
+WorkingDirectory=/opt/dukebox
+Environment=NODE_ENV=production
+Environment=DUKEBOX_CONFIG=/etc/dukebox/config.toml
+EnvironmentFile=/etc/dukebox/env
+
+ExecStart=/usr/bin/node /opt/dukebox/apps/server/dist/main.js
+
+Restart=on-failure
+RestartSec=5s
+
+# Hardening. The service reaches the Docker socket, /etc/dukebox, and its own
+# runtime directory, and nothing else it does not need.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+# Per-session credential sockets live here. Cleaned up automatically when the
+# service stops, so a crash cannot leave one listening.
+RuntimeDirectory=dukebox
+RuntimeDirectoryMode=0755
+ReadWritePaths=/run/dukebox
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dukebox
+
+[Install]
+WantedBy=multi-user.target

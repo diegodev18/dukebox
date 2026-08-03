@@ -1,0 +1,43 @@
+# Production stack, installed to /opt/dukebox by install.sh.
+#
+# Postgres and Redis bind to localhost only. The control plane binds to the
+# tailnet address its transport reports, so nothing here is reachable from
+# outside the machine or the tailnet.
+name: dukebox
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dukebox
+      # Generated per installation by install.sh and written to the env file
+      # beside this one. Never a value from this repository.
+      POSTGRES_PASSWORD: ${DUKEBOX_POSTGRES_PASSWORD:?set in /etc/dukebox/env}
+      POSTGRES_DB: dukebox
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - dukebox-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U dukebox -d dukebox']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - dukebox-redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  dukebox-postgres:
+  dukebox-redis:
