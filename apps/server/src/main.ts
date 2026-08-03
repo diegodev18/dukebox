@@ -1,9 +1,15 @@
 import { serve } from '@hono/node-server'
 import { createDatabase } from '@dukebox/db'
+import { Sandbox } from '@dukebox/sandbox'
 import { TailscaleTransport, type Transport } from '@dukebox/transport'
+import Redis from 'ioredis'
+import type { Server } from 'node:http'
 import { hostname } from 'node:os'
 import { ConfigError, loadConfig } from './config.js'
+import { EventBus } from './events/bus.js'
 import { createApp } from './http/app.js'
+import { SessionManager } from './sessions/manager.js'
+import { attachWebSocketServer } from './ws/server.js'
 
 /**
  * Control plane entry point.
@@ -34,8 +40,18 @@ async function main() {
   }
 
   const { db, close } = createDatabase(config.database.url)
-  const app = createApp({ db, serverName: hostname() })
+  const redis = new Redis(config.redis.url)
+  const bus = new EventBus(db, redis)
 
+  const sessions = new SessionManager({
+    db,
+    bus,
+    sandbox: new Sandbox(),
+    // Cloning goes through the credential proxy, so no token appears here.
+    cloneUrl: (repoFullName) => `https://github.com/${repoFullName}.git`,
+  })
+
+  const app = createApp({ db, serverName: hostname() })
   const bind = await transport.bindAddress(config.server.port)
 
   const server = serve({ fetch: app.fetch, hostname: bind.host, port: bind.port }, (info) => {
@@ -44,8 +60,25 @@ async function main() {
     console.log(`dukebox listening on ${info.address}:${info.port} (${transport.id})`)
   })
 
+  const wss = attachWebSocketServer(server as unknown as Server, {
+    db,
+    bus,
+    onPrompt: (sessionId, text, images) => sessions.prompt(sessionId, text, images),
+    onInterrupt: (sessionId) => sessions.interrupt(sessionId),
+    onPermissionResponse: (sessionId, id, allow) =>
+      sessions.respondToPermission(sessionId, id, allow),
+  })
+
   const shutdown = async () => {
+    // Sessions first: their containers are stopped rather than removed, so a
+    // restart resumes them instead of re-cloning every workspace.
+    await sessions.stopAll()
+
+    wss.clients.forEach((socket) => socket.terminate())
+    wss.close()
     server.close()
+
+    redis.disconnect()
     await close()
     process.exit(0)
   }

@@ -3,8 +3,9 @@
 FROM node:22-bookworm-slim
 
 # git is needed by some tooling; ca-certificates for registry access.
+# curl is what the installer's health check uses, so it belongs here too.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git ca-certificates \
+  && apt-get install -y --no-install-recommends git ca-certificates curl \
   && rm -rf /var/lib/apt/lists/*
 
 # pnpm ships with Node via corepack. Pin the version to match packageManager.
