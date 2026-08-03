@@ -5,6 +5,7 @@ import { Sandbox } from '@dukebox/sandbox'
 import { eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { EventBus } from '../events/bus.js'
+import type { GitHubClient } from '../github/client.js'
 import { close, db, prepareDatabase, resetDatabase } from '../testing/database.js'
 import { closeRedis, redis } from '../testing/redis.js'
 import { SessionManager, SessionError } from './manager.js'
@@ -123,7 +124,11 @@ beforeAll(async () => {
      echo "original" > README.md
      git add -A && git commit -q -m initial
      git clone -q --bare /tmp/seed /tmp/origin.git
-     cd /tmp/origin.git && git daemon --reuseaddr --base-path=/tmp --export-all --detach /tmp
+     # Accepting pushes is what lets the pull-request tests exercise the real
+     # push path. Safe here: a throwaway repository in a container with no
+     # route off this machine.
+     cd /tmp/origin.git && git config http.receivepack true
+     git daemon --reuseaddr --base-path=/tmp --export-all --enable=receive-pack --detach /tmp
      sleep 1`,
   ])
 
@@ -464,5 +469,129 @@ describe('prompt, interrupt, and stop', () => {
 
   it('tolerates stopping a session that is not running', async () => {
     await expect(manager.stop('00000000-0000-4000-8000-000000000000')).resolves.toBeUndefined()
+  })
+})
+
+describe('pull requests', () => {
+  /** A manager whose GitHub calls are recorded rather than made. */
+  function managerWithGitHub(overrides: Partial<GitHubClient> = {}) {
+    const created: Parameters<GitHubClient['createPullRequest']>[0][] = []
+
+    const github = {
+      token: async () => 'gho_test',
+      findPullRequest: async () => null,
+      createPullRequest: async (options: Parameters<GitHubClient['createPullRequest']>[0]) => {
+        created.push(options)
+        return 'https://github.com/diego/dukebox/pull/1'
+      },
+      ...overrides,
+    } as unknown as GitHubClient
+
+    return {
+      created,
+      manager: new SessionManager({
+        db,
+        bus,
+        sandbox,
+        github,
+        cloneUrl: () => originUrl,
+        createAdapter: () => adapter,
+      }),
+    }
+  }
+
+  /** Start a session on a manager other than the shared one. */
+  async function startOn(target: SessionManager) {
+    const projectId = await createProject()
+    const session = await target.start({ projectId, agentId: 'fake', prompt: 'do the thing' })
+    createdSessions.push(session.id)
+    await waitForStatus(session.id, 'running')
+    return session
+  }
+
+  it('refuses when the session is not running', async () => {
+    const { manager: withGitHub } = managerWithGitHub()
+
+    await expect(
+      withGitHub.openPullRequest('00000000-0000-4000-8000-000000000000'),
+    ).rejects.toThrow(SessionError)
+  })
+
+  it('refuses when GitHub is not configured', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+
+    await expect(manager.openPullRequest(session.id)).rejects.toThrow('not configured')
+  })
+
+  it('refuses when the agent changed nothing', async () => {
+    const { manager: withGitHub } = managerWithGitHub()
+    const session = await startOn(withGitHub)
+
+    // An empty pull request wastes the reviewer's time and clutters the
+    // repository's history.
+    await expect(withGitHub.openPullRequest(session.id)).rejects.toThrow('nothing to open')
+
+    await withGitHub.stopAll()
+  })
+
+  it('opens a pull request from the session branch onto the base branch', async () => {
+    const { manager: withGitHub, created } = managerWithGitHub()
+    const session = await startOn(withGitHub)
+
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+
+    const url = await withGitHub.openPullRequest(session.id, 'Add a thing')
+
+    expect(url).toContain('/pull/1')
+    expect(created[0]).toMatchObject({
+      head: session.branch || expect.stringMatching(/^duke\//),
+      base: 'main',
+      title: 'Add a thing',
+    })
+
+    await withGitHub.stopAll()
+  })
+
+  it('records the pull request URL on the session', async () => {
+    const { manager: withGitHub } = managerWithGitHub()
+    const session = await startOn(withGitHub)
+
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+
+    await withGitHub.openPullRequest(session.id)
+
+    const [row] = await db
+      .select({ prUrl: sessions.prUrl })
+      .from(sessions)
+      .where(eq(sessions.id, session.id))
+
+    expect(row?.prUrl).toContain('/pull/1')
+    await withGitHub.stopAll()
+  })
+
+  it('reuses an existing pull request rather than opening a second', async () => {
+    const created: unknown[] = []
+    const { manager: withGitHub } = managerWithGitHub({
+      findPullRequest: async () => 'https://github.com/diego/dukebox/pull/7',
+      createPullRequest: async (options) => {
+        created.push(options)
+        return 'https://github.com/diego/dukebox/pull/99'
+      },
+    })
+
+    const session = await startOn(withGitHub)
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+
+    // A follow-up turn should extend the same review, not start a new one.
+    const url = await withGitHub.openPullRequest(session.id)
+
+    expect(url).toContain('/pull/7')
+    expect(created).toHaveLength(0)
+
+    await withGitHub.stopAll()
   })
 })

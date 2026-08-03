@@ -7,6 +7,7 @@ import type { Server } from 'node:http'
 import { hostname } from 'node:os'
 import { ConfigError, loadConfig } from './config.js'
 import { EventBus } from './events/bus.js'
+import { GitHubClient } from './github/client.js'
 import { createApp } from './http/app.js'
 import { SessionManager } from './sessions/manager.js'
 import { attachWebSocketServer } from './ws/server.js'
@@ -43,11 +44,25 @@ async function main() {
   const redis = new Redis(config.redis.url)
   const bus = new EventBus(db, redis)
 
+  const github = new GitHubClient()
+
+  if (!(await github.isAuthenticated())) {
+    // Fatal rather than deferred: without this, every session would fail at
+    // clone time with an error that looks like a network problem.
+    console.error('cannot start: gh is not authenticated')
+    console.error('Run: gh auth login')
+    process.exit(1)
+  }
+
   const sessions = new SessionManager({
     db,
     bus,
+    github,
     sandbox: new Sandbox(),
-    // Cloning goes through the credential proxy, so no token appears here.
+    // Per-session sockets. The Docker daemon shares this filesystem, which is
+    // what lets a container reach the socket at all.
+    credentialSocketDir: '/run/dukebox/sessions',
+    // No token in the URL: git gets credentials from the proxy instead.
     cloneUrl: (repoFullName) => `https://github.com/${repoFullName}.git`,
   })
 

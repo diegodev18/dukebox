@@ -6,9 +6,18 @@ import {
   type ProjectConfig,
   type SessionStatus,
 } from '@dukebox/protocol'
-import { Sandbox, Workspace, type SessionContainer } from '@dukebox/sandbox'
+import {
+  CONTAINER_SOCKET_DIR,
+  createSessionCredentialProxy,
+  Sandbox,
+  Workspace,
+  type CredentialProxy,
+  type SessionContainer,
+} from '@dukebox/sandbox'
 import { eq } from 'drizzle-orm'
+import { join } from 'node:path'
 import type { EventBus } from '../events/bus.js'
+import type { GitHubClient } from '../github/client.js'
 
 /**
  * Session lifecycle.
@@ -27,6 +36,18 @@ export interface SessionManagerDeps {
   sandbox: Sandbox
   /** Clone URL for a repository. Credentials come from the credential proxy. */
   cloneUrl: (repoFullName: string) => string
+  /**
+   * GitHub access, for pull requests and for the token the credential proxy
+   * hands to git. Omitted in tests that clone from a local origin.
+   */
+  github?: GitHubClient
+  /**
+   * Directory for per-session credential sockets.
+   *
+   * Must be a path the Docker daemon can see, which on a VPS is any local
+   * directory. Omitted to run without credential proxying at all.
+   */
+  credentialSocketDir?: string
   /** Overridable so tests can drive a fake agent. */
   createAdapter?: (agentId: string) => AgentAdapter
 }
@@ -45,6 +66,9 @@ interface RunningSession {
   adapter: AgentAdapter
   /** HEAD before the agent ran, so diffs have a stable base. */
   baseCommit: string
+  /** Serves git credentials to this session's container, if configured. */
+  credentials?: CredentialProxy
+  repoFullName: string
 }
 
 export class SessionError extends Error {}
@@ -122,6 +146,27 @@ export class SessionManager {
   }
 
   private async provision(session: Session, repoFullName: string, prompt: string): Promise<void> {
+    // Started before the container so the socket exists to be mounted. It
+    // answers only for this session's repository, so an agent that asks for
+    // any other gets nothing.
+    const credentials = await this.startCredentialProxy(session.id, repoFullName)
+
+    try {
+      await this.provisionWith(session, repoFullName, prompt, credentials)
+    } catch (error) {
+      // The session never reached `running`, so `stop` would not find it and
+      // the socket would be left listening for a session that failed.
+      await credentials?.stop().catch(() => undefined)
+      throw error
+    }
+  }
+
+  private async provisionWith(
+    session: Session,
+    repoFullName: string,
+    prompt: string,
+    credentials: CredentialProxy | undefined,
+  ): Promise<void> {
     const config = defaultProjectConfig()
 
     const container = await this.deps.sandbox.create({
@@ -129,6 +174,16 @@ export class SessionManager {
       image: config.image,
       // Cloning and installing dependencies both need the network.
       network: 'bridge',
+      ...(credentials
+        ? {
+            mounts: [
+              {
+                source: this.socketDirFor(session.id),
+                target: CONTAINER_SOCKET_DIR,
+              },
+            ],
+          }
+        : {}),
     })
 
     await this.deps.db
@@ -137,6 +192,10 @@ export class SessionManager {
       .where(eq(sessions.id, session.id))
 
     const workspace = new Workspace(container)
+
+    // Must precede any git operation that reaches a remote.
+    if (credentials) await workspace.installCredentialHelper()
+
     const { branch } = await workspace.clone({
       url: this.deps.cloneUrl(repoFullName),
       baseBranch: session.baseBranch,
@@ -158,7 +217,14 @@ export class SessionManager {
       ...(session.agentSessionId ? { resumeFrom: session.agentSessionId } : {}),
     })
 
-    this.running.set(session.id, { container, workspace, adapter, baseCommit })
+    this.running.set(session.id, {
+      container,
+      workspace,
+      adapter,
+      baseCommit,
+      repoFullName,
+      ...(credentials ? { credentials } : {}),
+    })
     await this.setStatus(session.id, 'running')
 
     // Started before the first prompt so no early output is missed.
@@ -224,6 +290,79 @@ export class SessionManager {
     })
   }
 
+  /** Where this session's credential socket lives on the host. */
+  private socketDirFor(sessionId: string): string {
+    return join(this.deps.credentialSocketDir ?? '', sessionId)
+  }
+
+  /**
+   * Start a credential proxy for this session, if one is configured.
+   *
+   * Returns undefined when there is no GitHub client or socket directory —
+   * the case in tests that clone from a local origin, where no credential is
+   * needed at all.
+   */
+  private async startCredentialProxy(
+    sessionId: string,
+    repoFullName: string,
+  ): Promise<CredentialProxy | undefined> {
+    const github = this.deps.github
+    if (!github || !this.deps.credentialSocketDir) return undefined
+
+    const proxy = createSessionCredentialProxy({
+      socketPath: join(this.socketDirFor(sessionId), 'credentials.sock'),
+      repoFullName,
+      // Read per request rather than captured here, so the token is never held
+      // for longer than one in-flight call.
+      readToken: () => github.token(),
+    })
+
+    await proxy.start()
+    return proxy
+  }
+
+  /**
+   * Push the session branch and open a pull request.
+   *
+   * A pull request, never a merge: the user reviews the agent's work on
+   * GitHub, where they already have the tools to read a diff.
+   */
+  async openPullRequest(sessionId: string, title?: string): Promise<string> {
+    const running = this.running.get(sessionId)
+    if (!running) throw new SessionError('that session is not running')
+
+    const github = this.deps.github
+    if (!github) throw new SessionError('GitHub is not configured on this server')
+
+    const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
+
+    if (!session) throw new SessionError('no such session')
+
+    const committed = await running.workspace.commitAll(title ?? session.title ?? 'Agent changes')
+    if (!committed && !session.prUrl) {
+      throw new SessionError('there is nothing to open a pull request for')
+    }
+
+    await running.workspace.push(session.branch)
+
+    // A second push to the same branch updates the existing pull request
+    // rather than failing, so a follow-up turn extends the same review.
+    const existing = await github.findPullRequest(running.repoFullName, session.branch)
+    const url =
+      existing ??
+      (await github.createPullRequest({
+        repoFullName: running.repoFullName,
+        head: session.branch,
+        base: session.baseBranch,
+        title: title ?? session.title ?? 'Agent changes',
+        body: `Opened by Dukebox from session \`${sessionId}\`.`,
+      }))
+
+    await this.deps.db.update(sessions).set({ prUrl: url }).where(eq(sessions.id, sessionId))
+
+    return url
+  }
+
   /** Environment for the container, with secret references left unresolved. */
   private environmentFor(config: ProjectConfig): Record<string, string> {
     // Secrets are decrypted and injected here once the secret store lands.
@@ -271,6 +410,10 @@ export class SessionManager {
 
     await running.adapter.stop()
     await running.container.stop()
+
+    // Stopped with the session: a socket left listening would keep answering
+    // credential requests for a session that is over.
+    await running.credentials?.stop().catch(() => undefined)
 
     const [session] = await this.deps.db
       .select({ status: sessions.status })
