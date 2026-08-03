@@ -1,0 +1,83 @@
+# ---------------------------------------------------------------------------
+# Secrets and credentials
+#
+# This repository is public. Anything matched here would be exposed to everyone
+# the moment it is pushed, and rewriting history does not undo that — a leaked
+# credential must be rotated, not deleted. Keep these rules first and broad.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.keystore
+*.jks
+id_rsa
+id_ed25519
+*.gpg
+secrets.json
+credentials.json
+
+# Server runtime config: generated per installation, holds connection strings.
+# The committed template is install/config.example.toml.
+config.toml
+!install/config.example.toml
+
+# Tailscale and GitHub CLI state
+*.tailscale.state
+.gh-token
+
+# Tauri signing keys — these sign auto-updates. A leak lets anyone ship a
+# malicious update to every installed app.
+*.tauri-key
+.tauri/
+
+# ---------------------------------------------------------------------------
+# Dependencies and build output
+# ---------------------------------------------------------------------------
+node_modules/
+.pnpm-store/
+dist/
+build/
+out/
+*.tsbuildinfo
+.turbo/
+
+# Rust / Tauri
+target/
+apps/desktop/src-tauri/gen/
+
+# Test and coverage output
+coverage/
+.vitest/
+*.lcov
+
+# ---------------------------------------------------------------------------
+# Local runtime state
+# ---------------------------------------------------------------------------
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.pid
+*.sock
+
+# Recorded agent fixtures may echo prompts and repository contents. Commit them
+# deliberately with `git add -f` after reviewing what they contain.
+fixtures/local/
+
+# ---------------------------------------------------------------------------
+# Editors, OS, logs
+# ---------------------------------------------------------------------------
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+pnpm-debug.log*

@@ -1,0 +1,269 @@
+import {
+  bigint,
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core'
+
+/**
+ * Database schema.
+ *
+ * Conventions:
+ *   - `timestamptz` everywhere. A server in one timezone and a laptop in
+ *     another must agree on when things happened.
+ *   - `text` over `varchar(n)`; length caps belong in the Zod schemas, where
+ *     violating one produces a useful error instead of a database exception.
+ *   - Every foreign key gets an explicit index. Postgres does not create them,
+ *     and without them both joins and cascading deletes fall back to scans.
+ */
+
+const createdAt = timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+const updatedAt = timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+
+// ---------------------------------------------------------------------------
+// Devices and pairing
+// ---------------------------------------------------------------------------
+
+/**
+ * A paired desktop app.
+ *
+ * Tailscale authenticates the network; this table authenticates the app. Each
+ * device holds its own token so one can be revoked without touching the rest.
+ */
+export const devices = pgTable(
+  'devices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    platform: text('platform').notNull(),
+
+    /**
+     * SHA-256 of the device token, never the token itself. A database dump
+     * must not be enough to impersonate a device.
+     */
+    tokenHash: text('token_hash').notNull(),
+
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    createdAt,
+  },
+  (table) => [
+    // Every authenticated request looks a device up by token hash.
+    uniqueIndex('devices_token_hash_idx').on(table.tokenHash),
+  ],
+)
+
+/**
+ * A single-use pairing code.
+ *
+ * Rows are kept after redemption rather than deleted: a code that was already
+ * used and a code that never existed must be indistinguishable to a caller,
+ * and keeping the row is what lets the server tell them apart internally.
+ */
+export const pairingCodes = pgTable(
+  'pairing_codes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+
+    /** SHA-256 of the code. Same reasoning as device tokens. */
+    codeHash: text('code_hash').notNull(),
+
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    redeemedAt: timestamp('redeemed_at', { withTimezone: true }),
+
+    /** Set on redemption, for auditing which device claimed which code. */
+    redeemedByDeviceId: uuid('redeemed_by_device_id').references(() => devices.id, {
+      onDelete: 'set null',
+    }),
+
+    createdAt,
+  },
+  (table) => [
+    uniqueIndex('pairing_codes_code_hash_idx').on(table.codeHash),
+    index('pairing_codes_redeemed_by_device_id_idx').on(table.redeemedByDeviceId),
+  ],
+)
+
+// ---------------------------------------------------------------------------
+// Projects and environments
+// ---------------------------------------------------------------------------
+
+/** A GitHub repository the user has connected. */
+export const projects = pgTable(
+  'projects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+
+    /** `owner/repo`, the natural key on GitHub's side. */
+    repoFullName: text('repo_full_name').notNull(),
+
+    defaultBranch: text('default_branch').notNull().default('main'),
+
+    /**
+     * UI overrides merged over the repo's `.duke/config.yaml`.
+     * Null means the repo's config is used as-is.
+     */
+    configOverride: jsonb('config_override'),
+
+    /**
+     * Image built after running the project's setup commands. Reused so later
+     * sessions start in seconds instead of reinstalling dependencies.
+     */
+    snapshotImage: text('snapshot_image'),
+
+    createdAt,
+    updatedAt,
+  },
+  (table) => [uniqueIndex('projects_repo_full_name_idx').on(table.repoFullName)],
+)
+
+/**
+ * An encrypted secret injected into a project's containers at runtime.
+ *
+ * Referenced from `.duke/config.yaml` as `${secret.NAME}`. The plaintext never
+ * touches the repo, an image layer, or a log line.
+ */
+export const secrets = pgTable(
+  'secrets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+
+    name: text('name').notNull(),
+
+    /** AES-256-GCM ciphertext, keyed by the installer-generated master key. */
+    ciphertext: text('ciphertext').notNull(),
+    iv: text('iv').notNull(),
+    authTag: text('auth_tag').notNull(),
+
+    createdAt,
+    updatedAt,
+  },
+  (table) => [uniqueIndex('secrets_project_id_name_idx').on(table.projectId, table.name)],
+)
+
+// ---------------------------------------------------------------------------
+// Sessions
+// ---------------------------------------------------------------------------
+
+/** One agent run in one container. */
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+
+    agentId: text('agent_id').notNull(),
+    status: text('status').notNull(),
+    title: text('title').notNull().default(''),
+
+    branch: text('branch').notNull(),
+    baseBranch: text('base_branch').notNull(),
+
+    /** Null until the container is created; cleared when it is removed. */
+    containerId: text('container_id'),
+
+    /**
+     * The agent's own session identifier, when it has one. Required to resume
+     * a conversation rather than start over.
+     */
+    agentSessionId: text('agent_session_id'),
+
+    /**
+     * Highest seq assigned so far. The source of truth for numbering: a new
+     * event takes `last_seq + 1` under a row lock, which keeps sequences gap
+     * free even with concurrent writers.
+     */
+    lastSeq: bigint('last_seq', { mode: 'number' }).notNull().default(0),
+
+    changedFileCount: integer('changed_file_count').notNull().default(0),
+    prUrl: text('pr_url'),
+    errorMessage: text('error_message'),
+
+    createdAt,
+    updatedAt,
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('sessions_project_id_idx').on(table.projectId),
+    // The sidebar lists sessions newest first, filtered by status.
+    index('sessions_status_updated_at_idx').on(table.status, table.updatedAt),
+  ],
+)
+
+/**
+ * The event log. One row per AgentEvent.
+ *
+ * This is the highest-volume table in the system — a long session is thousands
+ * of rows — so the primary key is a `bigint identity`, not a UUID. Sequential
+ * keys append to the end of the index; random UUIDs would scatter writes across
+ * it and fragment the index as the table grows.
+ *
+ * Redis Streams serve recent events for live replay; this table is the durable
+ * record and backs history older than the stream's retention.
+ */
+export const messages = pgTable(
+  'messages',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => sessions.id, { onDelete: 'cascade' }),
+
+    /** Monotonic per session, assigned from `sessions.last_seq`. */
+    seq: bigint('seq', { mode: 'number' }).notNull(),
+
+    /** An AgentEvent, validated by the protocol schema before insert. */
+    event: jsonb('event').notNull(),
+
+    createdAt,
+  },
+  (table) => [
+    /**
+     * Serves both access patterns: replaying one session in order, and
+     * resuming from a known seq. Unique because a duplicate seq within a
+     * session would corrupt client-side reconciliation.
+     */
+    uniqueIndex('messages_session_id_seq_idx').on(table.sessionId, table.seq),
+  ],
+)
+
+// ---------------------------------------------------------------------------
+// Server metadata
+// ---------------------------------------------------------------------------
+
+/**
+ * Single-row table holding this installation's identity.
+ *
+ * Lets the desktop app tell paired servers apart, and gives the pairing screen
+ * a name to show instead of a bare hostname.
+ */
+export const serverIdentity = pgTable('server_identity', {
+  id: boolean('id').primaryKey().default(true),
+  name: text('name').notNull(),
+  createdAt,
+})
+
+export type Device = typeof devices.$inferSelect
+export type NewDevice = typeof devices.$inferInsert
+export type PairingCode = typeof pairingCodes.$inferSelect
+export type NewPairingCode = typeof pairingCodes.$inferInsert
+export type Project = typeof projects.$inferSelect
+export type NewProject = typeof projects.$inferInsert
+export type Secret = typeof secrets.$inferSelect
+export type NewSecret = typeof secrets.$inferInsert
+export type Session = typeof sessions.$inferSelect
+export type NewSession = typeof sessions.$inferInsert
+export type Message = typeof messages.$inferSelect
+export type NewMessage = typeof messages.$inferInsert

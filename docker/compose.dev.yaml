@@ -1,0 +1,78 @@
+# Development and integration-test dependencies.
+#
+# The credentials below are throwaway values for a local, disposable database.
+# They are committed on purpose so `verify.sh` works from a fresh clone with no
+# setup. Nothing here is used in a real installation: the installer generates
+# per-machine credentials into /etc/dukebox/config.toml, which is never
+# committed. Ports bind to 127.0.0.1 so this stack is unreachable from the
+# network even on a shared machine.
+name: dukebox-dev
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: dukebox
+      POSTGRES_PASSWORD: dukebox
+      POSTGRES_DB: dukebox
+    ports:
+      - '127.0.0.1:5433:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U dukebox -d dukebox']
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    tmpfs:
+      # Dev data is disposable; keeping it in RAM makes resets instant.
+      - /var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '127.0.0.1:6380:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  verify:
+    build:
+      context: ..
+      dockerfile: docker/verify.dockerfile
+    working_dir: /workspace
+    volumes:
+      - ../:/workspace
+      # Every node_modules directory is masked by a container-only volume.
+      # Without one per workspace package they would land in the bind mount,
+      # putting Linux binaries on the host that are useless there.
+      # Add a line here when adding a package.
+      - dukebox-node-modules:/workspace/node_modules
+      - dukebox-nm-protocol:/workspace/packages/protocol/node_modules
+      - dukebox-nm-db:/workspace/packages/db/node_modules
+      - dukebox-pnpm-store:/pnpm-store
+      # Build output is Linux-specific too, and belongs to the container.
+      - dukebox-turbo-cache:/workspace/.turbo
+      - dukebox-dist-protocol:/workspace/packages/protocol/dist
+      - dukebox-dist-db:/workspace/packages/db/dist
+    environment:
+      DUKEBOX_DATABASE_URL: postgres://dukebox:dukebox@postgres:5432/dukebox
+      DUKEBOX_REDIS_URL: redis://redis:6379
+      CI: 'true'
+      # This is an open source project: no usage data leaves the machine.
+      TURBO_TELEMETRY_DISABLED: '1'
+      DO_NOT_TRACK: '1'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  dukebox-node-modules:
+  dukebox-nm-protocol:
+  dukebox-nm-db:
+  dukebox-pnpm-store:
+  dukebox-turbo-cache:
+  dukebox-dist-protocol:
+  dukebox-dist-db:

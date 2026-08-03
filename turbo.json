@@ -1,0 +1,24 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      // Integration tests talk to the dev stack. Declaring these here both
+      // passes them through and makes them part of the cache key, so a run
+      // against a different database is not served from cache.
+      "env": ["DUKEBOX_DATABASE_URL", "DUKEBOX_REDIS_URL"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}
