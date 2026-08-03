@@ -52,4 +52,8 @@ LABEL dev.dukebox.claude-code-version="${CLAUDE_CODE_VERSION}"
 
 # Sessions exec into a running container. Without a foreground process the
 # container would exit immediately and there would be nothing to exec into.
-CMD ["sleep", "infinity"]
+#
+# `sleep infinity` alone would ignore SIGTERM, forcing Docker to wait out the
+# full stop timeout and then SIGKILL — making every stop take ten seconds.
+# Trapping the signal makes shutdown immediate.
+CMD ["sh", "-c", "trap 'exit 0' TERM INT; sleep infinity & wait"]

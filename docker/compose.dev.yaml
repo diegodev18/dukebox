@@ -50,11 +50,17 @@ services:
       - dukebox-node-modules:/workspace/node_modules
       - dukebox-nm-protocol:/workspace/packages/protocol/node_modules
       - dukebox-nm-db:/workspace/packages/db/node_modules
+      - dukebox-nm-sandbox:/workspace/packages/sandbox/node_modules
       - dukebox-pnpm-store:/pnpm-store
       # Build output is Linux-specific too, and belongs to the container.
       - dukebox-turbo-cache:/workspace/.turbo
       - dukebox-dist-protocol:/workspace/packages/protocol/dist
       - dukebox-dist-db:/workspace/packages/db/dist
+      - dukebox-dist-sandbox:/workspace/packages/sandbox/dist
+      # The sandbox tests drive Docker, so this container needs the daemon
+      # socket. This is the ONLY container that ever gets it: mounting it into
+      # an agent container would hand the agent root on the host.
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       DUKEBOX_DATABASE_URL: postgres://dukebox:dukebox@postgres:5432/dukebox
       DUKEBOX_REDIS_URL: redis://redis:6379
@@ -72,7 +78,9 @@ volumes:
   dukebox-node-modules:
   dukebox-nm-protocol:
   dukebox-nm-db:
+  dukebox-nm-sandbox:
   dukebox-pnpm-store:
   dukebox-turbo-cache:
   dukebox-dist-protocol:
   dukebox-dist-db:
+  dukebox-dist-sandbox:

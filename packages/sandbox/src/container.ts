@@ -1,0 +1,331 @@
+import Docker from 'dockerode'
+import { PassThrough, type Duplex } from 'node:stream'
+
+/**
+ * Container lifecycle for agent sessions.
+ *
+ * Every session gets its own container. The threat model is that the agent
+ * inside is hostile: it runs autonomously, executes model-generated commands,
+ * and has network access. The hardening here is what stands between a bad
+ * command and the host.
+ */
+
+/** Label marking containers this system owns, so cleanup can find them. */
+export const MANAGED_LABEL = 'dev.dukebox.managed'
+export const SESSION_LABEL = 'dev.dukebox.session-id'
+
+export interface ResourceLimits {
+  /** CPU cores, e.g. '2' or '0.5'. */
+  cpus: string
+  /** Memory, e.g. '4g'. */
+  memory: string
+  /**
+   * Maximum process count. A fork bomb in a container without this takes down
+   * the whole host, not just the session.
+   */
+  pids: number
+}
+
+export const DEFAULT_LIMITS: ResourceLimits = {
+  cpus: '2',
+  memory: '4g',
+  pids: 512,
+}
+
+export interface CreateContainerOptions {
+  sessionId: string
+  image: string
+  limits?: ResourceLimits
+  /**
+   * Environment for the agent process.
+   *
+   * Secrets are passed here and are visible to anything inside the container.
+   * The GitHub token deliberately never appears: git authenticates through a
+   * credential proxy on the host instead, so a compromised agent cannot read a
+   * token that would grant access to every repository the user owns.
+   */
+  env?: Record<string, string>
+  /** Docker network to join. Defaults to none, isolating the container. */
+  network?: string
+}
+
+/** Parse a memory string like '4g' or '512m' into bytes. */
+export function parseMemory(value: string): number {
+  const match = /^(\d+(?:\.\d+)?)\s*([kmg])?b?$/i.exec(value.trim())
+  if (!match) {
+    throw new Error(`invalid memory value: ${value}`)
+  }
+
+  const amount = Number(match[1])
+  const unit = match[2]?.toLowerCase()
+  const multiplier = unit === 'g' ? 1024 ** 3 : unit === 'm' ? 1024 ** 2 : unit === 'k' ? 1024 : 1
+
+  return Math.floor(amount * multiplier)
+}
+
+/**
+ * Convert a CPU count into Docker's quota model.
+ *
+ * Docker expresses CPU limits as a quota over a period rather than a core
+ * count. 100000 is the conventional period, so a quota of 200000 is two cores.
+ */
+export function cpuQuota(cpus: string): { period: number; quota: number } {
+  const value = Number(cpus)
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`invalid cpu value: ${cpus}`)
+  }
+
+  const period = 100_000
+  return { period, quota: Math.floor(value * period) }
+}
+
+export interface ExecResult {
+  exitCode: number
+  stdout: string
+  stderr: string
+}
+
+/** A running session container. */
+export class SessionContainer {
+  constructor(
+    private readonly docker: Docker,
+    readonly id: string,
+    readonly sessionId: string,
+  ) {}
+
+  private get container() {
+    return this.docker.getContainer(this.id)
+  }
+
+  /**
+   * Run a command to completion and collect its output.
+   *
+   * For long-running processes that need to be streamed — an agent's own
+   * process — use `execStream` instead.
+   */
+  async exec(
+    command: string[],
+    options: { cwd?: string; env?: Record<string, string> } = {},
+  ): Promise<ExecResult> {
+    const exec = await this.container.exec({
+      Cmd: command,
+      AttachStdout: true,
+      AttachStderr: true,
+      ...(options.cwd ? { WorkingDir: options.cwd } : {}),
+      ...(options.env ? { Env: toEnvArray(options.env) } : {}),
+    })
+
+    const stream = await exec.start({ hijack: true, stdin: false })
+    const { stdout, stderr } = await collectMultiplexed(this.docker, stream)
+
+    // The exit code is only populated once the process has exited, which is
+    // why this is inspected after the stream has ended rather than before.
+    const info = await exec.inspect()
+
+    return { exitCode: info.ExitCode ?? -1, stdout, stderr }
+  }
+
+  /**
+   * Start a command and return its raw streams.
+   *
+   * Used for the agent process itself, which is long-lived and communicates
+   * over stdin/stdout for the whole session.
+   */
+  async execStream(
+    command: string[],
+    options: { cwd?: string; env?: Record<string, string> } = {},
+  ): Promise<Duplex> {
+    const exec = await this.container.exec({
+      Cmd: command,
+      AttachStdin: true,
+      AttachStdout: true,
+      AttachStderr: true,
+      Tty: false,
+      ...(options.cwd ? { WorkingDir: options.cwd } : {}),
+      ...(options.env ? { Env: toEnvArray(options.env) } : {}),
+    })
+
+    return exec.start({ hijack: true, stdin: true })
+  }
+
+  /** Stop the container but keep it, so a follow-up can resume in place. */
+  async stop(timeoutSeconds = 10): Promise<void> {
+    try {
+      await this.container.stop({ t: timeoutSeconds })
+    } catch (error) {
+      // 304 means it had already stopped, which is the desired end state.
+      if (!isStatusCode(error, 304)) throw error
+    }
+  }
+
+  async start(): Promise<void> {
+    try {
+      await this.container.start()
+    } catch (error) {
+      if (!isStatusCode(error, 304)) throw error
+    }
+  }
+
+  /** Stop and delete the container along with its anonymous volumes. */
+  async remove(): Promise<void> {
+    try {
+      await this.container.remove({ force: true, v: true })
+    } catch (error) {
+      // 404 means someone else already removed it.
+      if (!isStatusCode(error, 404)) throw error
+    }
+  }
+
+  async isRunning(): Promise<boolean> {
+    try {
+      const info = await this.container.inspect()
+      return info.State.Running === true
+    } catch (error) {
+      if (isStatusCode(error, 404)) return false
+      throw error
+    }
+  }
+
+  /** Full Docker state, used by tests and diagnostics. */
+  async inspect() {
+    return this.container.inspect()
+  }
+}
+
+export class Sandbox {
+  constructor(private readonly docker: Docker = new Docker()) {}
+
+  /** Verify the Docker daemon is reachable before anything depends on it. */
+  async ping(): Promise<void> {
+    await this.docker.ping()
+  }
+
+  async create(options: CreateContainerOptions): Promise<SessionContainer> {
+    const limits = options.limits ?? DEFAULT_LIMITS
+    const { period, quota } = cpuQuota(limits.cpus)
+
+    const container = await this.docker.createContainer({
+      name: `dukebox-session-${options.sessionId}`,
+      Image: options.image,
+      Labels: {
+        [MANAGED_LABEL]: 'true',
+        [SESSION_LABEL]: options.sessionId,
+      },
+      ...(options.env ? { Env: toEnvArray(options.env) } : {}),
+      WorkingDir: '/workspace',
+      HostConfig: {
+        // Resource caps. Without these one session can starve the host and
+        // every other session on it.
+        Memory: parseMemory(limits.memory),
+        CpuPeriod: period,
+        CpuQuota: quota,
+        PidsLimit: limits.pids,
+
+        // Block privilege escalation via setuid binaries, so a process inside
+        // cannot gain rights the container was not given.
+        SecurityOpt: ['no-new-privileges'],
+
+        // Drop every Linux capability. An agent building software needs none
+        // of them, and each one left in place is a way out of the container.
+        CapDrop: ['ALL'],
+
+        // Never privileged: that flag is equivalent to root on the host.
+        Privileged: false,
+
+        // No default network unless one is named. The control plane attaches a
+        // dedicated bridge that cannot reach the tailnet, so a compromised
+        // agent cannot reach the user's other machines.
+        NetworkMode: options.network ?? 'none',
+
+        // Containers are stopped and removed explicitly by the session
+        // lifecycle; restarting one behind our back would resurrect a session
+        // the control plane believes is finished.
+        RestartPolicy: { Name: 'no', MaximumRetryCount: 0 },
+      },
+    })
+
+    await container.start()
+
+    return new SessionContainer(this.docker, container.id, options.sessionId)
+  }
+
+  /** Look up an existing session container. Returns null if it is gone. */
+  async get(sessionId: string): Promise<SessionContainer | null> {
+    const containers = await this.docker.listContainers({
+      all: true,
+      filters: { label: [`${SESSION_LABEL}=${sessionId}`] },
+    })
+
+    const found = containers[0]
+    return found ? new SessionContainer(this.docker, found.Id, sessionId) : null
+  }
+
+  /** Every container this system owns, running or not. */
+  async list(): Promise<SessionContainer[]> {
+    const containers = await this.docker.listContainers({
+      all: true,
+      filters: { label: [`${MANAGED_LABEL}=true`] },
+    })
+
+    return containers.map(
+      (info) => new SessionContainer(this.docker, info.Id, info.Labels[SESSION_LABEL] ?? 'unknown'),
+    )
+  }
+
+  /**
+   * Remove every managed container.
+   *
+   * Used on shutdown and by tests. Only touches containers carrying our label,
+   * so unrelated containers on the same host are never affected.
+   */
+  async removeAll(): Promise<number> {
+    const containers = await this.list()
+    await Promise.all(containers.map((container) => container.remove()))
+    return containers.length
+  }
+}
+
+function toEnvArray(env: Record<string, string>): string[] {
+  return Object.entries(env).map(([key, value]) => `${key}=${value}`)
+}
+
+function isStatusCode(error: unknown, code: number): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { statusCode?: number }).statusCode === code
+  )
+}
+
+/**
+ * Demultiplex Docker's exec stream into stdout and stderr.
+ *
+ * Without a TTY, Docker interleaves both channels in one stream framed by an
+ * 8-byte header per chunk. Reading it raw would splice stderr into the middle
+ * of stdout.
+ */
+async function collectMultiplexed(
+  docker: Docker,
+  stream: NodeJS.ReadableStream,
+): Promise<{ stdout: string; stderr: string }> {
+  const stdoutChunks: Buffer[] = []
+  const stderrChunks: Buffer[] = []
+
+  const stdout = new PassThrough()
+  const stderr = new PassThrough()
+
+  stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk))
+  stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk))
+
+  docker.modem.demuxStream(stream, stdout, stderr)
+
+  await new Promise<void>((resolve, reject) => {
+    stream.on('end', resolve)
+    stream.on('error', reject)
+  })
+
+  return {
+    stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+    stderr: Buffer.concat(stderrChunks).toString('utf8'),
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "@dukebox/sandbox",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Docker container lifecycle for agent sessions",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dukebox/protocol": "workspace:*",
+    "dockerode": "^4.0.3"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^3.3.34",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

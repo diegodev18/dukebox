@@ -1,0 +1,213 @@
+import { randomUUID } from 'node:crypto'
+import { afterAll, describe, expect, it } from 'vitest'
+import { cpuQuota, DEFAULT_LIMITS, parseMemory, Sandbox, SESSION_LABEL } from './container.js'
+
+describe('parseMemory', () => {
+  it.each([
+    ['4g', 4 * 1024 ** 3],
+    ['512m', 512 * 1024 ** 2],
+    ['1024k', 1024 * 1024],
+    ['2G', 2 * 1024 ** 3],
+    ['1gb', 1024 ** 3],
+    ['1024', 1024],
+  ])('parses %s', (input, expected) => {
+    expect(parseMemory(input)).toBe(expected)
+  })
+
+  it.each(['', 'lots', '4x', '-1g'])('rejects %s', (input) => {
+    expect(() => parseMemory(input)).toThrow()
+  })
+})
+
+describe('cpuQuota', () => {
+  it('converts whole cores to a quota over the standard period', () => {
+    expect(cpuQuota('2')).toEqual({ period: 100_000, quota: 200_000 })
+  })
+
+  it('supports fractional cores', () => {
+    expect(cpuQuota('0.5')).toEqual({ period: 100_000, quota: 50_000 })
+  })
+
+  it.each(['0', '-1', 'many', ''])('rejects %s', (input) => {
+    expect(() => cpuQuota(input)).toThrow()
+  })
+})
+
+/**
+ * Integration tests against a real Docker daemon.
+ *
+ * The security assertions here are the reason these are not mocked: the point
+ * is that the daemon actually applied the hardening, not that we asked for it.
+ */
+describe('Sandbox', () => {
+  const sandbox = new Sandbox()
+  const image = process.env.DUKEBOX_TEST_IMAGE ?? 'dukebox/base-node:latest'
+  const created: string[] = []
+
+  async function createSession() {
+    const sessionId = randomUUID()
+    created.push(sessionId)
+    return sandbox.create({ sessionId, image })
+  }
+
+  afterAll(async () => {
+    // Remove only what these tests created; other containers on this host are
+    // not ours to touch.
+    for (const sessionId of created) {
+      const container = await sandbox.get(sessionId)
+      await container?.remove()
+    }
+  })
+
+  it('reaches the Docker daemon', async () => {
+    await expect(sandbox.ping()).resolves.not.toThrow()
+  })
+
+  it('starts a container that is running', async () => {
+    const container = await createSession()
+    expect(await container.isRunning()).toBe(true)
+  })
+
+  it('runs a command and captures stdout', async () => {
+    const container = await createSession()
+    const result = await container.exec(['echo', 'hello'])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout.trim()).toBe('hello')
+    expect(result.stderr).toBe('')
+  })
+
+  it('separates stderr from stdout', async () => {
+    const container = await createSession()
+    const result = await container.exec(['sh', '-c', 'echo out; echo err >&2'])
+
+    // Docker interleaves both channels in one framed stream. If demuxing were
+    // wrong, stderr would appear spliced into stdout.
+    expect(result.stdout.trim()).toBe('out')
+    expect(result.stderr.trim()).toBe('err')
+  })
+
+  it('reports a non-zero exit code', async () => {
+    const container = await createSession()
+    const result = await container.exec(['sh', '-c', 'exit 3'])
+    expect(result.exitCode).toBe(3)
+  })
+
+  it('runs commands in a given directory', async () => {
+    const container = await createSession()
+    const result = await container.exec(['pwd'], { cwd: '/tmp' })
+    expect(result.stdout.trim()).toBe('/tmp')
+  })
+
+  it('passes environment variables to commands', async () => {
+    const container = await createSession()
+    const result = await container.exec(['sh', '-c', 'echo $DUKEBOX_TEST'], {
+      env: { DUKEBOX_TEST: 'value' },
+    })
+    expect(result.stdout.trim()).toBe('value')
+  })
+
+  it('runs as a non-root user', async () => {
+    const container = await createSession()
+    const result = await container.exec(['id', '-u'])
+
+    // Root inside a container is a short step from root on the host.
+    expect(result.stdout.trim()).not.toBe('0')
+  })
+
+  it('applies resource limits the daemon reports back', async () => {
+    const container = await createSession()
+    const info = await container.inspect()
+
+    expect(info.HostConfig.Memory).toBe(parseMemory(DEFAULT_LIMITS.memory))
+    expect(info.HostConfig.PidsLimit).toBe(DEFAULT_LIMITS.pids)
+    expect(info.HostConfig.CpuQuota).toBe(cpuQuota(DEFAULT_LIMITS.cpus).quota)
+  })
+
+  it('is not privileged and cannot gain new privileges', async () => {
+    const container = await createSession()
+    const info = await container.inspect()
+
+    expect(info.HostConfig.Privileged).toBe(false)
+    expect(info.HostConfig.SecurityOpt).toContain('no-new-privileges')
+    expect(info.HostConfig.CapDrop).toContain('ALL')
+  })
+
+  it('never has the Docker socket mounted', async () => {
+    const container = await createSession()
+    const info = await container.inspect()
+
+    // The single most important assertion in this file: a container holding
+    // the daemon socket can start a privileged container and own the host.
+    const mounts = info.HostConfig.Binds ?? []
+    expect(mounts.some((bind) => bind.includes('docker.sock'))).toBe(false)
+  })
+
+  it('has no network access by default', async () => {
+    const container = await createSession()
+    const info = await container.inspect()
+    expect(info.HostConfig.NetworkMode).toBe('none')
+  })
+
+  it('does not restart on its own', async () => {
+    const container = await createSession()
+    const info = await container.inspect()
+
+    // A restart policy would resurrect a session the control plane believes
+    // has ended.
+    expect(info.HostConfig.RestartPolicy?.Name).toBe('no')
+  })
+
+  it('labels containers so they can be found again', async () => {
+    const container = await createSession()
+    const info = await container.inspect()
+    expect(info.Config.Labels[SESSION_LABEL]).toBe(container.sessionId)
+  })
+
+  it('finds an existing container by session id', async () => {
+    const container = await createSession()
+    const found = await sandbox.get(container.sessionId)
+    expect(found?.id).toBe(container.id)
+  })
+
+  it('returns null for an unknown session', async () => {
+    expect(await sandbox.get(randomUUID())).toBeNull()
+  })
+
+  it('stops a container without destroying it, so a follow-up can resume', async () => {
+    const container = await createSession()
+    await container.stop()
+
+    expect(await container.isRunning()).toBe(false)
+    // Still present: the workspace and its state survive for a follow-up.
+    expect(await sandbox.get(container.sessionId)).not.toBeNull()
+  })
+
+  it('restarts a stopped container', async () => {
+    const container = await createSession()
+    await container.stop()
+    await container.start()
+    expect(await container.isRunning()).toBe(true)
+  })
+
+  it('removes a container completely', async () => {
+    const container = await createSession()
+    await container.remove()
+
+    expect(await sandbox.get(container.sessionId)).toBeNull()
+    expect(await container.isRunning()).toBe(false)
+  })
+
+  it('tolerates removing a container twice', async () => {
+    const container = await createSession()
+    await container.remove()
+    // Cleanup paths run on error handling, where a double removal is normal.
+    await expect(container.remove()).resolves.not.toThrow()
+  })
+
+  it('tolerates stopping an already stopped container', async () => {
+    const container = await createSession()
+    await container.stop()
+    await expect(container.stop()).resolves.not.toThrow()
+  })
+})
