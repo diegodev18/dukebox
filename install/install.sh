@@ -297,6 +297,22 @@ check_github() {
   return 1
 }
 
+# Dukebox authenticates git over HTTPS through a credential proxy that keeps the
+# token out of agent containers. With gh configured for SSH, clones would look
+# for a key the container does not have and fail with an error that says nothing
+# about the real cause.
+check_git_protocol() {
+  local protocol
+  protocol="$(as_service_user "gh config get git_protocol" 2>/dev/null || true)"
+
+  [ "$protocol" != "ssh" ] && return 0
+
+  warn "gh is set to use SSH for git; Dukebox needs HTTPS"
+  echo "     Fix it with:" >&2
+  echo "       sudo -u ${SERVICE_USER} gh config set git_protocol https" >&2
+  return 1
+}
+
 print_next_steps() {
   local tailscale_ok="$1" github_ok="$2"
   local step=1
@@ -313,8 +329,24 @@ print_next_steps() {
   fi
 
   if [ "$github_ok" != "true" ]; then
-    echo "    ${step}. Sign in to GitHub as the service user:"
-    echo "         sudo -u ${SERVICE_USER} gh auth login"
+    if as_service_user "gh auth status" >/dev/null 2>&1; then
+      # Signed in already; only the protocol is wrong.
+      echo "    ${step}. Switch gh to HTTPS:"
+      echo "         sudo -u ${SERVICE_USER} gh config set git_protocol https"
+    else
+      echo "    ${step}. Sign in to GitHub as the service user:"
+      echo "         sudo -u ${SERVICE_USER} gh auth login"
+      echo
+      echo "       Two of its questions matter:"
+      echo "         ? Preferred protocol for Git operations ......... HTTPS"
+      echo "         ? Authenticate Git with your GitHub credentials .. Y"
+    fi
+
+    echo
+    echo "       Dukebox authenticates git over HTTPS through a proxy that keeps"
+    echo "       your token out of agent containers. Over SSH that proxy is"
+    echo "       bypassed, and clones fail looking for a key the container"
+    echo "       does not have."
     echo
     step=$((step + 1))
   fi
@@ -387,7 +419,12 @@ main() {
 
   local tailscale_ok=false github_ok=false
   check_tailscale && tailscale_ok=true
-  check_github && github_ok=true
+
+  # Both must hold: gh signed in, and set to HTTPS. Signed in over SSH looks
+  # authenticated but every clone would still fail.
+  if check_github && check_git_protocol; then
+    github_ok=true
+  fi
 
   if [ "$tailscale_ok" = true ] && [ "$github_ok" = true ] &&
      [ "$image_ok" = true ] && [ "$dependencies_ok" = true ]; then
