@@ -1,5 +1,5 @@
 import Docker from 'dockerode'
-import { PassThrough, type Duplex } from 'node:stream'
+import { Duplex, PassThrough } from 'node:stream'
 
 /**
  * Container lifecycle for agent sessions.
@@ -134,10 +134,14 @@ export class SessionContainer {
   }
 
   /**
-   * Start a command and return its raw streams.
+   * Start a long-lived command and talk to it over stdin and stdout.
    *
-   * Used for the agent process itself, which is long-lived and communicates
-   * over stdin/stdout for the whole session.
+   * Used for the agent process, which runs for the whole session.
+   *
+   * The returned stream carries stdout only, already demultiplexed. Docker
+   * frames a TTY-less exec with an 8-byte header per chunk, and those bytes
+   * arrive interleaved with the payload: a JSONL reader handed the raw stream
+   * sees binary before every `{` and rejects every line the agent emits.
    */
   async execStream(
     command: string[],
@@ -153,7 +157,23 @@ export class SessionContainer {
       ...(options.env ? { Env: toEnvArray(options.env) } : {}),
     })
 
-    return exec.start({ hijack: true, stdin: true })
+    const raw = await exec.start({ hijack: true, stdin: true })
+
+    // Writes go straight to the process; reads come back demultiplexed. A
+    // Duplex is what the caller wants — one object it writes prompts to and
+    // reads events from — but the two directions need different handling.
+    const stdout = new PassThrough()
+    const stderr = new PassThrough()
+    this.docker.modem.demuxStream(raw, stdout, stderr)
+
+    // stderr is drained rather than dropped: an unread stream applies
+    // backpressure that eventually stalls the process writing to it.
+    stderr.resume()
+
+    raw.on('end', () => stdout.end())
+    raw.on('error', (error: Error) => stdout.emit('error', error))
+
+    return Duplex.from({ readable: stdout, writable: raw })
   }
 
   /** Stop the container but keep it, so a follow-up can resume in place. */

@@ -87,6 +87,78 @@ describe('Sandbox', () => {
     expect(result.stderr.trim()).toBe('err')
   })
 
+  describe('execStream', () => {
+    /** Read everything a stream produces, then resolve. */
+    async function collect(stream: NodeJS.ReadableStream): Promise<string> {
+      let output = ''
+      for await (const chunk of stream) output += chunk.toString()
+      return output
+    }
+
+    it('strips the frame headers Docker adds', async () => {
+      const container = await createSession()
+      const stream = await container.execStream(['sh', '-c', `printf '%s\\n' '{"type":"hello"}'`])
+
+      // Docker frames a TTY-less exec with an 8-byte header per chunk. Handed
+      // the raw stream, a JSONL reader sees binary before every `{` and
+      // rejects every line the agent emits — which is exactly how a real
+      // session failed.
+      const output = await collect(stream)
+
+      expect(() => JSON.parse(output.trim())).not.toThrow()
+      expect(JSON.parse(output.trim())).toEqual({ type: 'hello' })
+    })
+
+    it('keeps multi-line output parseable line by line', async () => {
+      const container = await createSession()
+      const stream = await container.execStream([
+        'sh',
+        '-c',
+        `printf '%s\\n' '{"n":1}' '{"n":2}' '{"n":3}'`,
+      ])
+
+      const lines = (await collect(stream)).trim().split('\n')
+
+      expect(lines).toHaveLength(3)
+      expect(lines.map((line) => JSON.parse(line))).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }])
+    })
+
+    it('carries what is written to it through to the process', async () => {
+      const container = await createSession()
+      const stream = await container.execStream(['cat'])
+
+      stream.write('echoed back\n')
+      stream.end()
+
+      // The agent is driven this way for a whole session: prompts in, events
+      // out, over one long-lived process.
+      expect(await collect(stream)).toContain('echoed back')
+    })
+
+    it('excludes stderr, so diagnostics cannot corrupt the event stream', async () => {
+      const container = await createSession()
+      const stream = await container.execStream([
+        'sh',
+        '-c',
+        `printf '%s\\n' '{"real":true}'; printf 'a warning\\n' >&2`,
+      ])
+
+      const output = await collect(stream)
+
+      expect(output).toContain('{"real":true}')
+      expect(output).not.toContain('a warning')
+    })
+
+    it('ends when the process exits', async () => {
+      const container = await createSession()
+      const stream = await container.execStream(['sh', '-c', 'echo done'])
+
+      // Without this the consumer would wait forever on a process that is
+      // already gone.
+      await expect(collect(stream)).resolves.toContain('done')
+    })
+  })
+
   it('reports a non-zero exit code', async () => {
     const container = await createSession()
     const result = await container.exec(['sh', '-c', 'exit 3'])
