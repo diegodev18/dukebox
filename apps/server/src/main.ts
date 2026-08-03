@@ -6,6 +6,7 @@ import Redis from 'ioredis'
 import type { Server } from 'node:http'
 import { hostname } from 'node:os'
 import { ConfigError, loadConfig } from './config.js'
+import { runMigrations } from './db/migrate.js'
 import { EventBus } from './events/bus.js'
 import { GitHubClient } from './github/client.js'
 import { createApp } from './http/app.js'
@@ -41,6 +42,11 @@ async function main() {
   }
 
   const { db, close } = createDatabase(config.database.url)
+
+  // Before anything touches a table. An upgrade replaces the code and restarts
+  // the service, so this is also what applies new migrations.
+  await runMigrations(db)
+
   const redis = new Redis(config.redis.url)
   const bus = new EventBus(db, redis)
 

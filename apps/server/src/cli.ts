@@ -12,6 +12,7 @@
 import { createDatabase } from '@dukebox/db'
 import { TailscaleTransport } from '@dukebox/transport'
 import { ConfigError, loadConfig } from './config.js'
+import { runMigrations } from './db/migrate.js'
 import { issuePairingCode, listDevices, revokeDevice } from './auth/pairing.js'
 
 function formatAge(timestamp: number | null): string {
@@ -30,6 +31,11 @@ async function main() {
   const config = await loadConfig(process.env.DUKEBOX_CONFIG)
   const transport = new TailscaleTransport()
   const { db, close } = createDatabase(config.database.url, { max: 2 })
+
+  // The CLI can be the first thing to touch a fresh database — `pair new` is
+  // the last step of an install — so it migrates too rather than failing with
+  // a missing-relation error that says nothing about what to do.
+  await runMigrations(db)
 
   try {
     switch (`${command} ${subcommand ?? ''}`.trim()) {
