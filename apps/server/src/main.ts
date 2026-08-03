@@ -9,6 +9,7 @@ import { ConfigError, loadConfig } from './config.js'
 import { runMigrations } from './db/migrate.js'
 import { EventBus } from './events/bus.js'
 import { GitHubClient } from './github/client.js'
+import { SecretStore } from './secrets/store.js'
 import { createApp } from './http/app.js'
 import { SessionManager } from './sessions/manager.js'
 import { attachWebSocketServer } from './ws/server.js'
@@ -60,10 +61,15 @@ async function main() {
     process.exit(1)
   }
 
+  // Opened before anything can need a secret, so a missing or malformed master
+  // key fails at startup with an explanation rather than mid-session.
+  const secretStore = await SecretStore.open(db, config.security.masterKeyFile)
+
   const sessions = new SessionManager({
     db,
     bus,
     github,
+    secrets: secretStore,
     sandbox: new Sandbox(),
     // Per-session sockets. The Docker daemon shares this filesystem, which is
     // what lets a container reach the socket at all.
@@ -75,7 +81,7 @@ async function main() {
   const app = createApp({
     db,
     serverName: hostname(),
-    features: { github, bus, sessions },
+    features: { github, bus, sessions, secrets: secretStore },
   })
 
   const bind = await transport.bindAddress(config.server.port)

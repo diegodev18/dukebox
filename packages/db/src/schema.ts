@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import {
   bigint,
   boolean,
@@ -133,9 +134,15 @@ export const secrets = pgTable(
   'secrets',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
+
+    /**
+     * The project this secret belongs to, or null for a server-wide one.
+     *
+     * Agent credentials are server-wide: the same subscription runs every
+     * session, so scoping them to a project would mean re-entering the same
+     * token for each repository.
+     */
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
 
     name: text('name').notNull(),
 
@@ -147,7 +154,20 @@ export const secrets = pgTable(
     createdAt,
     updatedAt,
   },
-  (table) => [uniqueIndex('secrets_project_id_name_idx').on(table.projectId, table.name)],
+  (table) => [
+    uniqueIndex('secrets_project_id_name_idx').on(table.projectId, table.name),
+
+    /**
+     * Server-wide secrets, which the index above cannot constrain.
+     *
+     * Postgres treats every NULL as distinct, so a unique index over a
+     * nullable column lets the same name be inserted repeatedly. A partial
+     * index over just those rows is what actually enforces one per name.
+     */
+    uniqueIndex('secrets_global_name_idx')
+      .on(table.name)
+      .where(sql`${table.projectId} is null`),
+  ],
 )
 
 // ---------------------------------------------------------------------------

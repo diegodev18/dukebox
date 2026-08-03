@@ -3,6 +3,7 @@ import {
   devices,
   pairingCodes,
   projects,
+  secrets as secretsTable,
   sessions,
   type Database,
 } from '@dukebox/db'
@@ -51,7 +52,10 @@ export async function prepareDatabase(): Promise<void> {
 
 /** Clear every table. Projects and devices cascade to the rest. */
 export async function resetDatabase(): Promise<void> {
+  // `secrets` is listed explicitly rather than left to the cascade: a
+  // server-wide secret has no project to cascade from, so it would survive and
+  // leak into the next test.
   await db.execute(
-    sql`truncate table ${projects}, ${sessions}, ${devices}, ${pairingCodes} restart identity cascade`,
+    sql`truncate table ${projects}, ${sessions}, ${devices}, ${pairingCodes}, ${secretsTable} restart identity cascade`,
   )
 }

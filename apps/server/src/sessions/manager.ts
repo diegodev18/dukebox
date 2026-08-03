@@ -3,6 +3,7 @@ import { projects, sessions, type Database, type Session } from '@dukebox/db'
 import {
   defaultProjectConfig,
   isTerminal,
+  parseSecretReference,
   type ProjectConfig,
   type SessionStatus,
 } from '@dukebox/protocol'
@@ -18,6 +19,7 @@ import { eq } from 'drizzle-orm'
 import { join } from 'node:path'
 import type { EventBus } from '../events/bus.js'
 import type { GitHubClient } from '../github/client.js'
+import { AGENT_CREDENTIAL_SECRET, type SecretStore } from '../secrets/store.js'
 
 /**
  * Session lifecycle.
@@ -48,6 +50,13 @@ export interface SessionManagerDeps {
    * directory. Omitted to run without credential proxying at all.
    */
   credentialSocketDir?: string
+  /**
+   * Decrypted secrets for session containers.
+   *
+   * Supplies both the agent's own credentials and whatever a project needs to
+   * run. Omitted in tests that drive a fake agent needing neither.
+   */
+  secrets?: SecretStore
   /** Overridable so tests can drive a fake agent. */
   createAdapter?: (agentId: string) => AgentAdapter
 }
@@ -169,9 +178,14 @@ export class SessionManager {
   ): Promise<void> {
     const config = defaultProjectConfig()
 
+    // Set on the container rather than only on setup commands: the agent
+    // process needs its own credentials, and it is started later by exec.
+    const environment = await this.environmentFor(config, session.projectId)
+
     const container = await this.deps.sandbox.create({
       sessionId: session.id,
       image: config.image,
+      env: environment,
       // Cloning and installing dependencies both need the network.
       network: 'bridge',
       ...(credentials
@@ -204,7 +218,9 @@ export class SessionManager {
 
     await this.deps.db.update(sessions).set({ branch }).where(eq(sessions.id, session.id))
 
-    await workspace.runSetup(config.setup, this.environmentFor(config))
+    // The container already carries these, but exec's own environment is what
+    // a setup command sees for anything the shell resolves at invocation.
+    await workspace.runSetup(config.setup, environment)
 
     const baseCommit = await workspace.headCommit()
     const adapter = this.createAdapter(session.agentId)
@@ -363,13 +379,47 @@ export class SessionManager {
     return url
   }
 
-  /** Environment for the container, with secret references left unresolved. */
-  private environmentFor(config: ProjectConfig): Record<string, string> {
-    // Secrets are decrypted and injected here once the secret store lands.
-    // Literal values pass through unchanged.
-    return Object.fromEntries(
-      Object.entries(config.env).filter(([, value]) => !value.startsWith('${secret.')),
-    )
+  /**
+   * Environment for a session container.
+   *
+   * Three sources, in order: the agent's own credentials, the project's
+   * secrets, and the literal values from `.duke/config.yaml`. Secret
+   * references in the config resolve against the project's stored secrets, and
+   * one that was never set is dropped rather than passed through as the
+   * literal `${secret.NAME}`, which would look like a value to whatever reads
+   * it.
+   */
+  private async environmentFor(
+    config: ProjectConfig,
+    projectId: string,
+  ): Promise<Record<string, string>> {
+    const store = this.deps.secrets
+    const projectSecrets = store ? await store.environmentFor(projectId) : {}
+
+    const environment: Record<string, string> = {}
+
+    // The agent's credentials. Server-wide: one subscription runs every
+    // session, whatever repository it is working in.
+    if (store) {
+      const agentToken = await store.get(AGENT_CREDENTIAL_SECRET)
+      if (agentToken) environment[AGENT_CREDENTIAL_SECRET] = agentToken
+    }
+
+    Object.assign(environment, projectSecrets)
+
+    for (const [key, value] of Object.entries(config.env)) {
+      const reference = parseSecretReference(value)
+
+      if (!reference) {
+        environment[key] = value
+        continue
+      }
+
+      const resolved = projectSecrets[reference]
+      if (resolved !== undefined) environment[key] = resolved
+    }
+
+    return environment
   }
 
   /** Send a follow-up prompt to a running session. */

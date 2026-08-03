@@ -1,0 +1,2 @@
+ALTER TABLE "secrets" ALTER COLUMN "project_id" DROP NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "secrets_global_name_idx" ON "secrets" USING btree ("name") WHERE "secrets"."project_id" is null;

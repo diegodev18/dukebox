@@ -1,5 +1,7 @@
 import { projects, sessions } from '@dukebox/db'
+import { randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AGENT_CREDENTIAL_SECRET, SecretStore } from '../secrets/store.js'
 import { issuePairingCode, redeemPairingCode } from '../auth/pairing.js'
 import { EventBus } from '../events/bus.js'
 import type { GitHubClient } from '../github/client.js'
@@ -45,10 +47,12 @@ const sessionManager = {
   openPullRequest: vi.fn(async () => 'https://github.com/diego/dukebox/pull/1'),
 } as unknown as SessionManager
 
+const secretStore = new SecretStore(db, randomBytes(32))
+
 const app = createApp({
   db,
   serverName: 'dukebox-test',
-  features: { github, bus, sessions: sessionManager },
+  features: { github, bus, sessions: sessionManager, secrets: secretStore },
 })
 
 let token = ''
@@ -521,6 +525,136 @@ describe('DELETE /api/sessions/:id', () => {
 
     expect(response.status).toBe(404)
     expect(sessionManager.stop).not.toHaveBeenCalled()
+  })
+})
+
+describe('agent credentials', () => {
+  const TOKEN = 'sk-ant-oat-a-real-looking-token'
+
+  it('reports none configured on a fresh server', async () => {
+    expect(await (await request('/api/agent-credentials')).json()).toEqual({ configured: false })
+  })
+
+  it('stores a token', async () => {
+    const response = await request('/api/agent-credentials', {
+      method: 'PUT',
+      body: JSON.stringify({ token: TOKEN }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(await secretStore.get(AGENT_CREDENTIAL_SECRET)).toBe(TOKEN)
+  })
+
+  it('never returns the token it stored', async () => {
+    await request('/api/agent-credentials', {
+      method: 'PUT',
+      body: JSON.stringify({ token: TOKEN }),
+    })
+
+    // A route that returned it would make every client that called it another
+    // place the token lives.
+    const body = await (await request('/api/agent-credentials')).text()
+
+    expect(body).not.toContain(TOKEN)
+    expect(JSON.parse(body)).toEqual({ configured: true })
+  })
+
+  it('replaces an existing token', async () => {
+    const put = (token: string) =>
+      request('/api/agent-credentials', { method: 'PUT', body: JSON.stringify({ token }) })
+
+    await put('first')
+    await put('second')
+
+    expect(await secretStore.get(AGENT_CREDENTIAL_SECRET)).toBe('second')
+  })
+
+  it('removes a token', async () => {
+    await request('/api/agent-credentials', {
+      method: 'PUT',
+      body: JSON.stringify({ token: TOKEN }),
+    })
+
+    expect((await request('/api/agent-credentials', { method: 'DELETE' })).status).toBe(200)
+    expect(await secretStore.has(AGENT_CREDENTIAL_SECRET)).toBe(false)
+  })
+
+  it('returns 404 when removing one that was never set', async () => {
+    expect((await request('/api/agent-credentials', { method: 'DELETE' })).status).toBe(404)
+  })
+
+  it.each([
+    ['an empty token', { token: '' }],
+    ['a missing token', {}],
+  ])('rejects %s', async (_label, body) => {
+    const response = await request('/api/agent-credentials', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+
+    expect(response.status).toBe(400)
+  })
+
+  it('requires a device token like every other route', async () => {
+    expect((await app.request('/api/agent-credentials')).status).toBe(401)
+  })
+})
+
+describe('project secrets', () => {
+  it('lists names without values', async () => {
+    const project = await createProject()
+    await secretStore.set('DATABASE_URL', 'postgres://secret', project.id)
+
+    const body = await (await request(`/api/projects/${project.id}/secrets`)).text()
+
+    expect(JSON.parse(body)).toEqual({ names: ['DATABASE_URL'] })
+    expect(body).not.toContain('postgres://secret')
+  })
+
+  it('stores a secret', async () => {
+    const project = await createProject()
+
+    const response = await request(`/api/projects/${project.id}/secrets`, {
+      method: 'PUT',
+      body: JSON.stringify({ name: 'API_KEY', value: 'key-123' }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(await secretStore.get('API_KEY', project.id)).toBe('key-123')
+  })
+
+  it('removes a secret', async () => {
+    const project = await createProject()
+    await secretStore.set('API_KEY', 'key-123', project.id)
+
+    const response = await request(`/api/projects/${project.id}/secrets/API_KEY`, {
+      method: 'DELETE',
+    })
+
+    expect(response.status).toBe(200)
+    expect(await secretStore.has('API_KEY', project.id)).toBe(false)
+  })
+
+  it.each([
+    ['a lowercase name', { name: 'api_key', value: 'x' }],
+    ['a name starting with a digit', { name: '1KEY', value: 'x' }],
+    ['a name with a hyphen', { name: 'API-KEY', value: 'x' }],
+    ['an empty value', { name: 'API_KEY', value: '' }],
+  ])('rejects %s', async (_label, body) => {
+    // A name a shell cannot export would be accepted here and then silently
+    // dropped when the container starts.
+    const project = await createProject()
+    const response = await request(`/api/projects/${project.id}/secrets`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+
+    expect(response.status).toBe(400)
+  })
+
+  it('returns 404 for an unknown project', async () => {
+    const response = await request('/api/projects/00000000-0000-4000-8000-000000000000/secrets')
+    expect(response.status).toBe(404)
   })
 })
 
