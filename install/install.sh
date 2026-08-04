@@ -231,8 +231,13 @@ fetch_source() {
 
 build_application() {
   log "Building"
+  # Only the control plane and what it depends on. The desktop app is a native
+  # binary for the user's own machine — building it here would pull in Vite and
+  # a Rust toolchain to produce something this server never runs. The trailing
+  # "..." includes the workspace packages the server imports.
+  #
   # As the service user, so the build output is owned by whoever runs it.
-  as_service_user "cd '$INSTALL_DIR' && pnpm install --frozen-lockfile && pnpm build"
+  as_service_user "cd '$INSTALL_DIR' && pnpm install --frozen-lockfile --filter '@dukebox/server...' && pnpm --filter '@dukebox/server...' build"
 }
 
 # Steps that can fail for reasons specific to a machine. Reported rather than

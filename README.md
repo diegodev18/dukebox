@@ -69,6 +69,23 @@ change, reports the diff, prints the container's hardening, and cleans up:
   https://github.com/octocat/Hello-World.git master
 ```
 
+### Updating a server
+
+The server builds only the control plane and what it imports. Building
+everything would pull in the desktop app, whose dependencies a server has no
+reason to install:
+
+```bash
+cd /opt/dukebox
+sudo -u dukebox git pull
+sudo -u dukebox pnpm install --frozen-lockfile --filter '@dukebox/server...'
+sudo -u dukebox pnpm --filter '@dukebox/server...' build
+sudo systemctl restart dukebox
+```
+
+Re-running the installer does the same thing and is the better habit — it also
+applies any new migrations and unit-file changes.
+
 ### The desktop app
 
 Tauri opens a native window and compiles Rust, neither of which a container
