@@ -102,12 +102,12 @@ describe('DukeboxClient', () => {
 })
 
 describe('reachable', () => {
-  it('is true when the server answers its health check', async () => {
+  it('is ok when the server answers its health check', async () => {
     respondWith({ ok: true })
-    expect(await reachable(address)).toBe(true)
+    expect(await reachable(address)).toEqual({ ok: true })
   })
 
-  it('is false rather than throwing when the server is not there', async () => {
+  it('reports rather than throws when the server is not there', async () => {
     // Called before redeeming a pairing code, where a thrown error would lose
     // the single-use code to an exception the screen never sees.
     vi.stubGlobal(
@@ -117,11 +117,29 @@ describe('reachable', () => {
       }),
     )
 
-    expect(await reachable(address)).toBe(false)
+    expect(await reachable(address)).toMatchObject({ ok: false, reason: 'blocked' })
   })
 
-  it('is false when the server answers with an error status', async () => {
+  it('separates a request that was refused from one that timed out', async () => {
+    // They send someone to different places: a timeout is a server that is not
+    // answering, a refusal is the request never leaving the app.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new DOMException('signal timed out', 'TimeoutError')
+      }),
+    )
+
+    expect(await reachable(address)).toMatchObject({ ok: false, reason: 'timeout' })
+  })
+
+  it('reports the status when something answers that is not Dukebox', async () => {
     respondWith({}, { status: 503 })
-    expect(await reachable(address)).toBe(false)
+
+    expect(await reachable(address)).toMatchObject({
+      ok: false,
+      reason: 'http',
+      detail: 'answered 503',
+    })
   })
 })

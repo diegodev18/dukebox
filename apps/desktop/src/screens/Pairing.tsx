@@ -1,6 +1,6 @@
 import { parsePairingUrl } from '@dukebox/protocol'
 import { useState } from 'react'
-import { ApiFailure, reachable, redeemPairingCode } from '../lib/client.js'
+import { ApiFailure, reachable, redeemPairingCode, type Reachability } from '../lib/client.js'
 import { addConnection, deviceName, detectPlatform, type Connection } from '../lib/connection.js'
 
 /**
@@ -43,12 +43,10 @@ export function Pairing({ onPaired }: Props) {
     // Checked before redeeming: a code is single use, and spending one against
     // a server that cannot be reached wastes it.
     setStatus({ kind: 'working', step: 'reaching' })
-    if (!(await reachable(address))) {
-      setStatus({
-        kind: 'failed',
-        message: `Cannot reach ${parsed.host}.`,
-        hint: 'Check this machine is on the same tailnet as the server.',
-      })
+    const check = await reachable(address)
+
+    if (!check.ok) {
+      setStatus({ kind: 'failed', ...unreachable(parsed.host, check) })
       return
     }
 
@@ -139,6 +137,33 @@ export function Pairing({ onPaired }: Props) {
       </div>
     </main>
   )
+}
+
+/**
+ * Why the server could not be reached.
+ *
+ * A timeout and a refused request send someone to different places: one is a
+ * server that is not answering, the other is the request never leaving the app.
+ * Reporting both as "check your network" wastes the time of whoever is right.
+ */
+function unreachable(host: string, check: Extract<Reachability, { ok: false }>) {
+  switch (check.reason) {
+    case 'timeout':
+      return {
+        message: `${host} did not answer.`,
+        hint: 'Check this machine is on the same tailnet, and that the server is running.',
+      }
+    case 'http':
+      return {
+        message: `${host} answered, but not as Dukebox (${check.detail}).`,
+        hint: 'Check the port in the link points at the control plane.',
+      }
+    case 'blocked':
+      return {
+        message: `The connection to ${host} was refused before it left the app.`,
+        hint: `macOS blocks plaintext HTTP by default. Details: ${check.detail}`,
+      }
+  }
 }
 
 /**

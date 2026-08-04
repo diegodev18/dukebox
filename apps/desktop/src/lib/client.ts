@@ -172,14 +172,35 @@ export async function redeemPairingCode(
   return (await response.json()) as PairRedeemResponse
 }
 
-/** Whether a server is reachable, before asking it for anything else. */
-export async function reachable(address: ServerAddress): Promise<boolean> {
+/**
+ * Whether a server is reachable, and why not when it is not.
+ *
+ * The reason is carried rather than swallowed. "Cannot reach the server" sends
+ * someone to check their network, which is wrong when the request was refused
+ * by the webview or answered by something that is not Dukebox — and those look
+ * identical from the outside.
+ */
+export type Reachability =
+  { ok: true } | { ok: false; reason: 'timeout' | 'blocked' | 'http'; detail: string }
+
+export async function reachable(address: ServerAddress): Promise<Reachability> {
   try {
     const response = await fetch(`${baseUrl(address)}/health`, {
       signal: AbortSignal.timeout(4000),
     })
-    return response.ok
-  } catch {
-    return false
+
+    if (response.ok) return { ok: true }
+    return { ok: false, reason: 'http', detail: `answered ${response.status}` }
+  } catch (error) {
+    // A timeout is a server that is not answering; anything else at this stage
+    // is the request never leaving the app — most often the webview refusing a
+    // plaintext HTTP connection.
+    const timedOut = error instanceof DOMException && error.name === 'TimeoutError'
+
+    return {
+      ok: false,
+      reason: timedOut ? 'timeout' : 'blocked',
+      detail: error instanceof Error ? error.message : String(error),
+    }
   }
 }
