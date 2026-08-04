@@ -69,11 +69,23 @@ change, reports the diff, prints the container's hardening, and cleans up:
   https://github.com/octocat/Hello-World.git master
 ```
 
-Working on the desktop app additionally requires Rust, since it compiles a
-native binary:
+### The desktop app
+
+Tauri opens a native window and compiles Rust, neither of which a container
+can do for you — so this is the one part that installs on your machine:
 
 ```bash
+pnpm install --filter @dukebox/desktop...   # ~180 MB, desktop only
+pnpm --filter @dukebox/protocol build       # the app imports it
 pnpm --filter @dukebox/desktop tauri dev
+```
+
+The first Rust build takes several minutes; later ones take seconds.
+
+You will need a pairing link from a running server. Print one with:
+
+```bash
+sudo -u dukebox dukebox pair new
 ```
 
 ## License
