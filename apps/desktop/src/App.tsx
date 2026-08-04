@@ -21,7 +21,19 @@ export function App() {
     let cancelled = false
 
     const restore = async () => {
-      const connection = await activeConnection()
+      let connection: Connection | null = null
+
+      try {
+        connection = await activeConnection()
+      } catch (error) {
+        // Reading stored credentials can fail — a keychain that denies access,
+        // a store file written by a newer version. Left unhandled this
+        // rejected before any state was set, and the window stayed on the
+        // blank checking screen with nothing to say why.
+        console.error('could not read saved connections:', error)
+        if (!cancelled) setState({ kind: 'unpaired' })
+        return
+      }
 
       if (!connection) {
         if (!cancelled) setState({ kind: 'unpaired' })
@@ -39,21 +51,26 @@ export function App() {
       } catch {
         // A revoked or unreachable server sends the user back to pairing with
         // the stale entry cleared, rather than to a screen that cannot load.
-        await removeConnection(connection.deviceId)
+        await removeConnection(connection.deviceId).catch(() => undefined)
         if (!cancelled) setState({ kind: 'unpaired' })
       }
     }
 
-    void restore()
+    // Nothing below may reject: an unhandled rejection here is a blank window.
+    void restore().catch((error: unknown) => {
+      console.error('startup failed:', error)
+      if (!cancelled) setState({ kind: 'unpaired' })
+    })
     return () => {
       cancelled = true
     }
   }, [])
 
   if (state.kind === 'checking') {
-    // Deliberately blank. The check takes a moment, and a spinner that flashes
-    // for 200ms is noise rather than feedback.
-    return <div className="min-h-svh" />
+    // Blank on purpose for the moment the check takes — a spinner that flashes
+    // for 200ms is noise rather than feedback. If it lasts, `Checking` says so
+    // instead of leaving a black window that looks like a crash.
+    return <Checking />
   }
 
   if (state.kind === 'unpaired') {
@@ -62,5 +79,27 @@ export function App() {
 
   return (
     <Session connection={state.connection} onDisconnected={() => setState({ kind: 'unpaired' })} />
+  )
+}
+
+/**
+ * The gap before the app knows where it is connected.
+ *
+ * Silent for the first moment, then it speaks. A window that stays black
+ * looks like a crash, and the difference between "still working" and "broken"
+ * is the only thing a person can act on here.
+ */
+function Checking() {
+  const [slow, setSlow] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), 1200)
+    return () => clearTimeout(timer)
+  }, [])
+
+  return (
+    <div className="grid min-h-svh place-items-center">
+      {slow && <p className="text-muted-foreground">Checking your connection…</p>}
+    </div>
   )
 }

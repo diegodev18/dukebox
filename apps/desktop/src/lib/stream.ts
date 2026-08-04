@@ -1,0 +1,182 @@
+import { serverMessage, type ClientCommand, type ServerMessage } from '@dukebox/protocol'
+import { socketUrl, type ServerAddress } from './client.js'
+
+/**
+ * The live connection to a session.
+ *
+ * A socket that reconnects on its own, because the alternative is an app that
+ * silently stops updating when a laptop lid closes or a tailnet blips. What
+ * makes reconnection safe rather than lossy is `resumeFrom`: the caller reports
+ * the highest seq it has folded in, and the server replays everything after it.
+ *
+ * This owns no transcript state. It reports events; deciding what they mean is
+ * the reducer's job, and keeping the two apart is what lets the reducer be
+ * tested without a socket.
+ */
+
+export type StreamStatus = 'connecting' | 'live' | 'catching_up' | 'offline'
+
+export interface StreamHandlers {
+  onMessage: (message: ServerMessage) => void
+  onStatus: (status: StreamStatus) => void
+}
+
+/** Where a reconnect should resume from. Read at connect time, never cached. */
+export type ResumePoint = (sessionId: string) => number
+
+const INITIAL_RETRY_MS = 500
+const MAX_RETRY_MS = 15_000
+
+export class SessionStream {
+  private socket: WebSocket | null = null
+  private retryDelay = INITIAL_RETRY_MS
+  private retryTimer: ReturnType<typeof setTimeout> | null = null
+  private readonly subscribed = new Set<string>()
+  private closed = false
+
+  constructor(
+    private readonly address: ServerAddress,
+    private readonly token: string,
+    private readonly handlers: StreamHandlers,
+    private readonly resumeFrom: ResumePoint,
+  ) {}
+
+  connect(): void {
+    if (this.closed || this.socket) return
+
+    this.handlers.onStatus('connecting')
+
+    const socket = new WebSocket(socketUrl(this.address, this.token))
+    this.socket = socket
+
+    socket.onopen = () => {
+      this.retryDelay = INITIAL_RETRY_MS
+
+      // Re-subscribe to everything that was open. After a drop the server has
+      // no memory of this client, so silence here would look exactly like an
+      // idle session.
+      for (const sessionId of this.subscribed) {
+        this.sendSubscribe(sessionId)
+      }
+
+      this.handlers.onStatus(this.subscribed.size > 0 ? 'catching_up' : 'live')
+    }
+
+    socket.onmessage = (raw) => {
+      const parsed = this.parse(raw.data)
+      if (!parsed) return
+
+      if (parsed.type === 'caught_up') this.handlers.onStatus('live')
+      this.handlers.onMessage(parsed)
+    }
+
+    socket.onclose = () => {
+      this.socket = null
+      if (this.closed) return
+
+      this.handlers.onStatus('offline')
+      this.scheduleReconnect()
+    }
+
+    // An error is always followed by a close, which is where reconnection is
+    // handled. Doing it here too would open two sockets.
+    socket.onerror = () => {}
+  }
+
+  /**
+   * Watch a session.
+   *
+   * Remembered across reconnects, so this is called once per session the user
+   * opens rather than once per connection.
+   */
+  subscribe(sessionId: string): void {
+    if (this.subscribed.has(sessionId)) return
+    this.subscribed.add(sessionId)
+
+    if (this.isOpen()) {
+      this.handlers.onStatus('catching_up')
+      this.sendSubscribe(sessionId)
+    }
+  }
+
+  unsubscribe(sessionId: string): void {
+    if (!this.subscribed.delete(sessionId)) return
+    this.send({ type: 'unsubscribe', sessionId })
+  }
+
+  prompt(sessionId: string, text: string, images?: string[]): void {
+    this.send({ type: 'prompt', sessionId, text, ...(images ? { images } : {}) })
+  }
+
+  interrupt(sessionId: string): void {
+    this.send({ type: 'interrupt', sessionId })
+  }
+
+  answerPermission(sessionId: string, id: string, allow: boolean): void {
+    this.send({ type: 'permission_response', sessionId, id, allow })
+  }
+
+  /** Stop for good. A stream closed this way does not reconnect. */
+  close(): void {
+    this.closed = true
+
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer)
+      this.retryTimer = null
+    }
+
+    this.subscribed.clear()
+    this.socket?.close()
+    this.socket = null
+  }
+
+  private isOpen(): boolean {
+    return this.socket?.readyState === WebSocket.OPEN
+  }
+
+  private sendSubscribe(sessionId: string): void {
+    const resumeFrom = this.resumeFrom(sessionId)
+    this.send({ type: 'subscribe', sessionId, ...(resumeFrom > 0 ? { resumeFrom } : {}) })
+  }
+
+  /**
+   * Commands sent while offline are dropped, not queued.
+   *
+   * Queuing would deliver a prompt minutes later, against a session whose state
+   * has moved on — worse than a prompt that visibly did not send.
+   */
+  private send(command: ClientCommand): void {
+    if (!this.isOpen()) return
+    this.socket?.send(JSON.stringify(command))
+  }
+
+  private parse(data: unknown): ServerMessage | null {
+    if (typeof data !== 'string') return null
+
+    try {
+      // Validated rather than trusted: a server one version ahead can send a
+      // message shape this build has never seen, and crashing the renderer over
+      // it would take the whole window down.
+      const result = serverMessage.safeParse(JSON.parse(data))
+      return result.success ? result.data : null
+    } catch {
+      return null
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (this.retryTimer) return
+
+    // Backoff with jitter. Without the jitter, every session in the app
+    // reconnects in lockstep and hits the server as one burst.
+    const jitter = Math.random() * this.retryDelay * 0.3
+    const delay = this.retryDelay + jitter
+
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null
+      this.connect()
+    }, delay)
+
+    this.retryDelay = Math.min(this.retryDelay * 2, MAX_RETRY_MS)
+  }
+}

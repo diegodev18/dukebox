@@ -2,8 +2,11 @@ import type { ProjectSummary, SessionSummary } from '@dukebox/protocol'
 import { useEffect, useState } from 'react'
 import { DukeboxClient } from '../lib/client.js'
 import type { Connection } from '../lib/connection.js'
+import { Composer } from '../components/Composer.js'
 import { Sidebar } from '../components/Sidebar.js'
+import { Transcript } from '../components/Transcript.js'
 import { Workspace } from '../components/Workspace.js'
+import { useSession, type LiveSession } from '../lib/useSession.js'
 
 /**
  * The session view.
@@ -56,6 +59,14 @@ export function Session({ connection, onDisconnected }: Props) {
     // switches servers.
   }, [connection.deviceToken])
 
+  // Session summaries arrive over the socket too, so the sidebar's status dots
+  // follow a running agent without polling.
+  const live = useSession(connection, selected, (updated) => {
+    setSessions((current) =>
+      current.map((session) => (session.id === updated.id ? updated : session)),
+    )
+  })
+
   const current = sessions.find((session) => session.id === selected) ?? null
 
   return (
@@ -68,14 +79,22 @@ export function Session({ connection, onDisconnected }: Props) {
         onSelect={setSelected}
       />
 
-      <SessionColumn session={current} loading={loading} />
+      <SessionColumn session={current} loading={loading} live={live} />
 
       <Workspace session={current} />
     </div>
   )
 }
 
-function SessionColumn({ session, loading }: { session: SessionSummary | null; loading: boolean }) {
+function SessionColumn({
+  session,
+  loading,
+  live,
+}: {
+  session: SessionSummary | null
+  loading: boolean
+  live: LiveSession
+}) {
   if (loading) return <div />
 
   if (!session) {
@@ -103,8 +122,26 @@ function SessionColumn({ session, loading }: { session: SessionSummary | null; l
         </span>
       </header>
 
-      {/* The transcript, composer, and event stream arrive next. */}
-      <div className="flex-1 overflow-y-auto py-5.5" />
+      {live.status === 'offline' && (
+        <p className="border-b border-border bg-surface px-4.5 py-2 text-[12.5px] text-muted-foreground">
+          Reconnecting… the session keeps running on your server.
+        </p>
+      )}
+
+      {live.error && (
+        <p className="border-b border-border bg-destructive/10 px-4.5 py-2 text-[12.5px] text-destructive">
+          {live.error}
+        </p>
+      )}
+
+      <Transcript transcript={live.transcript} onRespond={live.respond} />
+
+      <Composer
+        onSend={live.send}
+        onInterrupt={live.interrupt}
+        running={live.transcript.running}
+        disabled={live.status === 'offline'}
+      />
     </div>
   )
 }

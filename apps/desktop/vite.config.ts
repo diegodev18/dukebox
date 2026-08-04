@@ -18,6 +18,10 @@ export default defineConfig({
   },
 
   server: {
+    // Fixed, and strict about it. The Rust shell loads this exact address, so
+    // a port that moved would leave the window blank with nothing to explain
+    // why. Failing loudly is the better trade — if this port is taken, free it
+    // with `lsof -ti :5173 | xargs kill`.
     port: 5173,
     strictPort: true,
     watch: {
