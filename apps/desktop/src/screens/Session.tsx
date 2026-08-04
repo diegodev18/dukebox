@@ -137,7 +137,11 @@ function SessionColumn({
   }
 
   return (
-    <div className="flex min-w-0 flex-col">
+    // `min-h-0` is what makes the transcript scroll instead of the window
+    // growing. A flex item defaults to `min-height: auto`, which refuses to
+    // shrink below its content, so the child's `overflow-y-auto` never has a
+    // bounded height to scroll within and the column pushes the grid open.
+    <div className="flex min-h-0 min-w-0 flex-col">
       <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
         <h1 className="truncate font-medium">{session.title}</h1>
         <span className="flex-1" />

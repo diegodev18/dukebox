@@ -85,6 +85,30 @@ const script: EnvelopedEvent[] = [
   }),
   event({ type: 'usage', inputTokens: 12_400, outputTokens: 890, costUsd: 0.089 }),
   event({ type: 'error', message: 'Retrying after a rate limit.', fatal: false }),
+
+  // Enough turns to overflow the column. A transcript that grows the window
+  // instead of scrolling is only visible once there is more than fits.
+  ...Array.from({ length: 12 }, (_, turn) => [
+    event({ type: 'assistant_text', delta: `Turn ${turn + 1}: checking the next call site.` }),
+    event({
+      type: 'tool_call',
+      id: `loop-${turn}`,
+      name: 'Grep',
+      input: { pattern: 'execStream', path: 'packages/sandbox' },
+    }),
+    event({ type: 'tool_result', id: `loop-${turn}`, output: '3 matches', isError: false }),
+  ]).flat(),
+
+  // And enough files to overflow the workspace panel, which has the same
+  // shrink-to-fit problem and needs the same check.
+  ...Array.from({ length: 25 }, (_, index) =>
+    event({
+      type: 'file_diff',
+      path: `packages/sandbox/src/generated/module-${index}.ts`,
+      before: null,
+      after: `export const module${index} = ${index}`,
+    }),
+  ),
 ]
 
 /**
@@ -129,8 +153,8 @@ function Preview() {
 
   return (
     <div
-      className="grid grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)]"
-      style={{ width: 1440, height: '100svh' }}
+      className="grid h-svh grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)]"
+      style={{ width: 1440 }}
     >
       <div className="border-r border-border bg-surface p-2">
         <button
@@ -141,7 +165,7 @@ function Preview() {
         </button>
       </div>
 
-      <div className="flex min-w-0 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-col">
         <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
           <h1 className="truncate font-medium">Fix the demux bug</h1>
           <span className="flex-1" />

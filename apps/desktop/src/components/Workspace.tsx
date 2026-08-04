@@ -9,6 +9,10 @@ import { Diff } from './Diff.js'
  * change, and how much — is worth keeping visible, so closed it becomes a list
  * of counts. Without a surface of its own it reads as a summary in the margin
  * rather than as a second sidebar competing with the one on the left.
+ *
+ * `min-h-0` on the column is load-bearing: a flex item defaults to
+ * `min-height: auto` and refuses to shrink below its content, so without it a
+ * long file list grows the window instead of scrolling inside the panel.
  */
 
 const COLLAPSED_KEY = 'dukebox:workspace-collapsed'
@@ -30,7 +34,7 @@ export function Workspace({ session, files }: Props) {
     <aside
       aria-label="Workspace"
       {...(collapsed ? { 'data-collapsed': true } : {})}
-      className={`flex min-w-0 flex-col ${collapsed ? '' : 'border-l border-border bg-surface'}`}
+      className={`flex min-h-0 min-w-0 flex-col ${collapsed ? '' : 'border-l border-border bg-surface'}`}
     >
       <header
         className={`flex items-center gap-2 py-2.5 pr-3 pl-3.5 ${
