@@ -32,6 +32,9 @@
     "icon": ["icons/icon.png"],
     "copyright": "MIT",
     "category": "DeveloperTool",
-    "shortDescription": "Run coding agents on your own VPS"
+    "shortDescription": "Run coding agents on your own VPS",
+    "macOS": {
+      "infoPlist": "Info.plist"
+    }
   }
 }

@@ -15,6 +15,11 @@ pub fn run() {
         // Where the device token lives. The plugin uses the OS keychain, so
         // the token is not sitting in a file next to the app.
         .plugin(tauri_plugin_store::Builder::new().build())
+        // HTTP from the native process rather than the webview. macOS refuses
+        // plaintext HTTP from a webview, and a tailnet address has no
+        // certificate a browser would accept, so this is the only path that
+        // reaches a Dukebox server at all.
+        .plugin(tauri_plugin_http::init())
         .setup(|app| {
             #[cfg(debug_assertions)]
             {

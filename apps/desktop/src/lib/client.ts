@@ -5,6 +5,23 @@ import type {
   RepositorySummary,
   SessionSummary,
 } from '@dukebox/protocol'
+import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
+
+/**
+ * Requests go through the native process when there is one.
+ *
+ * macOS refuses plaintext HTTP from a webview, and a Dukebox server is reached
+ * over a tailnet — a `.ts.net` name has no certificate authority behind it and
+ * cannot get one, so there is no TLS to fall back to. The webview's own fetch
+ * fails with "Load failed" and nothing the frontend can do fixes it.
+ *
+ * Outside Tauri (tests, the preview page) this falls back to the platform
+ * fetch, which is what those environments have.
+ */
+const httpFetch: typeof globalThis.fetch = (input, init) =>
+  '__TAURI_INTERNALS__' in globalThis
+    ? (tauriFetch as typeof globalThis.fetch)(input, init)
+    : globalThis.fetch(input, init)
 
 /**
  * The control plane, as the app talks to it.
@@ -48,7 +65,7 @@ export class DukeboxClient {
   ) {}
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const response = await fetch(`${baseUrl(this.address)}${path}`, {
+    const response = await httpFetch(`${baseUrl(this.address)}${path}`, {
       ...init,
       headers: {
         'content-type': 'application/json',
@@ -154,7 +171,7 @@ export async function redeemPairingCode(
   code: string,
   device: { name: string; platform: 'macos' | 'windows' | 'linux' },
 ): Promise<PairRedeemResponse> {
-  const response = await fetch(`${baseUrl(address)}/pair/redeem`, {
+  const response = await httpFetch(`${baseUrl(address)}/pair/redeem`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ code, deviceName: device.name, platform: device.platform }),
@@ -185,7 +202,7 @@ export type Reachability =
 
 export async function reachable(address: ServerAddress): Promise<Reachability> {
   try {
-    const response = await fetch(`${baseUrl(address)}/health`, {
+    const response = await httpFetch(`${baseUrl(address)}/health`, {
       signal: AbortSignal.timeout(4000),
     })
 

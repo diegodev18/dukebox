@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    App Transport Security.
+
+    A Dukebox server is reached over a tailnet, where WireGuard already
+    encrypts and authenticates every packet end to end. There is no
+    certificate authority for a `.ts.net` name and no way to obtain one, so
+    requiring TLS here would mean requiring something the design cannot
+    provide — and WebKit refuses plaintext HTTP without this, failing with
+    "Load failed" and no indication of why.
+
+    Scoped to the tailnet rather than opened globally: `ts.net` covers every
+    MagicDNS name, and arbitrary plaintext HTTP to the wider internet stays
+    blocked.
+
+    Connections by raw tailnet IP (100.x) are covered by
+    NSAllowsLocalNetworking, which permits plaintext on local and
+    non-routable addresses without weakening anything public.
+  -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+    <key>NSExceptionDomains</key>
+    <dict>
+      <key>ts.net</key>
+      <dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key>
+        <true/>
+        <key>NSIncludesSubdomains</key>
+        <true/>
+      </dict>
+    </dict>
+  </dict>
+</dict>
+</plist>
