@@ -1,0 +1,185 @@
+import type {
+  ApiError,
+  PairRedeemResponse,
+  ProjectSummary,
+  RepositorySummary,
+  SessionSummary,
+} from '@dukebox/protocol'
+
+/**
+ * The control plane, as the app talks to it.
+ *
+ * Every call carries the device token from pairing. Nothing here knows a
+ * server address at build time: the app is handed one when the user pastes a
+ * pairing link, which is what lets a single published binary serve everyone.
+ */
+
+export interface ServerAddress {
+  host: string
+  port: number
+  /** False on a tailnet, where WireGuard already secures the link. */
+  tls: boolean
+}
+
+export class ApiFailure extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'ApiFailure'
+  }
+}
+
+export function baseUrl(address: ServerAddress): string {
+  return `${address.tls ? 'https' : 'http'}://${address.host}:${address.port}`
+}
+
+export function socketUrl(address: ServerAddress, token: string): string {
+  const scheme = address.tls ? 'wss' : 'ws'
+  return `${scheme}://${address.host}:${address.port}/ws?token=${encodeURIComponent(token)}`
+}
+
+export class DukeboxClient {
+  constructor(
+    private readonly address: ServerAddress,
+    private readonly token: string,
+  ) {}
+
+  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const response = await fetch(`${baseUrl(this.address)}${path}`, {
+      ...init,
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${this.token}`,
+        ...init.headers,
+      },
+    })
+
+    if (!response.ok) {
+      // The server answers failures in a known shape, but a proxy or a crash
+      // can produce something else — so a parse failure becomes a readable
+      // error rather than an unhandled rejection.
+      const body = (await response.json().catch(() => null)) as ApiError | null
+
+      throw new ApiFailure(
+        response.status,
+        body?.error ?? 'unknown',
+        body?.message ?? `request failed with ${response.status}`,
+      )
+    }
+
+    return (await response.json()) as T
+  }
+
+  /** Confirm the token still works. Used on launch before showing anything. */
+  async whoami(): Promise<{ deviceId: string; deviceName: string }> {
+    return this.request('/api/me')
+  }
+
+  async listRepositories(): Promise<RepositorySummary[]> {
+    const body = await this.request<{ repositories: RepositorySummary[] }>('/api/repositories')
+    return body.repositories
+  }
+
+  async listProjects(): Promise<ProjectSummary[]> {
+    const body = await this.request<{ projects: ProjectSummary[] }>('/api/projects')
+    return body.projects
+  }
+
+  async createProject(repoFullName: string): Promise<ProjectSummary> {
+    return this.request('/api/projects', {
+      method: 'POST',
+      body: JSON.stringify({ repoFullName }),
+    })
+  }
+
+  async listSessions(projectId?: string): Promise<SessionSummary[]> {
+    const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''
+    const body = await this.request<{ sessions: SessionSummary[] }>(`/api/sessions${query}`)
+    return body.sessions
+  }
+
+  async startSession(options: {
+    projectId: string
+    agentId: string
+    prompt: string
+    baseBranch?: string
+  }): Promise<SessionSummary> {
+    return this.request('/api/sessions', { method: 'POST', body: JSON.stringify(options) })
+  }
+
+  /**
+   * A session's history.
+   *
+   * Used to fill what the local cache is missing. Live events arrive over the
+   * WebSocket instead.
+   */
+  async sessionEvents(sessionId: string, after = 0) {
+    return this.request<{ events: unknown[] }>(`/api/sessions/${sessionId}/events?after=${after}`)
+  }
+
+  async openPullRequest(sessionId: string, title?: string): Promise<{ url: string }> {
+    return this.request(`/api/sessions/${sessionId}/pr`, {
+      method: 'POST',
+      body: JSON.stringify(title ? { title } : {}),
+    })
+  }
+
+  async stopSession(sessionId: string): Promise<void> {
+    await this.request(`/api/sessions/${sessionId}`, { method: 'DELETE' })
+  }
+
+  async agentCredentialsConfigured(): Promise<boolean> {
+    const body = await this.request<{ configured: boolean }>('/api/agent-credentials')
+    return body.configured
+  }
+
+  async setAgentCredentials(token: string): Promise<void> {
+    await this.request('/api/agent-credentials', {
+      method: 'PUT',
+      body: JSON.stringify({ token }),
+    })
+  }
+}
+
+/**
+ * Exchange a pairing code for a device token.
+ *
+ * The one call made without a token, since it is what produces one.
+ */
+export async function redeemPairingCode(
+  address: ServerAddress,
+  code: string,
+  device: { name: string; platform: 'macos' | 'windows' | 'linux' },
+): Promise<PairRedeemResponse> {
+  const response = await fetch(`${baseUrl(address)}/pair/redeem`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code, deviceName: device.name, platform: device.platform }),
+  })
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as ApiError | null
+    throw new ApiFailure(
+      response.status,
+      body?.error ?? 'unknown',
+      body?.message ?? 'could not pair with that code',
+    )
+  }
+
+  return (await response.json()) as PairRedeemResponse
+}
+
+/** Whether a server is reachable, before asking it for anything else. */
+export async function reachable(address: ServerAddress): Promise<boolean> {
+  try {
+    const response = await fetch(`${baseUrl(address)}/health`, {
+      signal: AbortSignal.timeout(4000),
+    })
+    return response.ok
+  } catch {
+    return false
+  }
+}

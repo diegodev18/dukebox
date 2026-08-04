@@ -40,6 +40,7 @@ config.toml
 node_modules/
 .pnpm-store/
 dist/
+dist-types/
 build/
 out/
 *.tsbuildinfo

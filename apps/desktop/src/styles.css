@@ -1,0 +1,120 @@
+@import 'tailwindcss';
+
+/**
+ * Design tokens.
+ *
+ * The palette and radius come from the b1GeHbnii shadcn preset, read out of a
+ * real `shadcn init` run rather than transcribed. Everything Dukebox adds sits
+ * beside those values rather than overriding them, so components pulled from
+ * the registry keep fitting.
+ */
+
+@theme {
+  --color-background: oklch(1 0 0);
+  --color-surface: oklch(0.985 0 0);
+  --color-raised: oklch(0.967 0.001 286.375);
+  --color-foreground: oklch(0.141 0.005 285.823);
+  --color-muted: oklch(0.967 0.001 286.375);
+  --color-muted-foreground: oklch(0.552 0.016 285.938);
+  --color-primary: oklch(0.488 0.243 264.376);
+  --color-primary-foreground: oklch(0.97 0.014 254.604);
+  --color-border: oklch(0 0 0 / 9%);
+  --color-border-strong: oklch(0 0 0 / 15%);
+  --color-destructive: oklch(0.577 0.245 27.325);
+
+  /* Session states. The preset carries no semantics for these, so they are
+     named for what they mean rather than for the colour they happen to be. */
+  --color-running: oklch(0.7 0.16 70);
+  --color-waiting: oklch(0.488 0.243 264.376);
+  --color-done: oklch(0.58 0.13 155);
+  --color-added: oklch(0.62 0.15 150);
+  --color-removed: oklch(0.6 0.18 25);
+
+  --radius: 0.5rem;
+
+  --font-sans: 'Inter Variable', Inter, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+/* The app follows the operating system unless the user overrides it. */
+:root {
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-background: oklch(0.141 0.005 285.823);
+    --color-surface: oklch(0.175 0.005 285.9);
+    --color-raised: oklch(0.21 0.006 285.885);
+    --color-foreground: oklch(0.985 0 0);
+    --color-muted: oklch(0.274 0.006 286.033);
+    --color-muted-foreground: oklch(0.705 0.015 286.067);
+    --color-primary: oklch(0.546 0.245 262.881);
+    --color-border: oklch(1 0 0 / 9%);
+    --color-border-strong: oklch(1 0 0 / 16%);
+    --color-destructive: oklch(0.704 0.191 22.216);
+    --color-running: oklch(0.78 0.15 70);
+    --color-waiting: oklch(0.546 0.245 262.881);
+    --color-done: oklch(0.68 0.13 155);
+    --color-added: oklch(0.7 0.15 150);
+    --color-removed: oklch(0.68 0.18 25);
+  }
+}
+
+:root[data-theme='dark'] {
+  --color-background: oklch(0.141 0.005 285.823);
+  --color-surface: oklch(0.175 0.005 285.9);
+  --color-raised: oklch(0.21 0.006 285.885);
+  --color-foreground: oklch(0.985 0 0);
+  --color-muted: oklch(0.274 0.006 286.033);
+  --color-muted-foreground: oklch(0.705 0.015 286.067);
+  --color-primary: oklch(0.546 0.245 262.881);
+  --color-border: oklch(1 0 0 / 9%);
+  --color-border-strong: oklch(1 0 0 / 16%);
+  --color-destructive: oklch(0.704 0.191 22.216);
+  --color-running: oklch(0.78 0.15 70);
+  --color-waiting: oklch(0.546 0.245 262.881);
+  --color-done: oklch(0.68 0.13 155);
+  --color-added: oklch(0.7 0.15 150);
+  --color-removed: oklch(0.68 0.18 25);
+}
+
+@layer base {
+  body {
+    margin: 0;
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    /* 14px: a window someone reads for an hour, not a page they skim. */
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* A native window has nothing to select on chrome, and a stray highlight
+     while dragging reads as a bug. Text areas opt back in below. */
+  body {
+    user-select: none;
+    cursor: default;
+  }
+
+  input,
+  textarea,
+  [data-selectable] {
+    user-select: text;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+  }
+}
+
+@utility measure {
+  /* One width for the conversation, shared by the composer and the chips
+     below it. A percentage of the container, never a viewport unit: `vw`
+     measures the whole window, so the margins vanished the moment the
+     workspace rail took width away from this column. */
+  width: clamp(min(100%, 620px), 74%, 860px);
+  margin-inline: auto;
+}

@@ -75,6 +75,12 @@ services:
       - dukebox-dist-transport:/workspace/packages/transport/dist
       - dukebox-turbo-transport:/workspace/packages/transport/.turbo
 
+      - dukebox-nm-desktop:/workspace/apps/desktop/node_modules
+      - dukebox-dist-desktop:/workspace/apps/desktop/dist
+      - dukebox-turbo-desktop:/workspace/apps/desktop/.turbo
+      # Rust build output is large and platform-specific.
+      - dukebox-target-desktop:/workspace/apps/desktop/src-tauri/target
+
       - dukebox-nm-server:/workspace/apps/server/node_modules
       - dukebox-dist-server:/workspace/apps/server/dist
       - dukebox-turbo-server:/workspace/apps/server/.turbo
@@ -120,6 +126,11 @@ volumes:
   dukebox-nm-transport:
   dukebox-dist-transport:
   dukebox-turbo-transport:
+
+  dukebox-nm-desktop:
+  dukebox-dist-desktop:
+  dukebox-turbo-desktop:
+  dukebox-target-desktop:
 
   dukebox-nm-server:
   dukebox-dist-server:
