@@ -99,10 +99,29 @@ pnpm --filter @dukebox/desktop tauri dev
 
 The first Rust build takes several minutes; later ones take seconds.
 
+`tauri dev` needs port 5173, and fails outright rather than moving — the Rust
+shell loads that exact address, so a port that moved would leave the window
+blank. If something else has it:
+
+```bash
+lsof -ti :5173 | xargs kill
+```
+
 You will need a pairing link from a running server. Print one with:
 
 ```bash
 sudo -u dukebox dukebox pair new
+```
+
+### Looking at the UI without a server
+
+The conversation and the review panel render from a scripted session at
+`/preview.html` — no server, no container, no agent. It is served by the same
+dev server, so open it while `tauri dev` is running rather than starting a
+second one:
+
+```
+http://localhost:5173/preview.html
 ```
 
 ## License
