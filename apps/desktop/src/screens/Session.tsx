@@ -1,5 +1,5 @@
 import type { ProjectSummary, SessionSummary } from '@dukebox/protocol'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { DukeboxClient } from '../lib/client.js'
 import type { Connection } from '../lib/connection.js'
 import { Composer } from '../components/Composer.js'
@@ -7,6 +7,7 @@ import { Sidebar } from '../components/Sidebar.js'
 import { Transcript } from '../components/Transcript.js'
 import { Workspace } from '../components/Workspace.js'
 import { useSession, type LiveSession } from '../lib/useSession.js'
+import { NewSession } from './NewSession.js'
 
 /**
  * The session view.
@@ -21,12 +22,18 @@ interface Props {
 }
 
 export function Session({ connection, onDisconnected }: Props) {
-  const client = new DukeboxClient(connection.address, connection.deviceToken)
+  // Memoised because it is passed to effects: a new client every render would
+  // re-run them forever.
+  const client = useMemo(
+    () => new DukeboxClient(connection.address, connection.deviceToken),
+    [connection.address.host, connection.address.port, connection.deviceToken],
+  )
 
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -57,7 +64,7 @@ export function Session({ connection, onDisconnected }: Props) {
     }
     // The client is derived from the connection, so this reruns when the user
     // switches servers.
-  }, [connection.deviceToken])
+  }, [client])
 
   // Session summaries arrive over the socket too, so the sidebar's status dots
   // follow a running agent without polling.
@@ -77,11 +84,29 @@ export function Session({ connection, onDisconnected }: Props) {
         sessions={sessions}
         selectedId={selected}
         onSelect={setSelected}
+        onNewSession={() => setCreating(true)}
       />
 
       <SessionColumn session={current} loading={loading} live={live} />
 
       <Workspace session={current} files={live.transcript.files} />
+
+      {creating && (
+        <NewSession
+          client={client}
+          projects={projects}
+          onCancel={() => setCreating(false)}
+          onCreated={(session, project) => {
+            // Added locally rather than refetched: the session exists but its
+            // container is still building, and a list that only updates on the
+            // next poll makes a started session look like it failed.
+            if (project) setProjects((current) => [project, ...current])
+            setSessions((current) => [session, ...current])
+            setSelected(session.id)
+            setCreating(false)
+          }}
+        />
+      )}
     </div>
   )
 }

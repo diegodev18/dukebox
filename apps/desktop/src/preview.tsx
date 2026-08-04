@@ -1,9 +1,10 @@
 import { applyEvents, emptyTranscript, type EnvelopedEvent } from '@dukebox/protocol'
-import { StrictMode } from 'react'
+import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Composer } from './components/Composer.js'
 import { Transcript } from './components/Transcript.js'
 import { Workspace } from './components/Workspace.js'
+import { NewSession } from './screens/NewSession.js'
 import './styles.css'
 
 /**
@@ -87,19 +88,58 @@ const script: EnvelopedEvent[] = [
 ]
 
 /**
+ * A client that answers without a server.
+ *
+ * Only the calls the dialog makes are implemented; the rest would be scaffolding
+ * for something nothing here calls.
+ */
+const fakeClient = {
+  listRepositories: async () => [
+    {
+      fullName: 'diegodev18/dukebox',
+      defaultBranch: 'main',
+      isPrivate: false,
+      updatedAt: '',
+      isRegistered: true,
+    },
+    {
+      fullName: 'diegodev18/duke-site',
+      defaultBranch: 'main',
+      isPrivate: true,
+      updatedAt: '',
+      isRegistered: false,
+    },
+  ],
+  createProject: async () => {
+    throw new Error('the preview does not talk to a server')
+  },
+  startSession: async () => {
+    throw new Error('the preview does not talk to a server')
+  },
+} as never
+
+/**
  * Pinned to a desktop size rather than the viewport, so the layout can be
  * judged in a browser window of any size. The real app is measured by the
  * Tauri window instead.
  */
 function Preview() {
   const transcript = applyEvents(emptyTranscript(), script)
+  const [creating, setCreating] = useState(false)
 
   return (
     <div
       className="grid grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)]"
       style={{ width: 1440, height: '100svh' }}
     >
-      <div className="border-r border-border bg-surface" />
+      <div className="border-r border-border bg-surface p-2">
+        <button
+          onClick={() => setCreating(true)}
+          className="w-full rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left font-medium hover:bg-muted"
+        >
+          New session
+        </button>
+      </div>
 
       <div className="flex min-w-0 flex-col">
         <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
@@ -138,6 +178,15 @@ function Preview() {
         }
         files={transcript.files}
       />
+
+      {creating && (
+        <NewSession
+          client={fakeClient}
+          projects={[]}
+          onCancel={() => setCreating(false)}
+          onCreated={() => setCreating(false)}
+        />
+      )}
     </div>
   )
 }

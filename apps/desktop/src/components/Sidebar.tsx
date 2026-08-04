@@ -16,16 +16,26 @@ interface Props {
   sessions: SessionSummary[]
   selectedId: string | null
   onSelect: (sessionId: string) => void
+  onNewSession: () => void
 }
 
-export function Sidebar({ connection, projects, sessions, selectedId, onSelect }: Props) {
+export function Sidebar({
+  connection,
+  projects,
+  sessions,
+  selectedId,
+  onSelect,
+  onNewSession,
+}: Props) {
   return (
     <nav
       aria-label="Sessions"
       className="flex flex-col overflow-hidden border-r border-border bg-surface"
     >
       <div className="px-2 pt-2.5 pb-1">
-        <SidebarAction icon={<PlusIcon />}>New session</SidebarAction>
+        <SidebarAction icon={<PlusIcon />} onClick={onNewSession}>
+          New session
+        </SidebarAction>
         <SidebarAction icon={<SearchIcon />}>Search</SidebarAction>
       </div>
 
@@ -102,9 +112,24 @@ function ProjectGroup({
   )
 }
 
-function SidebarAction({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+function SidebarAction({
+  icon,
+  children,
+  onClick,
+}: {
+  icon: React.ReactNode
+  children: React.ReactNode
+  onClick?: () => void
+}) {
   return (
-    <button className="flex w-full items-center gap-2.5 rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 font-medium hover:bg-muted">
+    <button
+      type="button"
+      onClick={onClick}
+      // Without a handler this is decoration. Dimming it says so, rather than
+      // offering a button that quietly does nothing.
+      disabled={!onClick}
+      className="flex w-full items-center gap-2.5 rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 font-medium hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent"
+    >
       <span className="text-muted-foreground">{icon}</span>
       {children}
     </button>
