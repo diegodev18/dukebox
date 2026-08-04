@@ -3,6 +3,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Composer } from './components/Composer.js'
 import { Transcript } from './components/Transcript.js'
+import { Workspace } from './components/Workspace.js'
 import './styles.css'
 
 /**
@@ -46,8 +47,34 @@ const script: EnvelopedEvent[] = [
   event({
     type: 'file_diff',
     path: 'packages/sandbox/src/container.ts',
-    before: 'old',
-    after: 'new',
+    before: [
+      'export class Container {',
+      '  async execStream(command: string[]) {',
+      '    const exec = await this.container.exec({ Cmd: command })',
+      '    const raw = await exec.start({ hijack: true, stdin: true })',
+      '    return raw',
+      '  }',
+      '}',
+    ].join('\n'),
+    after: [
+      'export class Container {',
+      '  async execStream(command: string[]) {',
+      '    const exec = await this.container.exec({ Cmd: command })',
+      '    const raw = await exec.start({ hijack: true, stdin: true })',
+      '    const stdout = new PassThrough()',
+      '    const stderr = new PassThrough()',
+      '    this.docker.modem.demuxStream(raw, stdout, stderr)',
+      '    stderr.resume()',
+      '    return Duplex.from({ readable: stdout, writable: raw })',
+      '  }',
+      '}',
+    ].join('\n'),
+  }),
+  event({
+    type: 'file_diff',
+    path: 'packages/sandbox/src/demux.test.ts',
+    before: null,
+    after: "it('strips docker frame headers', () => {})",
   }),
   event({
     type: 'permission_request',
@@ -96,7 +123,21 @@ function Preview() {
         />
       </div>
 
-      <div className="border-l border-border bg-surface" />
+      <Workspace
+        session={
+          {
+            id: SESSION,
+            title: 'Fix the demux bug',
+            status: 'running',
+            agentId: 'claude-code',
+            branch: 'duke/fix-demux',
+            baseBranch: 'main',
+            changedFileCount: transcript.files.length,
+            lastSeq: transcript.lastSeq,
+          } as never
+        }
+        files={transcript.files}
+      />
     </div>
   )
 }

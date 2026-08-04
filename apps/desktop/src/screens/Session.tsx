@@ -81,7 +81,7 @@ export function Session({ connection, onDisconnected }: Props) {
 
       <SessionColumn session={current} loading={loading} live={live} />
 
-      <Workspace session={current} />
+      <Workspace session={current} files={live.transcript.files} />
     </div>
   )
 }

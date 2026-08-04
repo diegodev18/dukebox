@@ -19,7 +19,7 @@ class FakeSocket {
 
   onopen: (() => void) | null = null
   onmessage: ((event: { data: unknown }) => void) | null = null
-  onclose: (() => void) | null = null
+  onclose: ((event: { code: number }) => void) | null = null
   onerror: (() => void) | null = null
 
   constructor(readonly url: string) {
@@ -41,9 +41,20 @@ class FakeSocket {
   }
 
   /** Simulate the connection dropping. */
-  drop(): void {
+  drop(code = 1001): void {
     this.readyState = FakeSocket.CLOSED
-    this.onclose?.()
+    this.onclose?.({ code })
+  }
+
+  /**
+   * Simulate a connection that never reached the server.
+   *
+   * 1006 is what a browser reports when a socket closes abnormally without a
+   * close frame — a refused handshake, or a request the webview never sent.
+   */
+  refuse(): void {
+    this.readyState = FakeSocket.CLOSED
+    this.onclose?.({ code: 1006 })
   }
 
   deliver(message: ServerMessage): void {
@@ -66,6 +77,7 @@ const OTHER = '11111111-1111-4111-8111-111111111111'
 function setup(resumeFrom: (sessionId: string) => number = () => 0) {
   const messages: ServerMessage[] = []
   const statuses: StreamStatus[] = []
+  const failures: string[] = []
 
   const stream = new SessionStream(
     ADDRESS,
@@ -73,11 +85,18 @@ function setup(resumeFrom: (sessionId: string) => number = () => 0) {
     {
       onMessage: (message) => messages.push(message),
       onStatus: (status) => statuses.push(status),
+      onFailure: (reason) => failures.push(reason),
     },
     resumeFrom,
   )
 
-  return { stream, messages, statuses, socket: () => FakeSocket.instances.at(-1) as FakeSocket }
+  return {
+    stream,
+    messages,
+    statuses,
+    failures,
+    socket: () => FakeSocket.instances.at(-1) as FakeSocket,
+  }
 }
 
 beforeEach(() => {
@@ -251,6 +270,34 @@ describe('status', () => {
     socket().drop()
 
     expect(statuses.at(-1)).toBe('offline')
+  })
+
+  it('says so when a socket never reached the server', () => {
+    // Otherwise this is "Reconnecting…" forever, which is exactly what a
+    // working connection looks like during a blip.
+    const { stream, socket, failures } = setup()
+    stream.connect()
+    socket().refuse()
+
+    expect(failures.at(-1)).toMatch(/refused before reaching the server/)
+  })
+
+  it('stays quiet when a working connection drops', () => {
+    // A drop after the socket opened is ordinary and recovers on its own.
+    const { stream, socket, failures } = setup()
+    stream.connect()
+    socket().open()
+    socket().drop()
+
+    expect(failures).toHaveLength(0)
+  })
+
+  it('distinguishes a rejected handshake from a refused connection', () => {
+    const { stream, socket, failures } = setup()
+    stream.connect()
+    socket().drop(1008)
+
+    expect(failures.at(-1)).toMatch(/server closed the connection \(1008\)/)
   })
 })
 

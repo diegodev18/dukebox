@@ -19,6 +19,14 @@ export type StreamStatus = 'connecting' | 'live' | 'catching_up' | 'offline'
 export interface StreamHandlers {
   onMessage: (message: ServerMessage) => void
   onStatus: (status: StreamStatus) => void
+  /**
+   * A connection that never reached the server.
+   *
+   * Separate from `onStatus('offline')`, which covers a socket that was working
+   * and dropped. This one means it never worked, and the difference decides
+   * whether waiting is worth anything.
+   */
+  onFailure?: (reason: string) => void
 }
 
 /** Where a reconnect should resume from. Read at connect time, never cached. */
@@ -49,7 +57,12 @@ export class SessionStream {
     const socket = new WebSocket(socketUrl(this.address, this.token))
     this.socket = socket
 
+    // Whether this socket ever reached the server. A close before that means
+    // the connection was rejected, not dropped, and those need different words.
+    let opened = false
+
     socket.onopen = () => {
+      opened = true
       this.retryDelay = INITIAL_RETRY_MS
 
       // Re-subscribe to everything that was open. After a drop the server has
@@ -70,16 +83,28 @@ export class SessionStream {
       this.handlers.onMessage(parsed)
     }
 
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       this.socket = null
       if (this.closed) return
+
+      // A socket that closes without ever opening never reached the server:
+      // rejected at the handshake, or refused by the webview before it left.
+      // Reported rather than retried silently, because retrying forever on a
+      // connection that cannot succeed looks identical to a quiet session.
+      if (!opened) {
+        this.handlers.onFailure?.(
+          event.code === 1006
+            ? 'the connection was refused before reaching the server'
+            : `the server closed the connection (${event.code})`,
+        )
+      }
 
       this.handlers.onStatus('offline')
       this.scheduleReconnect()
     }
 
-    // An error is always followed by a close, which is where reconnection is
-    // handled. Doing it here too would open two sockets.
+    // An error is always followed by a close, which is where reconnection and
+    // reporting happen. Doing it here too would open two sockets.
     socket.onerror = () => {}
   }
 

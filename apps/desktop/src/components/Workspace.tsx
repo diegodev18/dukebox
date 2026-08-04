@@ -1,5 +1,6 @@
-import type { SessionSummary } from '@dukebox/protocol'
+import type { FileChange, SessionSummary } from '@dukebox/protocol'
 import { useEffect, useState } from 'react'
+import { Diff } from './Diff.js'
 
 /**
  * What the session is changing: files, diffs, a terminal, a preview.
@@ -14,9 +15,11 @@ const COLLAPSED_KEY = 'dukebox:workspace-collapsed'
 
 interface Props {
   session: SessionSummary | null
+  /** What the session has changed so far, folded from the event stream. */
+  files: FileChange[]
 }
 
-export function Workspace({ session }: Props) {
+export function Workspace({ session, files }: Props) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === 'true')
 
   useEffect(() => {
@@ -46,7 +49,11 @@ export function Workspace({ session }: Props) {
         </button>
       </header>
 
-      {collapsed ? <Metrics session={session} /> : <Panels session={session} />}
+      {collapsed ? (
+        <Metrics session={session} files={files} />
+      ) : (
+        <Panels session={session} files={files} />
+      )}
     </aside>
   )
 }
@@ -58,13 +65,18 @@ export function Workspace({ session }: Props) {
  * caption to mean anything, and stacking the two doubles the height for no
  * more information than a line gives.
  */
-function Metrics({ session }: { session: SessionSummary | null }) {
+function Metrics({ session, files }: { session: SessionSummary | null; files: FileChange[] }) {
   if (!session) return <div />
+
+  // Counted from the live stream rather than the session summary, which only
+  // refreshes when the server sends a new one — a count that lags the diff
+  // beside it is worse than no count.
+  const changed = files.length || session.changedFileCount
 
   return (
     <div className="flex flex-col px-2 pt-6 pb-3.5">
       <MetricLabel>Changes</MetricLabel>
-      <Metric icon={<FileIcon />} label="Files" value={String(session.changedFileCount)} />
+      <Metric icon={<FileIcon />} label="Files" value={String(changed)} />
 
       <MetricLabel>On {session.branch || session.baseBranch}</MetricLabel>
       <Metric icon={<CommitIcon />} label="Turns" value={String(session.lastSeq)} />
@@ -93,7 +105,16 @@ function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; 
   )
 }
 
-function Panels({ session }: { session: SessionSummary | null }) {
+/**
+ * The files a session changed, and what changed in them.
+ *
+ * One list rather than a tree: a session's diff is a handful of files, and a
+ * tree of three entries is a widget pretending there is more to navigate than
+ * there is. The terminal and preview tabs arrive later.
+ */
+function Panels({ session, files }: { session: SessionSummary | null; files: FileChange[] }) {
+  const [open, setOpen] = useState<string | null>(null)
+
   if (!session) {
     return (
       <p className="px-4 py-4 text-[12.5px] text-muted-foreground">
@@ -102,8 +123,67 @@ function Panels({ session }: { session: SessionSummary | null }) {
     )
   }
 
-  // Files, diffs, terminal, and preview arrive next.
-  return <div className="flex-1 overflow-y-auto" />
+  if (files.length === 0) {
+    return (
+      <p className="px-4 py-4 text-[12.5px] text-muted-foreground">
+        Nothing changed yet. Files appear here as the agent edits them.
+      </p>
+    )
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      {files.map((file) => {
+        const expanded = open === file.path
+
+        return (
+          <div key={file.path} className="border-b border-border last:border-b-0">
+            <button
+              onClick={() => setOpen(expanded ? null : file.path)}
+              aria-expanded={expanded}
+              className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-[12.5px] hover:bg-muted"
+            >
+              <RowChevron open={expanded} />
+              {/* The name leads and the directory trails: the name is what
+                  someone is looking for, and paths are too long to lead with. */}
+              <span className="truncate font-medium">{basename(file.path)}</span>
+              <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                {dirname(file.path)}
+              </span>
+              <Badge file={file} />
+            </button>
+
+            {expanded && (
+              <div className="overflow-x-auto border-t border-border py-1.5">
+                <Diff file={file} />
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Whether a file was created, deleted, or edited. */
+function Badge({ file }: { file: FileChange }) {
+  const [label, tone] =
+    file.before === null
+      ? ['new', 'text-added']
+      : file.after === null
+        ? ['deleted', 'text-removed']
+        : ['edited', 'text-muted-foreground']
+
+  return <span className={`flex-none text-[11.5px] ${tone}`}>{label}</span>
+}
+
+function basename(path: string): string {
+  return path.slice(path.lastIndexOf('/') + 1)
+}
+
+function dirname(path: string): string {
+  const cut = path.lastIndexOf('/')
+  return cut === -1 ? '' : path.slice(0, cut)
 }
 
 function ChevronIcon({ flipped }: { flipped: boolean }) {
@@ -119,6 +199,30 @@ function ChevronIcon({ flipped }: { flipped: boolean }) {
       aria-hidden="true"
     >
       <path d="m10 4-4 4 4 4" />
+    </svg>
+  )
+}
+
+/**
+ * The disclosure arrow on a file row.
+ *
+ * Points right when closed and down when open — the direction people read as
+ * "there is more inside". `ChevronIcon` points left, because it collapses the
+ * panel toward the edge of the window, which is a different gesture.
+ */
+function RowChevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`size-3.25 flex-none text-muted-foreground ${open ? 'rotate-90' : ''}`}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m6 4 4 4-4 4" />
     </svg>
   )
 }

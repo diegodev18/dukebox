@@ -59,6 +59,10 @@ export function useSession(
       connection.deviceToken,
       {
         onStatus: setStatus,
+        // A socket that never connected is worth saying out loud. Left to the
+        // status alone it reads as "Reconnecting…" forever, which is what a
+        // working connection looks like during a blip.
+        onFailure: setError,
         onMessage: (message) => {
           switch (message.type) {
             case 'event':
