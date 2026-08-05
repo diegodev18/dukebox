@@ -37,6 +37,7 @@ function toSummary(session: Session): SessionSummary {
     createdAt: session.createdAt.getTime(),
     updatedAt: session.updatedAt.getTime(),
     lastSeq: session.lastSeq,
+    pullRequestUrl: session.prUrl,
   }
 }
 

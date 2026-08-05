@@ -392,6 +392,19 @@ describe('GET /api/sessions', () => {
     expect(body.sessions.map((session) => session.title)).toEqual(['Second', 'First'])
   })
 
+  it('reports no pull request until one is opened', async () => {
+    // The app decides between "Open pull request" and "View pull request" on
+    // this field. Omitting it would leave it offering to open a second one.
+    const project = await createProject()
+    await createSession(project.id, { title: 'Fresh' })
+
+    const body = (await (await request('/api/sessions')).json()) as {
+      sessions: { pullRequestUrl: string | null }[]
+    }
+
+    expect(body.sessions[0]).toHaveProperty('pullRequestUrl', null)
+  })
+
   it('filters by project', async () => {
     const first = await createProject('diego/one')
     const second = await createProject('diego/two')

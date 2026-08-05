@@ -20,6 +20,10 @@ tauri-plugin-store = "2"
 # where there is no certificate authority to satisfy — so the webview's fetch
 # fails with "Load failed" and no way to fix it from the frontend.
 tauri-plugin-http = "2"
+# Opens a pull request in the real browser. The webview will not navigate to
+# GitHub, and replacing the app's own window with a web page would be worse if
+# it did.
+tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

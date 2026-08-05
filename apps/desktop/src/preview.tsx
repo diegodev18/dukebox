@@ -1,8 +1,14 @@
-import { applyEvents, emptyTranscript, type EnvelopedEvent } from '@dukebox/protocol'
+import {
+  applyEvents,
+  emptyTranscript,
+  type EnvelopedEvent,
+  type SessionSummary,
+} from '@dukebox/protocol'
 import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Composer } from './components/Composer.js'
 import { Transcript } from './components/Transcript.js'
+import { PullRequest } from './components/PullRequest.js'
 import { Workspace } from './components/Workspace.js'
 import { NewSession } from './screens/NewSession.js'
 import './styles.css'
@@ -151,6 +157,21 @@ function Preview() {
   const transcript = applyEvents(emptyTranscript(), script)
   const [creating, setCreating] = useState(false)
 
+  const previewSession = {
+    id: SESSION,
+    projectId: SESSION,
+    title: 'Fix the demux bug',
+    status: 'running',
+    agentId: 'claude-code',
+    branch: 'duke/fix-demux',
+    baseBranch: 'main',
+    changedFileCount: transcript.files.length,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    lastSeq: transcript.lastSeq,
+    pullRequestUrl: null,
+  } as SessionSummary
+
   return (
     <div
       className="grid h-svh grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)]"
@@ -169,6 +190,12 @@ function Preview() {
         <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
           <h1 className="truncate font-medium">Fix the demux bug</h1>
           <span className="flex-1" />
+          <PullRequest
+            client={fakeClient}
+            session={previewSession}
+            onOpened={(url) => console.log('opened', url)}
+          />
+
           <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
             <span className="size-1.5 rounded-full bg-running motion-safe:animate-pulse" />
             claude-code
@@ -187,21 +214,7 @@ function Preview() {
         />
       </div>
 
-      <Workspace
-        session={
-          {
-            id: SESSION,
-            title: 'Fix the demux bug',
-            status: 'running',
-            agentId: 'claude-code',
-            branch: 'duke/fix-demux',
-            baseBranch: 'main',
-            changedFileCount: transcript.files.length,
-            lastSeq: transcript.lastSeq,
-          } as never
-        }
-        files={transcript.files}
-      />
+      <Workspace session={previewSession} files={transcript.files} />
 
       {creating && (
         <NewSession

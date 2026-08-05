@@ -80,6 +80,14 @@ export const sessionSummary = z.object({
   updatedAt: z.number().int().positive(),
   /** Highest event seq assigned so far. Clients sync from here. */
   lastSeq: z.number().int().nonnegative(),
+  /**
+   * The pull request opened from this session's branch, once there is one.
+   *
+   * Carried on the summary so the app can offer to open the pull request or to
+   * visit it, rather than offering to open a second one that the server would
+   * refuse.
+   */
+  pullRequestUrl: z.string().url().nullable(),
 })
 
 export type SessionSummary = z.infer<typeof sessionSummary>

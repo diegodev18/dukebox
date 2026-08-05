@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { DukeboxClient } from '../lib/client.js'
 import type { Connection } from '../lib/connection.js'
 import { Composer } from '../components/Composer.js'
+import { PullRequest } from '../components/PullRequest.js'
 import { Sidebar } from '../components/Sidebar.js'
 import { Transcript } from '../components/Transcript.js'
 import { Workspace } from '../components/Workspace.js'
@@ -87,7 +88,19 @@ export function Session({ connection, onDisconnected }: Props) {
         onNewSession={() => setCreating(true)}
       />
 
-      <SessionColumn session={current} loading={loading} live={live} />
+      <SessionColumn
+        session={current}
+        loading={loading}
+        live={live}
+        client={client}
+        onPullRequest={(url) =>
+          setSessions((sessions) =>
+            sessions.map((session) =>
+              session.id === selected ? { ...session, pullRequestUrl: url } : session,
+            ),
+          )
+        }
+      />
 
       <Workspace session={current} files={live.transcript.files} />
 
@@ -115,10 +128,14 @@ function SessionColumn({
   session,
   loading,
   live,
+  client,
+  onPullRequest,
 }: {
   session: SessionSummary | null
   loading: boolean
   live: LiveSession
+  client: DukeboxClient
+  onPullRequest: (url: string) => void
 }) {
   if (loading) return <div />
 
@@ -145,6 +162,9 @@ function SessionColumn({
       <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
         <h1 className="truncate font-medium">{session.title}</h1>
         <span className="flex-1" />
+
+        <PullRequest client={client} session={session} onOpened={onPullRequest} />
+
         <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
           <StatusDot status={session.status} />
           {session.agentId}

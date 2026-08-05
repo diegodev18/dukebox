@@ -20,6 +20,8 @@ pub fn run() {
         // certificate a browser would accept, so this is the only path that
         // reaches a Dukebox server at all.
         .plugin(tauri_plugin_http::init())
+        // Opens a pull request in the user's browser rather than in the app.
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             #[cfg(debug_assertions)]
             {
