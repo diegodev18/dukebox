@@ -300,10 +300,30 @@ export class Workspace {
       `printf 'protocol=https\\nhost=github.com\\npath=${repoFullName}.git\\n\\n' | ${helperPath} get`,
     ])
 
+    // What the helper itself could not report. It writes nothing to stderr on
+    // a connection failure, so a refused or unanswered socket looks the same
+    // as one that answered with nothing.
+    if (!answered.stdout.includes('password=')) {
+      const connect = await this.container.exec([
+        'node',
+        '-e',
+        `const s=require("net").connect(${JSON.stringify(socketPath)});` +
+          `s.on("connect",()=>{console.log("connected");s.end()});` +
+          `s.on("error",e=>{console.log("connect failed: "+e.code);process.exit(0)});` +
+          `setTimeout(()=>{console.log("connect timed out");process.exit(0)},3000);`,
+      ])
+
+      findings.push(`socket connect: ${connect.stdout.trim() || 'no result'}`)
+    }
+
     findings.push(
       answered.stdout.includes('password=')
         ? 'helper answers: yes'
-        : `helper answers: NO (exit ${answered.exitCode})`,
+        : // The reply itself, since "nothing" and "a refusal" are different
+          // failures and the exit code alone cannot tell them apart.
+          `helper answers: NO (exit ${answered.exitCode}, reply ${JSON.stringify(
+            answered.stdout.slice(0, 80),
+          )}${answered.stderr.trim() ? `, stderr ${JSON.stringify(answered.stderr.slice(0, 80))}` : ''})`,
     )
 
     return findings.join(', ')
