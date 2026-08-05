@@ -223,6 +223,11 @@ export class SessionManager {
     await workspace.runSetup(config.setup, environment)
 
     const baseCommit = await workspace.headCommit()
+
+    // Persisted so a resume after a restart measures diffs against the same
+    // commit rather than against the agent's own work.
+    await this.deps.db.update(sessions).set({ baseCommit }).where(eq(sessions.id, session.id))
+
     const adapter = this.createAdapter(session.agentId)
 
     await adapter.start({
@@ -344,8 +349,10 @@ export class SessionManager {
    * GitHub, where they already have the tools to read a diff.
    */
   async openPullRequest(sessionId: string, title?: string): Promise<string> {
-    const running = this.running.get(sessionId)
-    if (!running) throw new SessionError('that session is not running')
+    // Resumed if the control plane has forgotten it. Asking for a pull request
+    // is exactly what someone does after coming back to finished work, which
+    // is the case most likely to have outlived a restart.
+    const running = this.running.get(sessionId) ?? (await this.resume(sessionId))
 
     const github = this.deps.github
     if (!github) throw new SessionError('GitHub is not configured on this server')
@@ -431,11 +438,77 @@ export class SessionManager {
 
   /** Send a follow-up prompt to a running session. */
   async prompt(sessionId: string, text: string, images?: string[]): Promise<void> {
-    const running = this.running.get(sessionId)
-    if (!running) throw new SessionError('that session is not running')
+    const running = this.running.get(sessionId) ?? (await this.resume(sessionId))
 
     await this.setStatus(sessionId, 'running')
     await running.adapter.send({ text, ...(images ? { images } : {}) })
+  }
+
+  /**
+   * Bring a session back after the control plane restarted.
+   *
+   * `running` is an in-memory map, so a restart forgets every session while
+   * their containers are still on disk — the whole point of stopping a
+   * container rather than removing it. Without this, a prompt to any session
+   * that predates the restart fails with "not running" and the only way back
+   * is to start a new session and lose the history.
+   *
+   * The repository is not cloned again and setup does not run again: the
+   * workspace is whatever the agent left, including commits it made.
+   */
+  private async resume(sessionId: string): Promise<RunningSession> {
+    const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
+    if (!session) throw new SessionError('no such session')
+
+    const container = await this.deps.sandbox.get(sessionId)
+    if (!container) {
+      // The container is genuinely gone, so there is no workspace to resume
+      // into. Saying which of the two happened is the difference between
+      // waiting and starting over.
+      throw new SessionError('that session’s container no longer exists')
+    }
+
+    await container.start()
+
+    const [project] = await this.deps.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, session.projectId))
+
+    if (!project) throw new SessionError('no such project')
+
+    const workspace = new Workspace(container)
+
+    // A fresh proxy: the old one died with the process that restarted, and
+    // without it a push has no credentials to reach GitHub with.
+    const credentials = await this.startCredentialProxy(sessionId, project.repoFullName)
+    if (credentials) await workspace.installCredentialHelper()
+
+    const adapter = this.createAdapter(session.agentId)
+    await adapter.start({
+      sessionId,
+      container,
+      workingDir: '/workspace/repo',
+      // Hands the agent its own prior session, so it answers with the
+      // conversation rather than from nothing.
+      ...(session.agentSessionId ? { resumeFrom: session.agentSessionId } : {}),
+    })
+
+    const running: RunningSession = {
+      container,
+      workspace,
+      adapter,
+      // The commit the branch started from, so diffs and the pull request
+      // check still measure against the same point they did before.
+      baseCommit: session.baseCommit ?? (await workspace.headCommit()),
+      repoFullName: project.repoFullName,
+      ...(credentials ? { credentials } : {}),
+    }
+
+    this.running.set(sessionId, running)
+    void this.consume(sessionId, adapter)
+
+    return running
   }
 
   async interrupt(sessionId: string): Promise<void> {

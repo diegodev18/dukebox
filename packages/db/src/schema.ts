@@ -200,6 +200,16 @@ export const sessions = pgTable(
     agentSessionId: text('agent_session_id'),
 
     /**
+     * The commit the session branched from.
+     *
+     * Persisted because diffs and the pull request check measure against it,
+     * and a control plane restart would otherwise re-derive it from whatever
+     * HEAD happens to be — which is the agent's own work, making every change
+     * it already made invisible.
+     */
+    baseCommit: text('base_commit'),
+
+    /**
      * Highest seq assigned so far. The source of truth for numbering: a new
      * event takes `last_seq + 1` under a row lock, which keeps sequences gap
      * free even with concurrent writers.

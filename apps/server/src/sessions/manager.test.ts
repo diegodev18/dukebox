@@ -554,6 +554,58 @@ describe('pull requests', () => {
     await withGitHub.stopAll()
   })
 
+  it('resumes a session the control plane has forgotten', async () => {
+    // A restart empties the in-memory map while the containers stay on disk.
+    // A second manager over the same database is what that looks like.
+    const { manager: first } = managerWithGitHub()
+    const session = await startOn(first)
+
+    const { manager: afterRestart } = managerWithGitHub()
+    await afterRestart.prompt(session.id, 'carry on')
+
+    expect(adapter.prompts.at(-1)?.text).toBe('carry on')
+    await afterRestart.stopAll()
+  })
+
+  it('opens a pull request on a session it had to resume', async () => {
+    // The path that failed in practice: restart, then ask for a pull request
+    // on work the agent did before it.
+    const { manager: first } = managerWithGitHub()
+    const session = await startOn(first)
+
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo hola > README.es.md'], { cwd: '/workspace/repo' })
+
+    const { manager: afterRestart } = managerWithGitHub()
+    await afterRestart.prompt(session.id, 'anything')
+
+    const url = await afterRestart.openPullRequest(session.id)
+
+    expect(url).toContain('/pull/1')
+    await afterRestart.stopAll()
+  })
+
+  it('says so when the container is gone rather than reporting it not running', async () => {
+    // Without a container there is no workspace to resume into, and the two
+    // send someone to different places: wait, or start over.
+    const { manager: afterRestart } = managerWithGitHub()
+    const projectId = await createProject()
+
+    const [orphan] = await db
+      .insert(sessions)
+      .values({
+        projectId,
+        agentId: 'fake',
+        title: 'Gone',
+        baseBranch: 'main',
+        branch: 'duke/gone',
+        status: 'done',
+      })
+      .returning()
+
+    await expect(afterRestart.prompt(orphan!.id, 'hello')).rejects.toThrow(/no longer exists/)
+  })
+
   it('opens one for work the agent committed itself', async () => {
     // Agents commit as they go. Asking whether anything is *uncommitted* makes
     // that look identical to an agent that did nothing, which refused a pull
