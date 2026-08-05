@@ -1,8 +1,20 @@
 import { serve } from '@hono/node-server'
 import { projects, sessions } from '@dukebox/db'
 import type { AgentEvent, EnvelopedEvent, ServerMessage, SessionSummary } from '@dukebox/protocol'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { PassThrough } from 'node:stream'
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from 'vitest'
 import { WebSocket } from 'ws'
+import { TerminalRegistry } from '../sessions/terminals.js'
 import { issuePairingCode, redeemPairingCode } from '../auth/pairing.js'
 import { EventBus } from '../events/bus.js'
 import { createApp } from '../http/app.js'
@@ -16,6 +28,17 @@ let server: ReturnType<typeof serve> | undefined
 let wss: ReturnType<typeof attachWebSocketServer> | undefined
 let port = 0
 const onPrompt = vi.fn(async () => {})
+
+/**
+ * The PTYs handed to the registry, newest last.
+ *
+ * A PassThrough stands in for a container shell: the connection only writes to
+ * it, reads from it, and closes it. Driving a real container here would be
+ * testing Docker rather than the WebSocket layer.
+ */
+let fakeTerminals: { stream: PassThrough; resize: Mock; close: Mock }[] = []
+let terminals: TerminalRegistry
+const auditTerminal = vi.fn(async () => {})
 
 afterAll(async () => {
   // The HTTP server waits for open connections, so upgraded sockets have to be
@@ -47,10 +70,23 @@ beforeAll(async () => {
     })
   })
 
+  terminals = new TerminalRegistry({
+    openTerminal: async () => {
+      const terminal = { stream: new PassThrough(), resize: vi.fn(async () => {}), close: vi.fn() }
+      terminal.close = vi.fn(async () => {
+        terminal.stream.destroy()
+      })
+      fakeTerminals.push(terminal)
+      return terminal
+    },
+  })
+
   wss = attachWebSocketServer(server as unknown as Parameters<typeof attachWebSocketServer>[0], {
     db,
     bus,
     onPrompt,
+    terminals,
+    auditTerminal,
   })
 })
 
@@ -58,6 +94,8 @@ beforeEach(async () => {
   await resetDatabase()
   await redis.flushdb()
   onPrompt.mockClear()
+  auditTerminal.mockClear()
+  fakeTerminals = []
 })
 
 async function pairDevice(): Promise<string> {
@@ -165,6 +203,24 @@ class TestClient {
 
   waitForCaughtUp(): Promise<void> {
     return this.waitFor(() => this.received.some((message) => message.type === 'caught_up'))
+  }
+
+  /** Wait for the first message of a type, and return it. */
+  async waitForMessage<T extends ServerMessage['type']>(
+    type: T,
+  ): Promise<Extract<ServerMessage, { type: T }>> {
+    await this.waitFor(() => this.received.some((message) => message.type === type))
+
+    return this.received.find(
+      (message): message is Extract<ServerMessage, { type: T }> => message.type === type,
+    )!
+  }
+
+  /** Every message of a type received so far. */
+  messagesOfType<T extends ServerMessage['type']>(type: T): Extract<ServerMessage, { type: T }>[] {
+    return this.received.filter(
+      (message): message is Extract<ServerMessage, { type: T }> => message.type === type,
+    )
   }
 
   close(): void {
@@ -535,6 +591,216 @@ describe('commands', () => {
     client.send({ type: 'telepathy', sessionId: 'x' })
 
     await client.waitFor(() => client.received.some((message) => message.type === 'command_error'))
+    client.close()
+  })
+})
+
+describe('terminals', () => {
+  it('opens a terminal and answers with its id', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({ type: 'terminal_open', sessionId, cols: 80, rows: 24 })
+
+    const opened = await client.waitForMessage('terminal_opened')
+    expect(opened.terminalId).toBeTruthy()
+    expect(opened.title).toBe('1')
+
+    client.close()
+  })
+
+  it('streams PTY output as base64', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({ type: 'terminal_open', sessionId, cols: 80, rows: 24 })
+    await client.waitForMessage('terminal_opened')
+
+    fakeTerminals[0]!.stream.write('hi')
+
+    const output = await client.waitForMessage('terminal_output')
+    expect(Buffer.from(output.data, 'base64').toString()).toBe('hi')
+
+    client.close()
+  })
+
+  it('carries input through to the PTY', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({ type: 'terminal_open', sessionId, cols: 80, rows: 24 })
+    const opened = await client.waitForMessage('terminal_opened')
+
+    const written: Buffer[] = []
+    fakeTerminals[0]!.stream.on('data', (chunk: Buffer) => written.push(chunk))
+
+    client.send({
+      type: 'terminal_input',
+      sessionId,
+      terminalId: opened.terminalId,
+      data: Buffer.from('ls -la\n').toString('base64'),
+    })
+
+    await client.waitFor(() => Buffer.concat(written).includes('ls -la'))
+
+    client.close()
+  })
+
+  it('reports a refused open rather than going silent', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    for (let index = 0; index < 4; index += 1) {
+      client.send({ type: 'terminal_open', sessionId, cols: 80, rows: 24 })
+      await client.waitFor(() => client.messagesOfType('terminal_opened').length === index + 1)
+    }
+
+    client.send({ type: 'terminal_open', sessionId, cols: 80, rows: 24 })
+
+    const error = await client.waitForMessage('command_error')
+    expect(error.message).toMatch(/at most 4 terminals/)
+
+    client.close()
+  })
+
+  it('includes live terminals in the subscribe handshake', async () => {
+    const sessionId = await createSession()
+
+    const first = await TestClient.connect(await pairDevice())
+    first.send({ type: 'terminal_open', sessionId, cols: 80, rows: 24 })
+    await first.waitForMessage('terminal_opened')
+
+    const second = await TestClient.connect(await pairDevice())
+    second.send({ type: 'subscribe', sessionId })
+
+    const list = await second.waitForMessage('terminal_list')
+    expect(list.terminals).toHaveLength(1)
+
+    first.close()
+    second.close()
+  })
+
+  it('replays the scrollback when a second client attaches', async () => {
+    const sessionId = await createSession()
+
+    const first = await TestClient.connect(await pairDevice())
+    first.send({ type: 'terminal_open', sessionId, cols: 80, rows: 24 })
+    const opened = await first.waitForMessage('terminal_opened')
+
+    fakeTerminals[0]!.stream.write('earlier output')
+    await first.waitForMessage('terminal_output')
+
+    const second = await TestClient.connect(await pairDevice())
+    second.send({
+      type: 'terminal_attach',
+      sessionId,
+      terminalId: opened.terminalId,
+      cols: 80,
+      rows: 24,
+    })
+
+    // The point of the scrollback: a client that arrives late still sees a
+    // full screen rather than joining mid-line.
+    const output = await second.waitForMessage('terminal_output')
+    expect(Buffer.from(output.data, 'base64').toString()).toContain('earlier output')
+
+    first.close()
+    second.close()
+  })
+
+  it('stops sending after a detach but leaves the shell running', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({ type: 'terminal_open', sessionId, cols: 80, rows: 24 })
+    const opened = await client.waitForMessage('terminal_opened')
+
+    client.send({ type: 'terminal_detach', sessionId, terminalId: opened.terminalId })
+
+    // Give the detach time to land before writing, so this does not pass by
+    // outrunning the server.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    fakeTerminals[0]!.stream.write('after detach')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    expect(client.messagesOfType('terminal_output')).toHaveLength(0)
+    expect(fakeTerminals[0]!.close).not.toHaveBeenCalled()
+
+    client.close()
+  })
+
+  it('leaves the terminal running when the socket closes', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({ type: 'terminal_open', sessionId, cols: 80, rows: 24 })
+    await client.waitForMessage('terminal_opened')
+
+    client.close()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    // A dropped connection must not end a long-running command. This is the
+    // whole reason the registry owns the PTY rather than the connection.
+    expect(fakeTerminals[0]!.close).not.toHaveBeenCalled()
+    expect(terminals.list(sessionId)).toHaveLength(1)
+  })
+
+  it('tells watchers when a shell exits', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({ type: 'terminal_open', sessionId, cols: 80, rows: 24 })
+    await client.waitForMessage('terminal_opened')
+
+    fakeTerminals[0]!.stream.end()
+
+    await client.waitForMessage('terminal_exit')
+
+    client.close()
+  })
+
+  it('audits opening and closing, but never the traffic', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({ type: 'terminal_open', sessionId, cols: 80, rows: 24 })
+    const opened = await client.waitForMessage('terminal_opened')
+
+    client.send({
+      type: 'terminal_input',
+      sessionId,
+      terminalId: opened.terminalId,
+      data: Buffer.from('secret-token\n').toString('base64'),
+    })
+
+    client.send({ type: 'terminal_close', sessionId, terminalId: opened.terminalId })
+    await client.waitFor(() => auditTerminal.mock.calls.length === 2)
+
+    const audited = auditTerminal.mock.calls.map((call) => (call as unknown[])[1])
+    expect(audited).toEqual([
+      { type: 'terminal_opened', terminalId: opened.terminalId, deviceId: expect.any(String) },
+      { type: 'terminal_closed', terminalId: opened.terminalId, deviceId: expect.any(String) },
+    ])
+
+    // Keystrokes must never reach the audit trail: people paste secrets into
+    // shells, and a keylogger in the database is worth more than its forensics.
+    expect(JSON.stringify(auditTerminal.mock.calls)).not.toContain('secret-token')
+
+    client.close()
+  })
+
+  it('closes a terminal on request', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({ type: 'terminal_open', sessionId, cols: 80, rows: 24 })
+    const opened = await client.waitForMessage('terminal_opened')
+
+    client.send({ type: 'terminal_close', sessionId, terminalId: opened.terminalId })
+    await client.waitFor(() => terminals.list(sessionId).length === 0)
+
+    expect(fakeTerminals[0]!.close).toHaveBeenCalled()
+
     client.close()
   })
 })
