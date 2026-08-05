@@ -165,7 +165,10 @@ function Preview() {
     agentId: 'claude-code',
     branch: 'duke/fix-demux',
     baseBranch: 'main',
-    changedFileCount: transcript.files.length,
+    // Zero on purpose: this is what the server reports for a session whose
+    // summary has not refreshed since the agent started editing. The pull
+    // request button has to appear anyway, off the live count.
+    changedFileCount: 0,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     lastSeq: transcript.lastSeq,
@@ -193,6 +196,7 @@ function Preview() {
           <PullRequest
             client={fakeClient}
             session={previewSession}
+            changedFiles={transcript.files.length}
             onOpened={(url) => console.log('opened', url)}
           />
 

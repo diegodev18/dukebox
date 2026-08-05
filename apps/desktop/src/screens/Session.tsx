@@ -163,7 +163,12 @@ function SessionColumn({
         <h1 className="truncate font-medium">{session.title}</h1>
         <span className="flex-1" />
 
-        <PullRequest client={client} session={session} onOpened={onPullRequest} />
+        <PullRequest
+          client={client}
+          session={session}
+          changedFiles={live.transcript.files.length}
+          onOpened={onPullRequest}
+        />
 
         <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
           <StatusDot status={session.status} />

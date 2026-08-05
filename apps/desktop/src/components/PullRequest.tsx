@@ -17,21 +17,30 @@ import type { DukeboxClient } from '../lib/client.js'
 interface Props {
   client: DukeboxClient
   session: SessionSummary
+  /**
+   * How many files the live stream has seen change.
+   *
+   * The summary's own count only refreshes when the server sends a new one, so
+   * a session that just edited its first file still reports zero — and the
+   * button that appears on that count would never appear.
+   */
+  changedFiles: number
   /** Records the URL so the button becomes a link without a refetch. */
   onOpened: (url: string) => void
 }
 
 type State = { kind: 'idle' } | { kind: 'opening' } | { kind: 'failed'; message: string }
 
-export function PullRequest({ client, session, onOpened }: Props) {
+export function PullRequest({ client, session, changedFiles, onOpened }: Props) {
   const [state, setState] = useState<State>({ kind: 'idle' })
 
   if (session.pullRequestUrl) {
     return <Link url={session.pullRequestUrl} />
   }
 
-  // Nothing to propose until the agent has changed something.
-  if (session.changedFileCount === 0) return null
+  // Nothing to propose until the agent has changed something. The live count
+  // leads because the summary's lags a running session by a whole turn.
+  if (Math.max(changedFiles, session.changedFileCount) === 0) return null
 
   const open = async () => {
     setState({ kind: 'opening' })
