@@ -86,8 +86,11 @@ export function Session({ connection, onDisconnected }: Props) {
         connection={connection}
         projects={projects}
         sessions={sessions}
-        selectedId={selected}
-        onSelect={setSelected}
+        selectedId={creating ? null : selected}
+        onSelect={(sessionId) => {
+          setCreating(false)
+          setSelected(sessionId)
+        }}
         onNewSession={() => setCreating(true)}
         onArchive={(sessionId) => {
           void (async () => {
@@ -112,27 +115,12 @@ export function Session({ connection, onDisconnected }: Props) {
         }}
       />
 
-      <SessionColumn
-        session={current}
-        loading={loading}
-        live={live}
-        client={client}
-        onPullRequest={(url) =>
-          setSessions((sessions) =>
-            sessions.map((session) =>
-              session.id === selected ? { ...session, pullRequestUrl: url } : session,
-            ),
-          )
-        }
-      />
-
-      <Workspace session={current} files={live.transcript.files} />
-
-      {creating && (
+      {loading ? (
+        <div />
+      ) : creating || !current ? (
         <NewSession
           client={client}
           projects={projects}
-          onCancel={() => setCreating(false)}
           onCreated={(session, project) => {
             // Added locally rather than refetched: the session exists but its
             // container is still building, and a list that only updates on the
@@ -143,40 +131,40 @@ export function Session({ connection, onDisconnected }: Props) {
             setCreating(false)
           }}
         />
+      ) : (
+        <SessionColumn
+          session={current}
+          live={live}
+          client={client}
+          onPullRequest={(url) =>
+            setSessions((sessions) =>
+              sessions.map((session) =>
+                session.id === selected ? { ...session, pullRequestUrl: url } : session,
+              ),
+            )
+          }
+        />
       )}
+
+      <Workspace
+        session={creating ? null : current}
+        files={creating ? [] : live.transcript.files}
+      />
     </div>
   )
 }
 
 function SessionColumn({
   session,
-  loading,
   live,
   client,
   onPullRequest,
 }: {
-  session: SessionSummary | null
-  loading: boolean
+  session: SessionSummary
   live: LiveSession
   client: DukeboxClient
   onPullRequest: (url: string) => void
 }) {
-  if (loading) return <div />
-
-  if (!session) {
-    return (
-      <div className="grid place-items-center px-6">
-        <div className="measure text-center">
-          <h2 className="font-medium">No sessions yet</h2>
-          <p className="mt-2 text-muted-foreground">
-            Start one from a project in the sidebar. It runs on your server, so you can close this
-            window and come back to it.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     // `min-h-0` is what makes the transcript scroll instead of the window
     // growing. A flex item defaults to `min-height: auto`, which refuses to

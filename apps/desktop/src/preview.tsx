@@ -140,6 +140,7 @@ const fakeClient = {
       isRegistered: false,
     },
   ],
+  listBranches: async () => ['main', 'develop'],
   createProject: async () => {
     throw new Error('the preview does not talk to a server')
   },
@@ -155,7 +156,7 @@ const fakeClient = {
  */
 function Preview() {
   const transcript = applyEvents(emptyTranscript(), script)
-  const [creating, setCreating] = useState(false)
+  const [creating, setCreating] = useState(true)
 
   const previewSession = {
     id: SESSION,
@@ -187,47 +188,64 @@ function Preview() {
         >
           New session
         </button>
+        <button
+          onClick={() => setCreating(false)}
+          className="mt-1 w-full rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          Fix the demux bug
+        </button>
       </div>
 
-      <div className="flex min-h-0 min-w-0 flex-col">
-        <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
-          <h1 className="truncate font-medium">Fix the demux bug</h1>
-          <span className="flex-1" />
-          <PullRequest
-            client={fakeClient}
-            session={previewSession}
-            changedFiles={transcript.files.length}
-            onOpened={(url) => console.log('opened', url)}
-          />
-
-          <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
-            <span className="size-1.5 rounded-full bg-running motion-safe:animate-pulse" />
-            claude-code
-          </span>
-        </header>
-
-        <Transcript
-          transcript={{ ...transcript, running: true }}
-          onRespond={(id, allow) => console.log('respond', id, allow)}
-        />
-
-        <Composer
-          onSend={(text) => console.log('send', text)}
-          onInterrupt={() => console.log('interrupt')}
-          running={false}
-        />
-      </div>
-
-      <Workspace session={previewSession} files={transcript.files} />
-
-      {creating && (
+      {creating ? (
         <NewSession
           client={fakeClient}
-          projects={[]}
-          onCancel={() => setCreating(false)}
+          projects={[
+            {
+              id: '00000000-0000-4000-8000-000000000010',
+              repoFullName: 'diegodev18/dukebox',
+              defaultBranch: 'main',
+              hasSnapshot: false,
+              createdAt: Date.now(),
+              sessionCount: 1,
+            },
+          ]}
           onCreated={() => setCreating(false)}
         />
+      ) : (
+        <div className="flex min-h-0 min-w-0 flex-col">
+          <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
+            <h1 className="truncate font-medium">Fix the demux bug</h1>
+            <span className="flex-1" />
+            <PullRequest
+              client={fakeClient}
+              session={previewSession}
+              changedFiles={transcript.files.length}
+              onOpened={(url) => console.log('opened', url)}
+            />
+
+            <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+              <span className="size-1.5 rounded-full bg-running motion-safe:animate-pulse" />
+              claude-code
+            </span>
+          </header>
+
+          <Transcript
+            transcript={{ ...transcript, running: true }}
+            onRespond={(id, allow) => console.log('respond', id, allow)}
+          />
+
+          <Composer
+            onSend={(text) => console.log('send', text)}
+            onInterrupt={() => console.log('interrupt')}
+            running={false}
+          />
+        </div>
       )}
+
+      <Workspace
+        session={creating ? null : previewSession}
+        files={creating ? [] : transcript.files}
+      />
     </div>
   )
 }
