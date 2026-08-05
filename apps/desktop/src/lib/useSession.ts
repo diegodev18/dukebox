@@ -1,6 +1,5 @@
 import {
   answerPermission,
-  appendPrompt,
   applyEvent,
   emptyTranscript,
   type SessionSummary,
@@ -146,11 +145,11 @@ export function useSession(
       if (!sessionId) return
 
       setError(null)
-      streamRef.current?.prompt(sessionId, text)
 
-      // Shown immediately rather than waiting for the server to echo it back —
-      // a composer that clears with nothing to show for it reads as a failure.
-      setTranscript((current) => appendPrompt(current, text, `prompt-${Date.now()}`))
+      // The prompt comes back as a `user_prompt` event and is folded in like
+      // anything else. Appending it here too would show it twice, and the local
+      // copy is the one that would not survive a reload.
+      streamRef.current?.prompt(sessionId, text)
     },
     [sessionId],
   )

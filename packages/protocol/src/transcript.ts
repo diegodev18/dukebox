@@ -60,7 +60,7 @@ export interface ErrorBlock {
   fatal: boolean
 }
 
-/** What the user typed. Not an agent event — added locally when sent. */
+/** What the user typed. Folded from `user_prompt`, like every other block. */
 export interface PromptBlock {
   kind: 'prompt'
   id: string
@@ -126,21 +126,6 @@ export function applyEvents(transcript: Transcript, events: readonly EnvelopedEv
   return events.reduce(applyEvent, transcript)
 }
 
-/**
- * Append a prompt the user just sent.
- *
- * Prompts are not agent events, so they never arrive over the socket. Showing
- * one immediately is what makes the composer feel answered; the alternative is
- * a message that vanishes until the agent replies.
- */
-export function appendPrompt(transcript: Transcript, text: string, id: string): Transcript {
-  return {
-    ...transcript,
-    blocks: [...transcript.blocks, { kind: 'prompt', id, text }],
-    running: true,
-  }
-}
-
 /** Mark a permission request answered, so the UI stops offering the buttons. */
 export function answerPermission(transcript: Transcript, id: string): Transcript {
   const index = transcript.blocks.findIndex(
@@ -166,6 +151,15 @@ function fold(draft: Transcript, event: AgentEvent, seq: number): void {
       draft.agentId = event.agentId
       if (event.model !== undefined) draft.model = event.model
       draft.running = true
+      return
+    }
+
+    case 'user_prompt': {
+      // Marks the session running before the agent has said anything: the
+      // prompt is sent and then nothing arrives until the first token, and a
+      // transcript that looks idle in that gap reads as a prompt that was lost.
+      draft.running = true
+      draft.blocks = [...draft.blocks, { kind: 'prompt', id: `prompt-${seq}`, text: event.text }]
       return
     }
 
