@@ -85,6 +85,70 @@ export function mergeProjectConfig(
 }
 
 // ---------------------------------------------------------------------------
+// Environment setup proposals — agent → review UI → server-stored config
+// ---------------------------------------------------------------------------
+
+/**
+ * One environment variable the agent thinks the project needs.
+ *
+ * Values are never proposed: secrets stay on the server, and the review UI is
+ * where a person fills them in.
+ */
+export const environmentEnvVar = z.object({
+  /** When true, the value is stored as a project secret and referenced as `${secret.NAME}`. */
+  secret: z.boolean().default(true),
+  description: z.string().optional(),
+})
+
+export type EnvironmentEnvVar = z.infer<typeof environmentEnvVar>
+
+/**
+ * What an environment-setup session writes for the user to review.
+ *
+ * Stored on the project as a draft until confirmed. Confirmed values become
+ * `projects.configOverride` (and secret rows for secret env vars).
+ */
+export const environmentProposal = z.object({
+  setup: z.array(z.string()).default([]),
+  env: z.record(environmentEnvVar).default({}),
+  instructions: z.string().optional(),
+  image: z.string().optional(),
+})
+
+export type EnvironmentProposal = z.infer<typeof environmentProposal>
+
+/** Path the setup agent must write its proposal to, outside the git worktree. */
+export const ENVIRONMENT_PROPOSAL_PATH = '/tmp/dukebox-env-proposal.json'
+
+/**
+ * Turn a reviewed proposal into a `ProjectConfig` fragment for `configOverride`.
+ *
+ * Secret env vars become `${secret.NAME}` references; non-secret ones need a
+ * literal value supplied alongside the proposal at confirm time.
+ */
+export function proposalToConfigOverride(
+  proposal: EnvironmentProposal,
+  literalEnv: Record<string, string> = {},
+): Partial<ProjectConfig> {
+  const env: Record<string, string> = {}
+
+  for (const [name, meta] of Object.entries(proposal.env)) {
+    if (meta.secret) {
+      env[name] = `\${secret.${name}}`
+    } else if (literalEnv[name] !== undefined) {
+      env[name] = literalEnv[name]
+    }
+  }
+
+  return {
+    setup: proposal.setup,
+    env,
+    ...(proposal.instructions !== undefined ? { instructions: proposal.instructions } : {}),
+    ...(proposal.image !== undefined ? { image: proposal.image } : {}),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // /etc/dukebox/config.toml — per-installation, written by the installer
 // ---------------------------------------------------------------------------
 

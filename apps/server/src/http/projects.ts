@@ -1,25 +1,35 @@
 import { projects, sessions, type Database } from '@dukebox/db'
 import {
   createProjectRequest,
+  defaultProjectConfig,
+  environmentProposal,
+  mergeProjectConfig,
+  projectConfig,
+  putProjectEnvironmentRequest,
+  type ProjectConfig,
   type ProjectSummary,
   type RepositorySummary,
 } from '@dukebox/protocol'
 import { count, desc, eq, and, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
 import type { GitHubClient } from '../github/client.js'
+import type { SecretStore } from '../secrets/store.js'
 
 /**
  * Projects: the repositories a user has connected.
  *
  * A project is a repository plus whatever Dukebox has learned about running it
- * — its default branch, and eventually its setup snapshot. Registering one is
- * separate from listing what is on GitHub, because most repositories a user
- * owns are not ones they want an agent working in.
+ * — its default branch, its environment config, and eventually its setup
+ * snapshot. Registering one is separate from listing what is on GitHub,
+ * because most repositories a user owns are not ones they want an agent
+ * working in.
  */
 
 export interface ProjectRoutesDeps {
   db: Database
   github: GitHubClient
+  /** Needed for environment routes that list/store project secrets. */
+  secrets?: SecretStore
 }
 
 export function projectRoutes(deps: ProjectRoutesDeps) {
@@ -60,6 +70,7 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
         repoFullName: projects.repoFullName,
         defaultBranch: projects.defaultBranch,
         snapshotImage: projects.snapshotImage,
+        configOverride: projects.configOverride,
         createdAt: projects.createdAt,
         sessionCount: count(sessions.id),
       })
@@ -73,6 +84,7 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
       repoFullName: row.repoFullName,
       defaultBranch: row.defaultBranch,
       hasSnapshot: row.snapshotImage !== null,
+      hasEnvironment: row.configOverride !== null,
       createdAt: row.createdAt.getTime(),
       sessionCount: Number(row.sessionCount),
     }))
@@ -131,6 +143,7 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
         repoFullName: project!.repoFullName,
         defaultBranch: project!.defaultBranch,
         hasSnapshot: false,
+        hasEnvironment: false,
         createdAt: project!.createdAt.getTime(),
         sessionCount: 0,
       },
@@ -149,6 +162,125 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
     }
 
     return c.json({ branches: await deps.github.listBranches(project.repoFullName) })
+  })
+
+  /**
+   * The project's environment: saved config, pending draft, and secret names.
+   */
+  app.get('/projects/:id/environment', async (c) => {
+    const [project] = await deps.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, c.req.param('id')))
+
+    if (!project) {
+      return c.json({ error: 'not_found', message: 'no such project' }, 404)
+    }
+
+    const draft = project.environmentDraft
+      ? environmentProposal.safeParse(project.environmentDraft)
+      : null
+
+    const override = project.configOverride
+      ? projectConfig.partial().safeParse(project.configOverride)
+      : null
+
+    const effective = override?.success
+      ? mergeProjectConfig(defaultProjectConfig(), override.data as Partial<ProjectConfig>)
+      : null
+
+    const secretNames = deps.secrets ? await deps.secrets.names(project.id) : []
+
+    return c.json({
+      config: effective
+        ? {
+            image: effective.image,
+            setup: effective.setup,
+            env: effective.env,
+            instructions: effective.instructions,
+          }
+        : null,
+      draft: draft?.success ? draft.data : null,
+      secretNames,
+    })
+  })
+
+  /**
+   * Save the project's environment after the user reviews a proposal.
+   *
+   * Writes `configOverride`, upserts secrets, and clears any pending draft.
+   */
+  app.put('/projects/:id/environment', async (c) => {
+    const projectId = c.req.param('id')
+    const [project] = await deps.db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+
+    if (!project) {
+      return c.json({ error: 'not_found', message: 'no such project' }, 404)
+    }
+
+    const body = await c.req.json().catch(() => null)
+    const parsed = putProjectEnvironmentRequest.safeParse(body)
+
+    if (!parsed.success) {
+      return c.json({ error: 'invalid_request', message: parsed.error.message }, 400)
+    }
+
+    const { setup, secretEnv, literalEnv, secrets, instructions, image } = parsed.data
+
+    if (deps.secrets) {
+      for (const [name, value] of Object.entries(secrets)) {
+        if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) {
+          return c.json({ error: 'invalid_request', message: `invalid secret name: ${name}` }, 400)
+        }
+        await deps.secrets.set(name, value, projectId)
+      }
+    } else if (Object.keys(secrets).length > 0) {
+      return c.json(
+        { error: 'unavailable', message: 'secrets are not configured on this server' },
+        503,
+      )
+    }
+
+    const env: Record<string, string> = { ...literalEnv }
+    for (const name of secretEnv) {
+      env[name] = `\${secret.${name}}`
+    }
+
+    const override: Partial<ProjectConfig> = {
+      setup,
+      env,
+      ...(instructions !== undefined ? { instructions } : {}),
+      ...(image !== undefined ? { image } : {}),
+    }
+
+    // Validate the merged result so a bad override cannot poison later sessions.
+    const merged = mergeProjectConfig(defaultProjectConfig(), override)
+    projectConfig.parse(merged)
+
+    await deps.db
+      .update(projects)
+      .set({
+        configOverride: override,
+        environmentDraft: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(projects.id, projectId))
+
+    const secretNames = deps.secrets ? await deps.secrets.names(projectId) : []
+
+    return c.json({
+      config: {
+        image: merged.image,
+        setup: merged.setup,
+        env: merged.env,
+        instructions: merged.instructions,
+      },
+      draft: null,
+      secretNames,
+    })
   })
 
   /**

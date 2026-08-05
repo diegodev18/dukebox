@@ -118,6 +118,14 @@ export const projects = pgTable(
      */
     snapshotImage: text('snapshot_image'),
 
+    /**
+     * Agent-proposed environment waiting for the user to review.
+     *
+     * Written when an `environment_setup` session finishes; cleared when the
+     * user confirms into `configOverride` (or discards the draft).
+     */
+    environmentDraft: jsonb('environment_draft'),
+
     createdAt,
     updatedAt,
   },
@@ -186,6 +194,14 @@ export const sessions = pgTable(
     agentId: text('agent_id').notNull(),
     status: text('status').notNull(),
     title: text('title').notNull().default(''),
+
+    /**
+     * `coding` (default) or `environment_setup`.
+     *
+     * Setup sessions skip the project's own setup commands and ask the agent
+     * to propose them instead.
+     */
+    purpose: text('purpose').notNull().default('coding'),
 
     branch: text('branch').notNull(),
     baseBranch: text('base_branch').notNull(),

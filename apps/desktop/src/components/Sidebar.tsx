@@ -19,6 +19,7 @@ interface Props {
   selectedId: string | null
   onSelect: (sessionId: string) => void
   onNewSession: () => void
+  onConfigureEnvironment: (projectId: string) => void
   onArchive: (sessionId: string) => void
 }
 
@@ -29,6 +30,7 @@ export function Sidebar({
   selectedId,
   onSelect,
   onNewSession,
+  onConfigureEnvironment,
   onArchive,
 }: Props) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
@@ -91,6 +93,7 @@ export function Sidebar({
                   // applying — clear it so the full list returns underneath.
                   if (searching) closeSearch()
                 }}
+                onConfigureEnvironment={() => onConfigureEnvironment(project.id)}
                 onContextMenu={(sessionId, event) => {
                   event.preventDefault()
                   setMenu({ sessionId, x: event.clientX, y: event.clientY })
@@ -186,19 +189,30 @@ function ProjectGroup({
   sessions,
   selectedId,
   onSelect,
+  onConfigureEnvironment,
   onContextMenu,
 }: {
   project: ProjectSummary
   sessions: SessionSummary[]
   selectedId: string | null
   onSelect: (sessionId: string) => void
+  onConfigureEnvironment: () => void
   onContextMenu: (sessionId: string, event: React.MouseEvent) => void
 }) {
   return (
     <>
       <div className="flex items-center gap-2.5 px-4 py-1.5 text-[12.5px] text-muted-foreground">
         <BranchIcon />
-        <span className="truncate">{project.repoFullName}</span>
+        <span className="min-w-0 flex-1 truncate">{project.repoFullName}</span>
+        {!project.hasEnvironment && (
+          <button
+            type="button"
+            onClick={onConfigureEnvironment}
+            className="shrink-0 text-[11px] text-foreground underline-offset-2 hover:underline"
+          >
+            Set up
+          </button>
+        )}
       </div>
 
       {sessions.map((session) => (

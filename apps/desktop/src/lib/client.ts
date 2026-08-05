@@ -1,7 +1,10 @@
 import type {
   ApiError,
+  EnvironmentProposal,
   PairRedeemResponse,
+  ProjectEnvironmentResponse,
   ProjectSummary,
+  PutProjectEnvironmentRequest,
   RepositorySummary,
   SessionSummary,
 } from '@dukebox/protocol'
@@ -128,10 +131,46 @@ export class DukeboxClient {
   async startSession(options: {
     projectId: string
     agentId: string
-    prompt: string
+    prompt?: string
     baseBranch?: string
+    purpose?: 'coding' | 'environment_setup'
   }): Promise<SessionSummary> {
     return this.request('/api/sessions', { method: 'POST', body: JSON.stringify(options) })
+  }
+
+  async getEnvironment(projectId: string): Promise<ProjectEnvironmentResponse> {
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/environment`)
+  }
+
+  async putEnvironment(
+    projectId: string,
+    body: PutProjectEnvironmentRequest,
+  ): Promise<ProjectEnvironmentResponse> {
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/environment`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async getEnvironmentProposal(sessionId: string): Promise<EnvironmentProposal | null> {
+    const body = await this.request<{ proposal: EnvironmentProposal | null }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/environment-proposal`,
+    )
+    return body.proposal
+  }
+
+  async listProjectSecrets(projectId: string): Promise<string[]> {
+    const body = await this.request<{ names: string[] }>(
+      `/api/projects/${encodeURIComponent(projectId)}/secrets`,
+    )
+    return body.names
+  }
+
+  async setProjectSecret(projectId: string, name: string, value: string): Promise<void> {
+    await this.request(`/api/projects/${encodeURIComponent(projectId)}/secrets`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, value }),
+    })
   }
 
   /**

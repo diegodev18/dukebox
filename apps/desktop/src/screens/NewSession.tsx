@@ -10,12 +10,17 @@ import type { DukeboxClient } from '../lib/client.js'
  * Three choices sit above the prompt: which repository, which branch to
  * branch from, and which agent. A repository that is not yet a project
  * becomes one on the way through.
+ *
+ * Projects without a saved environment are steered into an environment_setup
+ * session first; coding sessions only start once setup/env exist.
  */
 
 interface Props {
   client: DukeboxClient
   projects: ProjectSummary[]
   onCreated: (session: SessionSummary, project: ProjectSummary | null) => void
+  /** Prefer starting environment setup for this project (e.g. from sidebar). */
+  preferSetupProjectId?: string | null
 }
 
 type Status =
@@ -24,16 +29,28 @@ type Status =
   | { kind: 'starting' }
   | { kind: 'failed'; message: string }
 
-export function NewSession({ client, projects, onCreated }: Props) {
+export function NewSession({ client, projects, onCreated, preferSetupProjectId }: Props) {
+  const preferred = preferSetupProjectId
+    ? projects.find((project) => project.id === preferSetupProjectId)
+    : undefined
+
   const [repositories, setRepositories] = useState<RepositorySummary[]>([])
-  const [target, setTarget] = useState<string>(projects[0]?.repoFullName ?? '')
-  const [baseBranch, setBaseBranch] = useState<string>(projects[0]?.defaultBranch ?? '')
+  const [target, setTarget] = useState<string>(
+    preferred?.repoFullName ?? projects[0]?.repoFullName ?? '',
+  )
+  const [baseBranch, setBaseBranch] = useState<string>(
+    preferred?.defaultBranch ?? projects[0]?.defaultBranch ?? '',
+  )
   const [branches, setBranches] = useState<string[]>([])
   const [branchesLoading, setBranchesLoading] = useState(false)
   const [agentId, setAgentId] = useState<string>(AVAILABLE_AGENTS[0].id)
   const [prompt, setPrompt] = useState('')
+  const [forceSetup, setForceSetup] = useState(Boolean(preferSetupProjectId))
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const field = useRef<HTMLTextAreaElement>(null)
+
+  const selectedProject = projects.find((candidate) => candidate.repoFullName === target) ?? null
+  const needsEnvironment = forceSetup || !selectedProject || !selectedProject.hasEnvironment
 
   useEffect(() => {
     let cancelled = false
@@ -45,7 +62,7 @@ export function NewSession({ client, projects, onCreated }: Props) {
         setRepositories(found)
         setTarget((current) => {
           if (current) return current
-          return projects[0]?.repoFullName || found[0]?.fullName || ''
+          return preferred?.repoFullName || projects[0]?.repoFullName || found[0]?.fullName || ''
         })
         setStatus({ kind: 'idle' })
       })
@@ -65,7 +82,7 @@ export function NewSession({ client, projects, onCreated }: Props) {
     return () => {
       cancelled = true
     }
-  }, [client, projects])
+  }, [client, projects, preferred?.repoFullName])
 
   // Resolve the branch list whenever the chosen repository changes. A project
   // can ask GitHub for every branch; a bare repository only has its default.
@@ -122,13 +139,15 @@ export function NewSession({ client, projects, onCreated }: Props) {
 
   const selectRepo = (fullName: string) => {
     setTarget(fullName)
+    setForceSetup(false)
     const project = projects.find((candidate) => candidate.repoFullName === fullName)
     const repository = repositories.find((candidate) => candidate.fullName === fullName)
     setBaseBranch(project?.defaultBranch || repository?.defaultBranch || 'main')
   }
 
   const submit = async () => {
-    if (!target || !prompt.trim() || !baseBranch || !agentId) return
+    if (!target || !baseBranch || !agentId) return
+    if (!needsEnvironment && !prompt.trim()) return
 
     setStatus({ kind: 'starting' })
 
@@ -142,11 +161,23 @@ export function NewSession({ client, projects, onCreated }: Props) {
         project = created = await client.createProject(target)
       }
 
+      if (needsEnvironment || !project.hasEnvironment) {
+        const session = await client.startSession({
+          projectId: project.id,
+          agentId,
+          baseBranch,
+          purpose: 'environment_setup',
+        })
+        onCreated(session, created)
+        return
+      }
+
       const session = await client.startSession({
         projectId: project.id,
         agentId,
         prompt: prompt.trim(),
         baseBranch,
+        purpose: 'coding',
       })
 
       onCreated(session, created)
@@ -160,8 +191,9 @@ export function NewSession({ client, projects, onCreated }: Props) {
 
   const busy = status.kind === 'starting' || status.kind === 'loading'
   const options = mergeOptions(projects, repositories)
-  const canSend =
-    !busy && Boolean(target) && Boolean(baseBranch) && Boolean(agentId) && prompt.trim() !== ''
+  const canSend = needsEnvironment
+    ? !busy && Boolean(target) && Boolean(baseBranch) && Boolean(agentId)
+    : !busy && Boolean(target) && Boolean(baseBranch) && Boolean(agentId) && prompt.trim() !== ''
 
   return (
     <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
@@ -178,40 +210,67 @@ export function NewSession({ client, projects, onCreated }: Props) {
           <AgentPicker value={agentId} onChange={setAgentId} disabled={busy} />
         </div>
 
-        <div className="rounded-[calc(var(--radius)*1.1)] border border-border bg-surface focus-within:border-muted-foreground/40">
-          <textarea
-            ref={field}
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault()
-                void submit()
-              }
-            }}
-            rows={3}
-            disabled={busy}
-            placeholder="Ask for a change…"
-            aria-label="What should it do?"
-            className="block w-full resize-none bg-transparent px-3.5 pt-3.5 pb-2 outline-none placeholder:text-muted-foreground disabled:opacity-50"
-          />
-
-          <div className="flex items-center justify-end gap-2 px-2.5 pb-2.5">
-            <button
-              type="button"
-              onClick={() => void submit()}
-              disabled={!canSend}
-              aria-label={status.kind === 'starting' ? 'Starting' : 'Start session'}
-              className="inline-flex size-8 items-center justify-center rounded-full bg-foreground text-background disabled:opacity-40"
-            >
-              {status.kind === 'starting' ? (
-                <span className="text-[11px] font-medium">…</span>
-              ) : (
-                <SendIcon />
-              )}
-            </button>
+        {needsEnvironment ? (
+          <div className="rounded-[calc(var(--radius)*1.1)] border border-border bg-surface px-3.5 py-3.5">
+            <h2 className="text-[14px] font-medium">Configure environment</h2>
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              {agentId} will inspect the repository and propose setup commands and environment
+              variables. You review and save them before coding sessions can start.
+            </p>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => void submit()}
+                disabled={!canSend}
+                className="rounded-full bg-foreground px-3.5 py-1.5 text-[13px] font-medium text-background disabled:opacity-40"
+              >
+                {status.kind === 'starting' ? 'Starting…' : 'Start setup'}
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="rounded-[calc(var(--radius)*1.1)] border border-border bg-surface focus-within:border-muted-foreground/40">
+            <textarea
+              ref={field}
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  void submit()
+                }
+              }}
+              rows={3}
+              disabled={busy}
+              placeholder="Ask for a change…"
+              aria-label="What should it do?"
+              className="block w-full resize-none bg-transparent px-3.5 pt-3.5 pb-2 outline-none placeholder:text-muted-foreground disabled:opacity-50"
+            />
+
+            <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
+              <button
+                type="button"
+                onClick={() => setForceSetup(true)}
+                className="text-[12px] text-muted-foreground underline-offset-2 hover:underline"
+              >
+                Reconfigure environment
+              </button>
+              <button
+                type="button"
+                onClick={() => void submit()}
+                disabled={!canSend}
+                aria-label={status.kind === 'starting' ? 'Starting' : 'Start session'}
+                className="inline-flex size-8 items-center justify-center rounded-full bg-foreground text-background disabled:opacity-40"
+              >
+                {status.kind === 'starting' ? (
+                  <span className="text-[11px] font-medium">…</span>
+                ) : (
+                  <SendIcon />
+                )}
+              </button>
+            </div>
+          </div>
+        )}
 
         {status.kind === 'failed' && (
           <p role="alert" className="mt-3 text-[13px] text-destructive">

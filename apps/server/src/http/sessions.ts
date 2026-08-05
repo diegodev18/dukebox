@@ -1,9 +1,8 @@
-import { sessions, type Database, type Session } from '@dukebox/db'
+import { projects, sessions, type Database } from '@dukebox/db'
 import {
   createSessionRequest,
+  environmentProposal,
   openPullRequestRequest,
-  type SessionStatus,
-  type SessionSummary,
 } from '@dukebox/protocol'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
@@ -75,10 +74,12 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
     }
 
     try {
-      const { baseBranch, ...rest } = parsed.data
+      const { baseBranch, prompt, purpose, ...rest } = parsed.data
 
       const session = await deps.sessions.start({
         ...rest,
+        purpose,
+        ...(prompt ? { prompt } : {}),
         // Spread rather than passed through: an optional property set to
         // undefined is not the same as an absent one, and the manager treats
         // an absent base branch as "use the project's default".
@@ -92,6 +93,43 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
       }
       throw error
     }
+  })
+
+  /**
+   * The environment proposal produced by an environment_setup session.
+   *
+   * Prefer the project's draft (written when the session finished). Falls back
+   * to null when the agent has not produced a valid proposal yet.
+   */
+  app.get('/sessions/:id/environment-proposal', async (c) => {
+    const sessionId = c.req.param('id')
+
+    const [session] = await deps.db
+      .select({ projectId: sessions.projectId, purpose: sessions.purpose })
+      .from(sessions)
+      .where(eq(sessions.id, sessionId))
+
+    if (!session) {
+      return c.json({ error: 'not_found', message: 'no such session' }, 404)
+    }
+
+    if (session.purpose !== 'environment_setup') {
+      return c.json(
+        { error: 'invalid_request', message: 'session is not an environment setup session' },
+        400,
+      )
+    }
+
+    const [project] = await deps.db
+      .select({ environmentDraft: projects.environmentDraft })
+      .from(projects)
+      .where(eq(projects.id, session.projectId))
+
+    const parsed = project?.environmentDraft
+      ? environmentProposal.safeParse(project.environmentDraft)
+      : null
+
+    return c.json({ proposal: parsed?.success ? parsed.data : null })
   })
 
   /**

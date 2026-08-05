@@ -2,9 +2,13 @@ import { ClaudeCodeAdapter, type AgentAdapter } from '@dukebox/adapters'
 import { projects, sessions, type Database, type Session } from '@dukebox/db'
 import {
   defaultProjectConfig,
+  ENVIRONMENT_PROPOSAL_PATH,
   isTerminal,
+  mergeProjectConfig,
   parseSecretReference,
+  projectConfig,
   type ProjectConfig,
+  type SessionPurpose,
   type SessionStatus,
 } from '@dukebox/protocol'
 import {
@@ -24,6 +28,7 @@ import { join } from 'node:path'
 import type { EventBus } from '../events/bus.js'
 import type { GitHubClient } from '../github/client.js'
 import { AGENT_CREDENTIAL_SECRET, type SecretStore } from '../secrets/store.js'
+import { ENVIRONMENT_SETUP_PROMPT, parseEnvironmentProposalJson } from './environmentSetup.js'
 import { pullRequestContent } from './summary.js'
 import { toSummary } from './summarize.js'
 
@@ -79,7 +84,9 @@ export interface StartSessionOptions {
   projectId: string
   agentId: string
   baseBranch?: string
-  prompt: string
+  purpose?: SessionPurpose
+  /** Required for coding sessions; ignored for environment_setup. */
+  prompt?: string
 }
 
 /** What a running session holds while it is alive. */
@@ -92,6 +99,7 @@ interface RunningSession {
   /** Serves git credentials to this session's container, if configured. */
   credentials?: CredentialProxy
   repoFullName: string
+  purpose: SessionPurpose
 }
 
 export class SessionError extends Error {}
@@ -140,6 +148,14 @@ export class SessionManager {
 
     if (!project) throw new SessionError(`no such project: ${options.projectId}`)
 
+    const purpose: SessionPurpose = options.purpose ?? 'coding'
+    const prompt =
+      purpose === 'environment_setup' ? ENVIRONMENT_SETUP_PROMPT : (options.prompt?.trim() ?? '')
+
+    if (purpose === 'coding' && !prompt) {
+      throw new SessionError('prompt is required for coding sessions')
+    }
+
     const baseBranch = options.baseBranch ?? project.defaultBranch
 
     const [session] = await this.deps.db
@@ -148,11 +164,12 @@ export class SessionManager {
         projectId: project.id,
         agentId: options.agentId,
         status: 'provisioning',
+        purpose,
         // Placeholder until the workspace names the branch; the row has to
         // exist first so the client has something to subscribe to.
         branch: '',
         baseBranch,
-        title: options.prompt.slice(0, 80),
+        title: purpose === 'environment_setup' ? 'Configure environment' : prompt.slice(0, 80),
       })
       .returning()
 
@@ -160,16 +177,14 @@ export class SessionManager {
 
     // Deliberately not awaited: provisioning is slow, and its progress reaches
     // the client as events rather than as a blocked request.
-    void this.provision(session, project.repoFullName, options.prompt).catch(
-      async (error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error)
+    void this.provision(session, project.repoFullName, prompt).catch(async (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error)
 
-        await this.deps.bus
-          .append(session.id, { type: 'error', message, fatal: true })
-          .catch(() => undefined)
-        await this.setStatus(session.id, 'failed', { errorMessage: message })
-      },
-    )
+      await this.deps.bus
+        .append(session.id, { type: 'error', message, fatal: true })
+        .catch(() => undefined)
+      await this.setStatus(session.id, 'failed', { errorMessage: message })
+    })
 
     return session
   }
@@ -196,7 +211,8 @@ export class SessionManager {
     prompt: string,
     credentials: CredentialProxy | undefined,
   ): Promise<void> {
-    const config = defaultProjectConfig()
+    const purpose = (session.purpose as SessionPurpose) || 'coding'
+    const config = await this.configFor(session.projectId)
 
     // Set on the container rather than only on setup commands: the agent
     // process needs its own credentials, and it is started later by exec.
@@ -238,9 +254,12 @@ export class SessionManager {
 
     await this.deps.db.update(sessions).set({ branch }).where(eq(sessions.id, session.id))
 
-    // The container already carries these, but exec's own environment is what
-    // a setup command sees for anything the shell resolves at invocation.
-    await workspace.runSetup(config.setup, environment)
+    // Environment-setup sessions must not run the project's setup: they exist
+    // to propose it. Coding sessions run setup so the agent starts in a ready
+    // workspace; a failed setup fails the session rather than starting half-baked.
+    if (purpose === 'coding' && config.setup.length > 0) {
+      await workspace.runSetup(config.setup, environment)
+    }
 
     const baseCommit = await workspace.headCommit()
 
@@ -254,7 +273,7 @@ export class SessionManager {
       sessionId: session.id,
       container,
       workingDir: '/workspace/repo',
-      ...(config.instructions ? { instructions: config.instructions } : {}),
+      ...(config.instructions && purpose === 'coding' ? { instructions: config.instructions } : {}),
       ...(session.agentSessionId ? { resumeFrom: session.agentSessionId } : {}),
     })
 
@@ -264,6 +283,7 @@ export class SessionManager {
       adapter,
       baseCommit,
       repoFullName,
+      purpose,
       ...(credentials ? { credentials } : {}),
     })
     await this.setStatus(session.id, 'running')
@@ -330,11 +350,69 @@ export class SessionManager {
       // and the user can still see the conversation.
     }
 
+    if (running.purpose === 'environment_setup' && reason !== 'error') {
+      await this.captureEnvironmentProposal(sessionId, running)
+    }
+
     const agentSessionId = running.adapter.agentSessionId()
 
     await this.setStatus(sessionId, reason === 'error' ? 'failed' : 'done', {
       ...(agentSessionId ? { agentSessionId } : {}),
     })
+  }
+
+  /**
+   * Read the setup agent's proposal file and store it as the project's draft.
+   *
+   * A missing or invalid file is logged on the session rather than failing the
+   * turn — the user can still re-run setup or fill the form manually.
+   */
+  private async captureEnvironmentProposal(
+    sessionId: string,
+    running: RunningSession,
+  ): Promise<void> {
+    const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
+    if (!session) return
+
+    try {
+      const result = await running.container.exec(['cat', ENVIRONMENT_PROPOSAL_PATH])
+      if (result.exitCode !== 0) {
+        throw new Error(`proposal file missing at ${ENVIRONMENT_PROPOSAL_PATH}`)
+      }
+
+      const proposal = parseEnvironmentProposalJson(result.stdout)
+
+      await this.deps.db
+        .update(projects)
+        .set({ environmentDraft: proposal, updatedAt: new Date() })
+        .where(eq(projects.id, session.projectId))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      await this.deps.bus
+        .append(sessionId, {
+          type: 'error',
+          message: `Could not read environment proposal: ${message}`,
+          fatal: false,
+        })
+        .catch(() => undefined)
+    }
+  }
+
+  /**
+   * Effective project config: defaults merged with the server-stored override.
+   */
+  private async configFor(projectId: string): Promise<ProjectConfig> {
+    const [project] = await this.deps.db
+      .select({ configOverride: projects.configOverride })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+
+    if (!project?.configOverride) return defaultProjectConfig()
+
+    const parsed = projectConfig.partial().safeParse(project.configOverride)
+    if (!parsed.success) return defaultProjectConfig()
+
+    return mergeProjectConfig(defaultProjectConfig(), parsed.data as Partial<ProjectConfig>)
   }
 
   /** Where this session's credential socket lives on the host. */
@@ -672,6 +750,7 @@ export class SessionManager {
       // check still measure against the same point they did before.
       baseCommit: await this.baseCommitFor(session, workspace),
       repoFullName: project.repoFullName,
+      purpose: (session.purpose as SessionPurpose) || 'coding',
       ...(credentials ? { credentials } : {}),
     }
 
