@@ -9,6 +9,7 @@ import { desc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import type { EventBus } from '../events/bus.js'
 import { SessionError, type SessionManager } from '../sessions/manager.js'
+import { toSummary } from '../sessions/summarize.js'
 
 /**
  * Sessions: an agent working in a container on one repository.
@@ -22,23 +23,6 @@ export interface SessionRoutesDeps {
   db: Database
   bus: EventBus
   sessions: SessionManager
-}
-
-function toSummary(session: Session): SessionSummary {
-  return {
-    id: session.id,
-    projectId: session.projectId,
-    agentId: session.agentId,
-    status: session.status as SessionStatus,
-    title: session.title,
-    branch: session.branch,
-    baseBranch: session.baseBranch,
-    changedFileCount: session.changedFileCount,
-    createdAt: session.createdAt.getTime(),
-    updatedAt: session.updatedAt.getTime(),
-    lastSeq: session.lastSeq,
-    pullRequestUrl: session.prUrl,
-  }
 }
 
 export function sessionRoutes(deps: SessionRoutesDeps) {

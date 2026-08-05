@@ -24,6 +24,7 @@ import type { EventBus } from '../events/bus.js'
 import type { GitHubClient } from '../github/client.js'
 import { AGENT_CREDENTIAL_SECRET, type SecretStore } from '../secrets/store.js'
 import { pullRequestContent } from './summary.js'
+import { toSummary } from './summarize.js'
 
 /**
  * Session lifecycle.
@@ -103,10 +104,16 @@ export class SessionManager {
     status: SessionStatus,
     extra: Partial<Session> = {},
   ): Promise<void> {
-    await this.deps.db
+    const [updated] = await this.deps.db
       .update(sessions)
       .set({ status, updatedAt: new Date(), ...extra })
       .where(eq(sessions.id, sessionId))
+      .returning()
+
+    // Announced from here because this is the one place a session's state
+    // changes. A client that has to poll for this shows whatever was true when
+    // it loaded, which for a running session is wrong within seconds.
+    if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
   }
 
   /**

@@ -1,5 +1,11 @@
 import { messages, sessions, type Database } from '@dukebox/db'
-import { agentEvent, type AgentEvent, type EnvelopedEvent } from '@dukebox/protocol'
+import {
+  agentEvent,
+  sessionSummary,
+  type AgentEvent,
+  type EnvelopedEvent,
+  type SessionSummary,
+} from '@dukebox/protocol'
 import { and, asc, eq, gt, sql } from 'drizzle-orm'
 import type Redis from 'ioredis'
 
@@ -58,6 +64,19 @@ export function streamKey(sessionId: string): string {
 export function channelKey(sessionId: string): string {
   return `session:${sessionId}:live`
 }
+
+/**
+ * Redis pub/sub channel for changes to a session itself.
+ *
+ * Separate from the event stream because these are not events: they carry no
+ * sequence number, are not replayed, and a client that misses one is corrected
+ * by the next. Putting them in the log would mean numbering something whose
+ * whole value is being the latest.
+ *
+ * Not per-session: a client watches every session it lists, and subscribing to
+ * one channel is cheaper than one subscription per row in the sidebar.
+ */
+export const SESSION_UPDATE_CHANNEL = 'sessions:updates'
 
 /**
  * How many events Redis keeps per session.
@@ -198,8 +217,53 @@ export class EventBus {
     }
   }
 
+  /**
+   * Announce that a session changed.
+   *
+   * Fire and forget: a summary that fails to publish is superseded by the next
+   * one, and a session whose work succeeded should not fail because nobody was
+   * told about it.
+   */
+  async publishSessionUpdate(session: SessionSummary): Promise<void> {
+    await this.redis.publish(SESSION_UPDATE_CHANNEL, JSON.stringify(session)).catch(() => undefined)
+  }
+
+  /**
+   * Subscribe to session changes across every session.
+   *
+   * One subscription serves a whole client: the sidebar shows many sessions,
+   * and a subscription per row would multiply connections for no gain.
+   */
+  async subscribeToSessionUpdates(
+    onUpdate: (session: SessionSummary) => void,
+  ): Promise<() => Promise<void>> {
+    const subscriber = this.redis.duplicate()
+    await subscriber.subscribe(SESSION_UPDATE_CHANNEL)
+
+    subscriber.on('message', (_channel, payload) => {
+      const parsed = sessionSummary.safeParse(safeJson(payload))
+      // A summary this build cannot read is dropped rather than crashing a
+      // connection: the next update corrects whatever the client is showing.
+      if (parsed.success) onUpdate(parsed.data)
+    })
+
+    return async () => {
+      await subscriber.unsubscribe(SESSION_UPDATE_CHANNEL)
+      subscriber.disconnect()
+    }
+  }
+
   /** Delete a session's Redis stream. The Postgres record is kept. */
   async clearStream(sessionId: string): Promise<void> {
     await this.redis.del(streamKey(sessionId))
+  }
+}
+
+/** Parse without throwing. A malformed payload is dropped, not fatal. */
+function safeJson(payload: string): unknown {
+  try {
+    return JSON.parse(payload)
+  } catch {
+    return null
   }
 }

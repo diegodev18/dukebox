@@ -222,16 +222,30 @@ export function attachWebSocketServer(server: Server, deps: WebSocketDeps): WebS
   wss.on('connection', (socket: WebSocket, _request: IncomingMessage, device: Device) => {
     const connection = new Connection(socket, device, deps)
 
+    // Session state, for every session rather than the subscribed one: the
+    // sidebar lists them all, and without this it shows whatever was true when
+    // the app loaded.
+    const updates = deps.bus
+      .subscribeToSessionUpdates((session) => connection.send({ type: 'session_update', session }))
+      .catch(() => undefined)
+
+    const teardown = async () => {
+      await (
+        await updates
+      )?.()
+      await connection.close()
+    }
+
     socket.on('message', (data) => {
       void connection.handle(data.toString())
     })
 
     socket.on('close', () => {
-      void connection.close()
+      void teardown()
     })
 
     socket.on('error', () => {
-      void connection.close()
+      void teardown()
     })
   })
 

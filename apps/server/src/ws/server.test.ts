@@ -1,6 +1,6 @@
 import { serve } from '@hono/node-server'
 import { projects, sessions } from '@dukebox/db'
-import type { AgentEvent, EnvelopedEvent, ServerMessage } from '@dukebox/protocol'
+import type { AgentEvent, EnvelopedEvent, ServerMessage, SessionSummary } from '@dukebox/protocol'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WebSocket } from 'ws'
 import { issuePairingCode, redeemPairingCode } from '../auth/pairing.js'
@@ -144,6 +144,16 @@ class TestClient {
       .map((message) => message.event)
   }
 
+  /** Every session summary pushed so far, in arrival order. */
+  sessionUpdates(): SessionSummary[] {
+    return this.received
+      .filter(
+        (message): message is Extract<ServerMessage, { type: 'session_update' }> =>
+          message.type === 'session_update',
+      )
+      .map((message) => message.session)
+  }
+
   async waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
@@ -280,6 +290,89 @@ describe('subscribe', () => {
  * The guarantee the whole event pipeline exists for: closing a laptop mid-turn
  * must not lose anything, and reconnecting must not show anything twice.
  */
+describe('session updates', () => {
+  it('pushes a session summary when it changes', async () => {
+    // Without this the sidebar shows whatever was true when the app loaded,
+    // which for a running session is wrong within seconds.
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    // The server subscribes to Redis after accepting the socket, so a publish
+    // sent immediately can beat the subscription. Waiting for a round trip is
+    // enough to know it is in place.
+    client.send({ type: 'subscribe', sessionId })
+    await client.waitForCaughtUp()
+
+    await bus.publishSessionUpdate({
+      id: sessionId,
+      projectId: '00000000-0000-4000-8000-000000000001',
+      agentId: 'claude-code',
+      status: 'running',
+      title: 'A session',
+      branch: 'duke/abc',
+      baseBranch: 'main',
+      changedFileCount: 2,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      lastSeq: 5,
+      pullRequestUrl: null,
+    })
+
+    await client.waitFor(() => client.sessionUpdates().length > 0)
+    expect(client.sessionUpdates()[0]).toMatchObject({ id: sessionId, status: 'running' })
+
+    client.close()
+  })
+
+  it('pushes updates for sessions the client never subscribed to', async () => {
+    // The sidebar lists every session, not just the open one, so these cannot
+    // depend on a subscription.
+    const watched = await createSession()
+    const other = await createSession()
+
+    const client = await TestClient.connect(await pairDevice())
+    client.send({ type: 'subscribe', sessionId: watched })
+    await client.waitForCaughtUp()
+
+    await bus.publishSessionUpdate({
+      id: other,
+      projectId: '00000000-0000-4000-8000-000000000001',
+      agentId: 'claude-code',
+      status: 'done',
+      title: 'Another session',
+      branch: 'duke/def',
+      baseBranch: 'main',
+      changedFileCount: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      lastSeq: 1,
+      pullRequestUrl: null,
+    })
+
+    await client.waitFor(() => client.sessionUpdates().length > 0)
+    expect(client.sessionUpdates()[0]).toMatchObject({ id: other, status: 'done' })
+
+    client.close()
+  })
+
+  it('ignores a summary it cannot read rather than dropping the connection', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    // A server one version ahead, or another writer on the channel.
+    await redis.publish('sessions:updates', JSON.stringify({ id: 'not-a-session' }))
+    await bus.append(sessionId, TEXT('still working'))
+
+    client.send({ type: 'subscribe', sessionId })
+    await client.waitForCaughtUp()
+
+    expect(client.sessionUpdates()).toHaveLength(0)
+    expect(client.events()).toHaveLength(1)
+
+    client.close()
+  })
+})
+
 describe('resume', () => {
   it('loses nothing when a client disconnects mid-stream', async () => {
     const sessionId = await createSession()
