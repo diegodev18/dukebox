@@ -14,6 +14,7 @@ export function toSummary(session: Session): SessionSummary {
     projectId: session.projectId,
     agentId: session.agentId,
     status: session.status as SessionStatus,
+    purpose: (session.purpose as SessionSummary['purpose']) || 'coding',
     title: session.title,
     branch: session.branch,
     baseBranch: session.baseBranch,

@@ -155,7 +155,14 @@ export function createApp(context: AppContext) {
 
   // Mounted under /api, so the auth middleware above already covers them.
   if (context.features) {
-    app.route('/api', projectRoutes({ db: context.db, github: context.features.github }))
+    app.route(
+      '/api',
+      projectRoutes({
+        db: context.db,
+        github: context.features.github,
+        secrets: context.features.secrets,
+      }),
+    )
     app.route(
       '/api',
       sessionRoutes({

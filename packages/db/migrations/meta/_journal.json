@@ -29,6 +29,13 @@
       "when": 1785916800000,
       "tag": "0003_quiet_archivist",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785947784230,
+      "tag": "0004_environment_setup",
+      "breakpoints": true
     }
   ]
 }

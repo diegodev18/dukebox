@@ -854,3 +854,107 @@ describe('pull requests', () => {
     await withGitHub.stopAll()
   })
 })
+
+describe('project environment on coding sessions', () => {
+  it('runs saved setup commands and injects env before the agent starts', async () => {
+    const projectId = await createProject()
+    await db
+      .update(projects)
+      .set({
+        configOverride: {
+          setup: ['touch /tmp/dukebox-setup-ran', 'echo ok > /tmp/dukebox-setup-marker'],
+          env: { DUKEBOX_TEST_ENV: 'from-config' },
+        },
+      })
+      .where(eq(projects.id, projectId))
+
+    const session = await manager.start({
+      projectId,
+      agentId: 'fake',
+      prompt: 'use the environment',
+    })
+    createdSessions.push(session.id)
+
+    await waitForStatus(session.id, 'running')
+
+    const container = await sandbox.get(session.id)
+    expect(container).toBeTruthy()
+
+    const marker = await container!.exec(['cat', '/tmp/dukebox-setup-marker'])
+    expect(marker.exitCode).toBe(0)
+    expect(marker.stdout.trim()).toBe('ok')
+
+    const env = await container!.exec(['printenv', 'DUKEBOX_TEST_ENV'])
+    expect(env.stdout.trim()).toBe('from-config')
+
+    expect(adapter.started).toBeTruthy()
+  }, 120_000)
+
+  it('fails the session when a setup command fails', async () => {
+    const projectId = await createProject()
+    await db
+      .update(projects)
+      .set({
+        configOverride: {
+          setup: ['false'],
+          env: {},
+        },
+      })
+      .where(eq(projects.id, projectId))
+
+    const session = await manager.start({
+      projectId,
+      agentId: 'fake',
+      prompt: 'should not reach the agent',
+    })
+    createdSessions.push(session.id)
+
+    await waitForStatus(session.id, 'failed')
+    expect(adapter.started).toBeUndefined()
+  }, 120_000)
+
+  it('skips project setup for environment_setup sessions', async () => {
+    const projectId = await createProject()
+    await db
+      .update(projects)
+      .set({
+        configOverride: {
+          setup: ['touch /tmp/should-not-run'],
+          env: {},
+        },
+      })
+      .where(eq(projects.id, projectId))
+
+    const session = await manager.start({
+      projectId,
+      agentId: 'fake',
+      purpose: 'environment_setup',
+    })
+    createdSessions.push(session.id)
+
+    expect(session.purpose).toBe('environment_setup')
+    expect(session.title).toBe('Configure environment')
+
+    await waitForStatus(session.id, 'running')
+
+    const container = await sandbox.get(session.id)
+    const check = await container!.exec(['test', '-f', '/tmp/should-not-run'])
+    expect(check.exitCode).not.toBe(0)
+
+    // Write a proposal as the agent would, then finish the turn.
+    await container!.exec([
+      'sh',
+      '-c',
+      `printf '%s' '{"setup":["pnpm install"],"env":{"DATABASE_URL":{"secret":true}}}' > /tmp/dukebox-env-proposal.json`,
+    ])
+
+    adapter.emit({ type: 'done', reason: 'completed' })
+    await waitForStatus(session.id, 'done')
+
+    const [project] = await db.select().from(projects).where(eq(projects.id, projectId))
+    expect(project?.environmentDraft).toMatchObject({
+      setup: ['pnpm install'],
+      env: { DATABASE_URL: { secret: true } },
+    })
+  }, 120_000)
+})

@@ -65,12 +65,24 @@ export const agentDescriptor = z.object({
 
 export type AgentDescriptor = z.infer<typeof agentDescriptor>
 
+/**
+ * Why a session exists.
+ *
+ * `coding` is a normal agent turn. `environment_setup` asks the agent to
+ * inspect the repository and propose setup commands and environment variables
+ * — it does not run the project's own setup, which would be circular.
+ */
+export const sessionPurpose = z.enum(['coding', 'environment_setup'])
+
+export type SessionPurpose = z.infer<typeof sessionPurpose>
+
 /** A session as the client sees it. */
 export const sessionSummary = z.object({
   id: z.string().uuid(),
   projectId: z.string().uuid(),
   agentId: z.string(),
   status: sessionStatus,
+  purpose: sessionPurpose.default('coding'),
   title: z.string(),
   /** Branch the agent works on, e.g. `duke/3f9a2b`. */
   branch: z.string(),

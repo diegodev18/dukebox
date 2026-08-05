@@ -7,6 +7,7 @@ const project = (
 ): ProjectSummary => ({
   defaultBranch: 'main',
   hasSnapshot: false,
+  hasEnvironment: true,
   createdAt: 1,
   sessionCount: 1,
   ...overrides,
@@ -17,6 +18,7 @@ const session = (
 ): SessionSummary => ({
   agentId: 'claude-code',
   status: 'done',
+  purpose: 'coding',
   branch: 'duke/abc',
   baseBranch: 'main',
   changedFileCount: 0,

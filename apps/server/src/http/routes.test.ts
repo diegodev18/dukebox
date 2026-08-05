@@ -1,6 +1,7 @@
 import { projects, sessions } from '@dukebox/db'
 import { randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { eq } from 'drizzle-orm'
 import { AGENT_CREDENTIAL_SECRET, SecretStore } from '../secrets/store.js'
 import { issuePairingCode, redeemPairingCode } from '../auth/pairing.js'
 import { EventBus } from '../events/bus.js'
@@ -706,6 +707,131 @@ describe('project secrets', () => {
   it('returns 404 for an unknown project', async () => {
     const response = await request('/api/projects/00000000-0000-4000-8000-000000000000/secrets')
     expect(response.status).toBe(404)
+  })
+})
+
+describe('project environment', () => {
+  it('returns null config when none is saved', async () => {
+    const project = await createProject()
+    const body = (await (await request(`/api/projects/${project.id}/environment`)).json()) as {
+      config: null
+      draft: null
+      secretNames: string[]
+    }
+
+    expect(body).toEqual({ config: null, draft: null, secretNames: [] })
+  })
+
+  it('saves setup, secret refs, and secret values', async () => {
+    const project = await createProject()
+
+    const response = await request(`/api/projects/${project.id}/environment`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        setup: ['pnpm install'],
+        secretEnv: ['DATABASE_URL'],
+        literalEnv: { NODE_ENV: 'development' },
+        secrets: { DATABASE_URL: 'postgres://local/db' },
+        instructions: 'Run typecheck.',
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      config: { setup: string[]; env: Record<string, string>; instructions: string }
+      draft: null
+      secretNames: string[]
+    }
+
+    expect(body.config.setup).toEqual(['pnpm install'])
+    expect(body.config.env).toEqual({
+      NODE_ENV: 'development',
+      DATABASE_URL: '${secret.DATABASE_URL}',
+    })
+    expect(body.config.instructions).toBe('Run typecheck.')
+    expect(body.secretNames).toContain('DATABASE_URL')
+    expect(body.draft).toBeNull()
+
+    const listed = (await (await request('/api/projects')).json()) as {
+      projects: { hasEnvironment: boolean }[]
+    }
+    expect(listed.projects[0]?.hasEnvironment).toBe(true)
+  })
+
+  it('exposes a draft until confirmed', async () => {
+    const project = await createProject()
+    await db
+      .update(projects)
+      .set({
+        environmentDraft: {
+          setup: ['npm ci'],
+          env: { API_KEY: { secret: true } },
+        },
+      })
+      .where(eq(projects.id, project.id))
+
+    const body = (await (await request(`/api/projects/${project.id}/environment`)).json()) as {
+      draft: { setup: string[] } | null
+    }
+
+    expect(body.draft?.setup).toEqual(['npm ci'])
+  })
+
+  it('returns a proposal from an environment_setup session', async () => {
+    const project = await createProject()
+    await db
+      .update(projects)
+      .set({
+        environmentDraft: { setup: ['pnpm install'], env: {} },
+      })
+      .where(eq(projects.id, project.id))
+
+    const session = await createSession(project.id, { purpose: 'environment_setup' })
+    const body = (await (
+      await request(`/api/sessions/${session.id}/environment-proposal`)
+    ).json()) as { proposal: { setup: string[] } | null }
+
+    expect(body.proposal?.setup).toEqual(['pnpm install'])
+  })
+
+  it('rejects a proposal lookup on a coding session', async () => {
+    const project = await createProject()
+    const session = await createSession(project.id)
+    const response = await request(`/api/sessions/${session.id}/environment-proposal`)
+    expect(response.status).toBe(400)
+  })
+})
+
+describe('POST /api/sessions purpose', () => {
+  it('accepts an environment_setup session without a prompt', async () => {
+    const project = await createProject()
+    const session = await createSession(project.id, {
+      status: 'provisioning',
+      purpose: 'environment_setup',
+      title: 'Configure environment',
+    })
+    vi.mocked(sessionManager.start).mockResolvedValueOnce(session)
+
+    const response = await post('/api/sessions', {
+      projectId: project.id,
+      agentId: 'claude-code',
+      purpose: 'environment_setup',
+    })
+
+    expect(response.status).toBe(202)
+    expect(sessionManager.start).toHaveBeenCalledWith(
+      expect.objectContaining({ purpose: 'environment_setup' }),
+    )
+  })
+
+  it('rejects a coding session without a prompt', async () => {
+    const project = await createProject()
+    const response = await post('/api/sessions', {
+      projectId: project.id,
+      agentId: 'claude-code',
+      purpose: 'coding',
+    })
+    expect(response.status).toBe(400)
   })
 })
 

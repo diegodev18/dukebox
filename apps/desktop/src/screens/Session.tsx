@@ -4,6 +4,7 @@ import { DukeboxClient } from '../lib/client.js'
 import type { Connection } from '../lib/connection.js'
 import { AgentIcon, hasAgentIcon } from '../components/AgentIcon.js'
 import { Composer } from '../components/Composer.js'
+import { EnvironmentReview } from '../components/EnvironmentReview.js'
 import { PullRequest } from '../components/PullRequest.js'
 import { SessionInfo } from '../components/SessionInfo.js'
 import { Sidebar } from '../components/Sidebar.js'
@@ -37,6 +38,15 @@ export function Session({ connection, onDisconnected }: Props) {
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [setupProjectId, setSetupProjectId] = useState<string | null>(null)
+
+  const refreshProjects = async () => {
+    try {
+      setProjects(await client.listProjects())
+    } catch {
+      // Leave the local list alone; a failed refresh should not wipe the UI.
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -90,6 +100,7 @@ export function Session({ connection, onDisconnected }: Props) {
     setSessions((current) => [session, ...current])
     setSelected(session.id)
     setCreating(false)
+    setSetupProjectId(null)
   }
 
   return (
@@ -109,9 +120,17 @@ export function Session({ connection, onDisconnected }: Props) {
         selectedId={creating ? null : selected}
         onSelect={(sessionId) => {
           setCreating(false)
+          setSetupProjectId(null)
           setSelected(sessionId)
         }}
-        onNewSession={() => setCreating(true)}
+        onNewSession={() => {
+          setSetupProjectId(null)
+          setCreating(true)
+        }}
+        onConfigureEnvironment={(projectId) => {
+          setSetupProjectId(projectId)
+          setCreating(true)
+        }}
         onArchive={(sessionId) => {
           void (async () => {
             try {
@@ -143,6 +162,7 @@ export function Session({ connection, onDisconnected }: Props) {
           connection={connection}
           projects={projects}
           onCreated={onSessionCreated}
+          preferSetupProjectId={setupProjectId}
         />
       ) : current ? (
         <>
@@ -158,6 +178,9 @@ export function Session({ connection, onDisconnected }: Props) {
                 ),
               )
             }
+            onEnvironmentSaved={() => {
+              void refreshProjects()
+            }}
           />
           <Workspace
             session={current}
@@ -185,13 +208,19 @@ function SessionColumn({
   client,
   connection,
   onPullRequest,
+  onEnvironmentSaved,
 }: {
   session: SessionSummary
   live: LiveSession
   client: DukeboxClient
   connection: Connection
   onPullRequest: (url: string) => void
+  onEnvironmentSaved: () => void
 }) {
+  const showEnvironmentReview =
+    session.purpose === 'environment_setup' &&
+    (session.status === 'done' || session.status === 'failed')
+
   return (
     // `min-h-0` is what makes the transcript scroll instead of the window
     // growing. A flex item defaults to `min-height: auto`, which refuses to
@@ -203,12 +232,14 @@ function SessionColumn({
         <SessionInfo session={session} connection={connection} />
         <span className="flex-1" />
 
-        <PullRequest
-          client={client}
-          session={session}
-          changedFiles={live.transcript.files.length}
-          onOpened={onPullRequest}
-        />
+        {session.purpose !== 'environment_setup' && (
+          <PullRequest
+            client={client}
+            session={session}
+            changedFiles={live.transcript.files.length}
+            onOpened={onPullRequest}
+          />
+        )}
 
         <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
           <StatusDot status={session.status} />
@@ -234,12 +265,21 @@ function SessionColumn({
 
       <Transcript transcript={live.transcript} onRespond={live.respond} />
 
-      <Composer
-        onSend={live.send}
-        onInterrupt={live.interrupt}
-        running={live.transcript.running}
-        disabled={live.status === 'offline'}
-      />
+      {showEnvironmentReview ? (
+        <EnvironmentReview
+          client={client}
+          projectId={session.projectId}
+          sessionId={session.id}
+          onSaved={onEnvironmentSaved}
+        />
+      ) : (
+        <Composer
+          onSend={live.send}
+          onInterrupt={live.interrupt}
+          running={live.transcript.running}
+          disabled={live.status === 'offline' || session.purpose === 'environment_setup'}
+        />
+      )}
     </div>
   )
 }
