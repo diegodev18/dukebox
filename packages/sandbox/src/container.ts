@@ -93,6 +93,21 @@ export interface ExecResult {
   stderr: string
 }
 
+/** An interactive shell inside a container. */
+export interface TerminalHandle {
+  /**
+   * Terminal bytes in both directions.
+   *
+   * Reads are demultiplexed with stdout and stderr merged, which is what a
+   * terminal wants: a compiler's warnings belong interleaved with its output,
+   * on the same screen, in the order they happened. `execStream` drops stderr
+   * instead, because there it would corrupt a JSONL event stream.
+   */
+  stream: Duplex
+  resize: (cols: number, rows: number) => Promise<void>
+  close: () => Promise<void>
+}
+
 /** A running session container. */
 export class SessionContainer {
   constructor(
@@ -174,6 +189,62 @@ export class SessionContainer {
     raw.on('error', (error: Error) => stdout.emit('error', error))
 
     return Duplex.from({ readable: stdout, writable: raw })
+  }
+
+  /**
+   * Start an interactive login shell with a PTY.
+   *
+   * A login shell rather than a bare one so the profile runs and the toolchain
+   * on PATH matches what the agent sees. The caller owns the returned stream
+   * and must close it: an abandoned exec keeps a process alive in the container
+   * against its PID limit.
+   */
+  async openTerminal(
+    options: { cols: number; rows: number; cwd?: string } = { cols: 80, rows: 24 },
+  ): Promise<TerminalHandle> {
+    const exec = await this.container.exec({
+      Cmd: ['/bin/bash', '-l'],
+      AttachStdin: true,
+      AttachStdout: true,
+      AttachStderr: true,
+      Tty: true,
+      ConsoleSize: [options.rows, options.cols],
+      ...(options.cwd ? { WorkingDir: options.cwd } : {}),
+    })
+
+    const raw = await exec.start({ hijack: true, stdin: true })
+
+    // Demultiplexed even though this exec has a TTY. Docker frames a hijacked
+    // exec stream regardless — asking for a TTY does not turn the framing off —
+    // and handing those 8-byte headers to a terminal emulator paints them on
+    // screen as garbage between every chunk.
+    //
+    // Both channels are demuxed into one destination rather than separated:
+    // stderr belongs interleaved with stdout on a terminal, in the order it
+    // arrived.
+    const output = new PassThrough()
+    this.docker.modem.demuxStream(raw, output, output)
+
+    raw.on('end', () => output.end())
+    raw.on('error', (error: Error) => output.emit('error', error))
+
+    const stream = Duplex.from({ readable: output, writable: raw })
+
+    return {
+      stream,
+      // Docker takes rows before columns, and getting them backwards produces a
+      // terminal that looks right until something wraps.
+      resize: async (cols, rows) => {
+        await exec.resize({ h: rows, w: cols })
+      },
+      // The raw socket rather than the wrapper: destroying the wrapper leaves
+      // the hijacked connection open, and with it the shell process, which
+      // counts against the container's PID limit for as long as it lives.
+      close: async () => {
+        raw.destroy()
+        output.end()
+      },
+    }
   }
 
   /** Stop the container but keep it, so a follow-up can resume in place. */

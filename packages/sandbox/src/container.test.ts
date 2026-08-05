@@ -159,6 +159,82 @@ describe('Sandbox', () => {
     })
   })
 
+  describe('openTerminal', () => {
+    /** Poll until a condition holds, so a test never depends on a fixed sleep. */
+    async function waitFor(condition: () => boolean, timeoutMs = 15_000): Promise<void> {
+      const deadline = Date.now() + timeoutMs
+
+      while (Date.now() < deadline) {
+        if (condition()) return
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+
+      throw new Error('timed out waiting for condition')
+    }
+
+    it('runs an interactive shell and echoes what is written to it', async () => {
+      const container = await createSession()
+      const terminal = await container.openTerminal({ cols: 80, rows: 24 })
+
+      const chunks: Buffer[] = []
+      terminal.stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+
+      terminal.stream.write('echo dukebox-terminal-works\n')
+
+      // A shell prints a prompt, echoes the line, then prints the output, and
+      // none of that arrives in one chunk. Polling for the marker is what makes
+      // this deterministic without guessing at a sleep.
+      await waitFor(() => Buffer.concat(chunks).includes('dukebox-terminal-works'))
+
+      await terminal.close()
+    })
+
+    it('strips the frame headers Docker adds even to a TTY exec', async () => {
+      const container = await createSession()
+      const terminal = await container.openTerminal({ cols: 80, rows: 24 })
+
+      const chunks: Buffer[] = []
+      terminal.stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+
+      terminal.stream.write('printf MARKER\n')
+      await waitFor(() => Buffer.concat(chunks).includes('MARKER'))
+
+      // Asking for a TTY does not turn Docker's framing off: a hijacked exec
+      // stream carries an 8-byte header per chunk either way. Left in, they
+      // reach the terminal emulator and are painted on screen as garbage.
+      expect(Buffer.concat(chunks).includes(Buffer.from([1, 0, 0, 0]))).toBe(false)
+
+      await terminal.close()
+    })
+
+    it('interleaves stderr with stdout, as a screen does', async () => {
+      const container = await createSession()
+      const terminal = await container.openTerminal({ cols: 80, rows: 24 })
+
+      const chunks: Buffer[] = []
+      terminal.stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+
+      // Unlike execStream, which drops stderr to keep a JSONL stream parseable,
+      // a terminal has to show it: a build's warnings belong beside its output,
+      // not discarded.
+      terminal.stream.write('printf OUT; printf ERRTEXT >&2\n')
+      await waitFor(() => Buffer.concat(chunks).includes('ERRTEXT'))
+
+      expect(Buffer.concat(chunks).toString()).toContain('OUT')
+
+      await terminal.close()
+    })
+
+    it('reports a size change without throwing', async () => {
+      const container = await createSession()
+      const terminal = await container.openTerminal({ cols: 80, rows: 24 })
+
+      await expect(terminal.resize(120, 40)).resolves.toBeUndefined()
+
+      await terminal.close()
+    })
+  })
+
   it('reports a non-zero exit code', async () => {
     const container = await createSession()
     const result = await container.exec(['sh', '-c', 'exit 3'])
