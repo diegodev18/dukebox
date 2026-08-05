@@ -1,25 +1,25 @@
-import { renderToStaticMarkup } from 'react-dom/server'
 import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@tauri-apps/plugin-opener', () => ({
   openUrl: vi.fn(),
 }))
 
-import { Markdown } from './src/components/Markdown'
+import { Markdown } from './Markdown.js'
 
 describe('Markdown', () => {
   it('strips backticks from inline code', () => {
     const html = renderToStaticMarkup(
       createElement(Markdown, null, '`execStream` never demultiplexes'),
     )
-    console.log('HTML:', html)
+
     expect(html).toContain('<code')
     expect(html).toContain('>execStream</code>')
     expect(html).not.toContain('>`execStream`<')
   })
 
-  it('renders the preview sample', () => {
+  it('renders lists, fences, and inline code from a sample', () => {
     const md = [
       'I found it.',
       '',
@@ -35,9 +35,11 @@ describe('Markdown', () => {
       '```',
       '',
     ].join('\n')
+
     const html = renderToStaticMarkup(createElement(Markdown, null, md))
-    console.log('SAMPLE:', html)
+
     expect(html).toContain('<ol')
+    expect(html).toContain('language-ts')
     expect(html).toMatch(/<code[^>]*>execStream<\/code>/)
     expect(html).not.toMatch(/<code[^>]*>`execStream`<\/code>/)
   })
