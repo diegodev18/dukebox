@@ -3,10 +3,10 @@ import { useEffect, useState } from 'react'
 import type { DukeboxClient } from '../lib/client.js'
 
 /**
- * Review form shown after an environment_setup session finishes.
+ * Review form for an environment_setup session's proposal.
  *
- * The agent proposed setup commands and env names; the user edits them, fills
- * secret values, and confirms. Confirmed config lives only on the server.
+ * Lives in the workspace Environment tab so the transcript stays open for
+ * follow-up context while the user edits setup commands and secrets.
  */
 
 interface Props {
@@ -120,15 +120,15 @@ export function EnvironmentReview({ client, projectId, sessionId, onSaved }: Pro
 
   if (status.kind === 'loading') {
     return (
-      <div className="border-t border-border bg-surface px-4.5 py-3 text-[13px] text-muted-foreground">
+      <div className="px-3.5 py-4 text-[12.5px] text-muted-foreground">
         Loading environment proposal…
       </div>
     )
   }
 
   return (
-    <div className="max-h-[45%] min-h-0 overflow-y-auto border-t border-border bg-surface px-4.5 py-3">
-      <div className="mb-2 flex items-baseline justify-between gap-3">
+    <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3">
+      <div className="mb-3 flex flex-col gap-2">
         <div>
           <h2 className="text-[13px] font-medium">Review environment</h2>
           <p className="text-[12px] text-muted-foreground">
@@ -139,7 +139,7 @@ export function EnvironmentReview({ client, projectId, sessionId, onSaved }: Pro
           type="button"
           onClick={() => void save()}
           disabled={status.kind === 'saving' || status.kind === 'saved'}
-          className="rounded-md bg-foreground px-3 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
+          className="self-start rounded-md bg-foreground px-3 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
         >
           {status.kind === 'saving'
             ? 'Saving…'

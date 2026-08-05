@@ -1,8 +1,12 @@
-import type { ProjectSummary, SessionSummary } from '@dukebox/protocol'
+import {
+  DEFAULT_COMMIT_IDENTITY,
+  type ProjectSummary,
+  type SessionSummary,
+} from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
-import type { Connection } from '../lib/connection.js'
 import { filterProjects, filterSessions } from '../lib/searchSessions.js'
 import { StatusDot } from '../screens/Session.js'
+import { UserMenu } from './UserMenu.js'
 
 /**
  * Sessions, grouped by the repository they run against.
@@ -13,7 +17,6 @@ import { StatusDot } from '../screens/Session.js'
  */
 
 interface Props {
-  connection: Connection
   projects: ProjectSummary[]
   sessions: SessionSummary[]
   selectedId: string | null
@@ -24,7 +27,6 @@ interface Props {
 }
 
 export function Sidebar({
-  connection,
   projects,
   sessions,
   selectedId,
@@ -104,16 +106,11 @@ export function Sidebar({
         )}
       </div>
 
-      {/* Which server this is. Dukebox is self-hosted and supports more than
-          one, so it matters more than whose account is signed in. */}
-      <div className="flex items-center gap-2.5 border-t border-border px-3.5 py-2.5 text-[12.5px]">
-        <span className="size-1.5 flex-none rounded-full bg-done" />
-        <div className="min-w-0">
-          <div className="truncate font-medium">{connection.serverName}</div>
-          <div className="truncate font-mono text-[11px] text-muted-foreground">
-            {connection.address.host}
-          </div>
-        </div>
+      {/* Who the work is attributed to. Which server it runs on lives in the
+          session header instead: that question is per session and only worth
+          room when asked, not permanently at the foot of the sidebar. */}
+      <div className="border-t border-border">
+        <UserMenu user={DEFAULT_COMMIT_IDENTITY} />
       </div>
 
       {menu && (

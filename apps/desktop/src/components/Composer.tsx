@@ -14,9 +14,16 @@ interface Props {
   onInterrupt: () => void
   running: boolean
   disabled?: boolean
+  placeholder?: string
 }
 
-export function Composer({ onSend, onInterrupt, running, disabled }: Props) {
+export function Composer({
+  onSend,
+  onInterrupt,
+  running,
+  disabled,
+  placeholder = 'Ask for a change…',
+}: Props) {
   const [text, setText] = useState('')
   const field = useRef<HTMLTextAreaElement>(null)
 
@@ -53,7 +60,7 @@ export function Composer({ onSend, onInterrupt, running, disabled }: Props) {
           }}
           disabled={disabled}
           rows={1}
-          placeholder="Ask for a change…"
+          placeholder={placeholder}
           aria-label="Message"
           className="block w-full resize-none bg-transparent px-3.5 pt-3 pb-1.5 outline-none placeholder:text-muted-foreground disabled:opacity-50"
         />

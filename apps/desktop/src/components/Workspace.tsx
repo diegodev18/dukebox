@@ -1,7 +1,9 @@
 import type { FileChange, SessionSummary } from '@dukebox/protocol'
 import { useEffect, useState } from 'react'
+import type { DukeboxClient } from '../lib/client.js'
 import type { TerminalState } from '../lib/useTerminals.js'
 import { Diff } from './Diff.js'
+import { EnvironmentReview } from './EnvironmentReview.js'
 import { Terminal } from './Terminal.js'
 
 /**
@@ -22,7 +24,15 @@ const COLLAPSED_KEY = 'dukebox:workspace-collapsed'
 /** How many terminals a session may have. Matches the server's own cap. */
 const MAX_TERMINALS = 4
 
-type WorkspaceTab = 'files' | 'terminal'
+type WorkspaceTab = 'files' | 'terminal' | 'environment'
+
+/** Props to mount the Environment review form as a workspace tab. */
+export interface EnvironmentReviewTab {
+  client: DukeboxClient
+  projectId: string
+  sessionId: string
+  onSaved: () => void
+}
 
 /** The terminal half of the panel's props, threaded through from useSession. */
 interface TerminalProps {
@@ -40,15 +50,36 @@ interface Props extends TerminalProps {
   session: SessionSummary | null
   /** What the session has changed so far, folded from the event stream. */
   files: FileChange[]
+  /** When set, the Environment tab appears with the review form. */
+  environmentReview?: EnvironmentReviewTab | null
 }
 
-export function Workspace({ session, files, ...terminalProps }: Props) {
+export function Workspace({ session, files, environmentReview, ...terminalProps }: Props) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === 'true')
   const [tab, setTab] = useState<WorkspaceTab>('files')
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, String(collapsed))
   }, [collapsed])
+
+  // Open the Environment tab when a proposal is ready to review — the form is
+  // why this session exists, and burying it behind Files would look unfinished.
+  const reviewSessionId = environmentReview?.sessionId ?? null
+  useEffect(() => {
+    if (!reviewSessionId) return
+    setTab('environment')
+    setCollapsed(false)
+  }, [reviewSessionId])
+
+  // Drop back to Files if the Environment tab disappears (e.g. switching to a
+  // coding session) while it was selected.
+  useEffect(() => {
+    if (!environmentReview && tab === 'environment') setTab('files')
+  }, [environmentReview, tab])
+
+  const tabs: WorkspaceTab[] = environmentReview
+    ? ['files', 'terminal', 'environment']
+    : ['files', 'terminal']
 
   return (
     <aside
@@ -77,12 +108,19 @@ export function Workspace({ session, files, ...terminalProps }: Props) {
         <Metrics session={session} files={files} />
       ) : (
         <>
-          <TabBar active={tab} onSelect={setTab} />
+          <TabBar tabs={tabs} active={tab} onSelect={setTab} />
           {tab === 'files' ? (
             <Panels session={session} files={files} />
-          ) : (
+          ) : tab === 'terminal' ? (
             <TerminalPanel session={session} {...terminalProps} />
-          )}
+          ) : environmentReview ? (
+            <EnvironmentReview
+              client={environmentReview.client}
+              projectId={environmentReview.projectId}
+              sessionId={environmentReview.sessionId}
+              onSaved={environmentReview.onSaved}
+            />
+          ) : null}
         </>
       )}
     </aside>
@@ -90,16 +128,18 @@ export function Workspace({ session, files, ...terminalProps }: Props) {
 }
 
 /**
- * Files or terminal.
+ * Workspace panel tabs.
  *
- * Two tabs rather than a menu: there are two of them, and a dropdown costs a
- * click to show what a pair of labels shows for free. Only rendered expanded —
- * a collapsed panel has no room, and the counts are what it exists to show.
+ * Labels rather than a menu: a handful of panels, and a dropdown costs a click
+ * to show what the labels show for free. Only rendered expanded — a collapsed
+ * panel has no room, and the counts are what it exists to show.
  */
 function TabBar({
+  tabs,
   active,
   onSelect,
 }: {
+  tabs: WorkspaceTab[]
   active: WorkspaceTab
   onSelect: (tab: WorkspaceTab) => void
 }) {
@@ -109,7 +149,7 @@ function TabBar({
       aria-label="Workspace panels"
       className="flex gap-1 border-b border-border px-2 py-1.5"
     >
-      {(['files', 'terminal'] as const).map((tab) => (
+      {tabs.map((tab) => (
         <button
           key={tab}
           role="tab"

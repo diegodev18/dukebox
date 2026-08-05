@@ -4,17 +4,19 @@ import { AVAILABLE_AGENTS, DEFAULT_MODEL } from '../components/AgentIcon.js'
 import {
   AgentPicker,
   BranchPicker,
+  InstancePicker,
   ModelPicker,
   RepoPicker,
 } from '../components/RepoBranchPickers.js'
 import type { DukeboxClient } from '../lib/client.js'
+import type { Connection } from '../lib/connection.js'
 
 /**
  * Starting a session from the centre column.
  *
  * Choices sit above the prompt: which repository, which branch to branch
- * from, which agent, and which model. A repository that is not yet a project
- * becomes one on the way through.
+ * from, which agent, which model, and which instance. A repository that is
+ * not yet a project becomes one on the way through.
  *
  * Projects without a saved environment are steered into an environment_setup
  * session first; coding sessions only start once setup/env exist.
@@ -22,6 +24,7 @@ import type { DukeboxClient } from '../lib/client.js'
 
 interface Props {
   client: DukeboxClient
+  connection: Connection
   projects: ProjectSummary[]
   onCreated: (session: SessionSummary, project: ProjectSummary | null) => void
   /** Prefer starting environment setup for this project (e.g. from sidebar). */
@@ -34,7 +37,13 @@ type Status =
   | { kind: 'starting' }
   | { kind: 'failed'; message: string }
 
-export function NewSession({ client, projects, onCreated, preferSetupProjectId }: Props) {
+export function NewSession({
+  client,
+  connection,
+  projects,
+  onCreated,
+  preferSetupProjectId,
+}: Props) {
   const preferred = preferSetupProjectId
     ? projects.find((project) => project.id === preferSetupProjectId)
     : undefined
@@ -199,6 +208,13 @@ export function NewSession({ client, projects, onCreated, preferSetupProjectId }
 
   const busy = status.kind === 'starting' || status.kind === 'loading'
   const options = mergeOptions(projects, repositories)
+
+  // The server this app is paired with is the only instance it can reach, so
+  // it is the whole list. Pairing with several is what makes this plural.
+  const instances = [
+    { id: connection.deviceId, name: connection.serverName, host: connection.address.host },
+  ]
+
   const canSend = needsEnvironment
     ? !busy && Boolean(target) && Boolean(baseBranch) && Boolean(agentId)
     : !busy && Boolean(target) && Boolean(baseBranch) && Boolean(agentId) && prompt.trim() !== ''
@@ -217,6 +233,7 @@ export function NewSession({ client, projects, onCreated, preferSetupProjectId }
           />
           <AgentPicker value={agentId} onChange={setAgentId} disabled={busy} />
           <ModelPicker value={model} onChange={setModel} disabled={busy} />
+          <InstancePicker instances={instances} value={connection.deviceId} disabled={busy} />
         </div>
 
         {needsEnvironment ? (

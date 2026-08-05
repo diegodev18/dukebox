@@ -150,6 +150,76 @@ export function BranchPicker({
   )
 }
 
+/**
+ * Which VPS the sandbox will run on.
+ *
+ * Dukebox is self-hosted and nothing stops an owner from running more than one
+ * server, so the session has to say where it lands rather than assuming there
+ * is only ever one place it could.
+ *
+ * Only the connected instance is listed today, and it cannot be changed —
+ * registering additional instances comes with the settings panel. The chip
+ * still earns its place: it makes the destination visible at the moment the
+ * session is created, which is the only moment it is cheap to notice.
+ */
+export function InstancePicker({
+  instances,
+  value,
+  disabled,
+}: {
+  instances: { id: string; name: string; host: string }[]
+  value: string
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const selected = instances.find((instance) => instance.id === value)
+
+  return (
+    <PickerShell
+      open={open}
+      onOpenChange={setOpen}
+      disabled={disabled || instances.length === 0}
+      label={
+        <span className="inline-flex items-center gap-1.5">
+          <ServerIcon />
+          <span className="truncate">{selected?.name ?? 'Instance'}</span>
+        </span>
+      }
+      ariaLabel="Instance"
+    >
+      <div className="max-h-64 overflow-y-auto py-1">
+        {instances.map((instance) => (
+          <PickerRow
+            key={instance.id}
+            selected={instance.id === value}
+            // Inert: there is nothing else to switch to yet, and closing the
+            // menu is the honest response to picking what is already in use.
+            onSelect={() => setOpen(false)}
+            icon={<ServerIcon />}
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate">{instance.name}</span>
+              <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                {instance.host}
+              </span>
+            </span>
+          </PickerRow>
+        ))}
+      </div>
+
+      <div className="border-t border-border py-1">
+        <button
+          type="button"
+          disabled
+          className="w-full px-3 py-1.5 text-left text-[13px] opacity-40"
+        >
+          Add instance…
+        </button>
+      </div>
+    </PickerShell>
+  )
+}
+
 export function AgentPicker({
   value,
   onChange,
@@ -390,6 +460,25 @@ function CheckIcon() {
       aria-hidden="true"
     >
       <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+    </svg>
+  )
+}
+
+function ServerIcon() {
+  return (
+    <svg
+      className="size-3.5 flex-none"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="2.5" y="3" width="11" height="4.5" rx="1" />
+      <rect x="2.5" y="8.5" width="11" height="4.5" rx="1" />
+      <path d="M5 5.25h.01M5 10.75h.01" />
     </svg>
   )
 }

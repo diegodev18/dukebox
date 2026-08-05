@@ -149,6 +149,51 @@ const script: EnvelopedEvent[] = [
   }),
 ]
 
+const SETUP_PROMPT = `You are configuring a Dukebox development environment for this repository.
+
+Inspect the repository (package managers, lockfiles, README, CI, .env.example, docker-compose, etc.) and propose:
+1. setup — shell commands to install dependencies and prepare the workspace (run once when a session starts)
+2. env — environment variable NAMES the project needs, with whether each is a secret and a short description. Never invent or guess actual secret values.
+3. instructions — optional short guidance for coding agents in later sessions
+4. image — optional container image if the default dukebox/base-node:latest is wrong
+
+Write ONLY this JSON object to /tmp/dukebox-env-proposal.json (create/overwrite that file). Do not commit anything. Do not modify files in the repository.
+
+JSON shape:
+{
+  "setup": ["pnpm install"],
+  "env": {
+    "DATABASE_URL": { "secret": true, "description": "Postgres connection string" }
+  },
+  "instructions": "optional string",
+  "image": "optional string"
+}
+
+After writing the file, briefly confirm what you proposed.`
+
+const setupScript: EnvelopedEvent[] = [
+  event({ type: 'session_started', agentId: 'claude-code', model: 'claude-opus-4' }),
+  event({ type: 'user_prompt', text: SETUP_PROMPT }),
+  event({ type: 'thinking', delta: 'Looking for package managers and env examples.' }),
+  event({
+    type: 'tool_call',
+    id: 'setup-bash-1',
+    name: 'Bash',
+    input: { command: 'ls -la && cat package.json' },
+  }),
+  event({
+    type: 'tool_result',
+    id: 'setup-bash-1',
+    output: 'package.json\npnpm-lock.yaml\nREADME.md',
+    isError: false,
+  }),
+  event({
+    type: 'assistant_text',
+    delta: 'Proposed `pnpm install` and a couple of env vars. Review them in the Environment tab.',
+  }),
+  event({ type: 'done', reason: 'completed' }),
+]
+
 /**
  * A client that answers without a server.
  *
@@ -178,6 +223,22 @@ const fakeClient = {
   },
   startSession: async () => {
     throw new Error('the preview does not talk to a server')
+  },
+  getEnvironmentProposal: async () => ({
+    setup: ['pnpm install', 'pnpm exec turbo run build'],
+    env: {
+      DATABASE_URL: { secret: true, description: 'Postgres connection string' },
+      REDIS_URL: { secret: true, description: 'Redis connection string' },
+    },
+    instructions: 'Use pnpm; prefer turbo for package scripts.',
+  }),
+  getEnvironment: async () => ({
+    config: null,
+    draft: null,
+    secretNames: [] as string[],
+  }),
+  putEnvironment: async () => {
+    console.log('environment saved')
   },
 } as never
 
@@ -281,15 +342,17 @@ function usePreviewTerminals() {
  * Tauri window instead.
  */
 function Preview() {
-  const transcript = applyEvents(emptyTranscript(), script)
-  const [creating, setCreating] = useState(true)
+  const codingTranscript = applyEvents(emptyTranscript(), script)
+  const setupTranscript = applyEvents(emptyTranscript(), setupScript)
+  const [view, setView] = useState<'new' | 'coding' | 'setup'>('setup')
   const terminals = usePreviewTerminals()
 
-  const previewSession = {
+  const codingSession = {
     id: SESSION,
     projectId: SESSION,
     title: 'Fix the demux bug',
     status: 'running',
+    purpose: 'coding',
     agentId: 'claude-code',
     branch: 'duke/fix-demux',
     baseBranch: 'main',
@@ -299,14 +362,33 @@ function Preview() {
     changedFileCount: 0,
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    lastSeq: transcript.lastSeq,
+    lastSeq: codingTranscript.lastSeq,
     pullRequestUrl: null,
   } as SessionSummary
+
+  const setupSession = {
+    id: '00000000-0000-4000-8000-000000000001',
+    projectId: SESSION,
+    title: 'Configure environment',
+    status: 'done',
+    purpose: 'environment_setup',
+    agentId: 'claude-code',
+    branch: 'duke/0686ed25',
+    baseBranch: 'main',
+    changedFileCount: 0,
+    createdAt: Date.now() - 58_000,
+    updatedAt: Date.now(),
+    lastSeq: setupTranscript.lastSeq,
+    pullRequestUrl: null,
+  } as SessionSummary
+
+  const activeSession = view === 'setup' ? setupSession : codingSession
+  const activeTranscript = view === 'setup' ? setupTranscript : codingTranscript
 
   return (
     <div
       className={`grid h-full overflow-hidden ${
-        creating
+        view === 'new'
           ? 'grid-cols-[236px_minmax(0,1fr)]'
           : 'grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)]'
       }`}
@@ -314,22 +396,35 @@ function Preview() {
     >
       <div className="border-r border-border bg-surface p-2">
         <button
-          onClick={() => setCreating(true)}
+          onClick={() => setView('new')}
           className="w-full rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left font-medium hover:bg-muted"
         >
           New session
         </button>
         <button
-          onClick={() => setCreating(false)}
+          onClick={() => setView('coding')}
           className="mt-1 w-full rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           Fix the demux bug
         </button>
+        <button
+          onClick={() => setView('setup')}
+          className="mt-1 w-full rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          Configure environment
+        </button>
       </div>
 
-      {creating ? (
+      {view === 'new' ? (
         <NewSession
           client={fakeClient}
+          connection={{
+            serverName: 'debian-gp-micro-mia-01',
+            address: { host: 'debian-gp-micro-mia-01.tail1a2b3c.ts.net', port: 8787, tls: false },
+            deviceId: '00000000-0000-4000-8000-000000000020',
+            deviceToken: 'preview',
+            pairedAt: Date.now(),
+          }}
           projects={[
             {
               id: '00000000-0000-4000-8000-000000000010',
@@ -341,40 +436,66 @@ function Preview() {
               sessionCount: 1,
             },
           ]}
-          onCreated={() => setCreating(false)}
+          onCreated={() => setView('coding')}
         />
       ) : (
         <>
           <div className="flex min-h-0 min-w-0 flex-col">
             <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
-              <h1 className="truncate font-medium">Fix the demux bug</h1>
+              <h1 className="truncate font-medium">{activeSession.title}</h1>
               <span className="flex-1" />
-              <PullRequest
-                client={fakeClient}
-                session={previewSession}
-                changedFiles={transcript.files.length}
-                onOpened={(url) => console.log('opened', url)}
-              />
+              {view === 'coding' && (
+                <PullRequest
+                  client={fakeClient}
+                  session={codingSession}
+                  changedFiles={codingTranscript.files.length}
+                  onOpened={(url) => console.log('opened', url)}
+                />
+              )}
 
               <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
-                <span className="size-1.5 rounded-full bg-running motion-safe:animate-pulse" />
+                <span
+                  className={`size-1.5 rounded-full ${
+                    view === 'coding'
+                      ? 'bg-running motion-safe:animate-pulse'
+                      : 'bg-done opacity-50'
+                  }`}
+                />
                 <AgentIcon agentId="claude-code" />
               </span>
             </header>
 
             <Transcript
-              transcript={{ ...transcript, running: true }}
+              transcript={{ ...activeTranscript, running: view === 'coding' }}
               onRespond={(id, allow) => console.log('respond', id, allow)}
+              purpose={activeSession.purpose}
+              running={view === 'coding'}
+              status={activeSession.status}
             />
 
             <Composer
               onSend={(text) => console.log('send', text)}
               onInterrupt={() => console.log('interrupt')}
               running={false}
+              {...(view === 'setup' ? { placeholder: 'Add context for the setup agent…' } : {})}
             />
           </div>
 
-          <Workspace session={previewSession} files={transcript.files} {...terminals} />
+          <Workspace
+            session={activeSession}
+            files={activeTranscript.files}
+            {...terminals}
+            environmentReview={
+              view === 'setup'
+                ? {
+                    client: fakeClient,
+                    projectId: setupSession.projectId,
+                    sessionId: setupSession.id,
+                    onSaved: () => console.log('environment saved'),
+                  }
+                : null
+            }
+          />
         </>
       )}
     </div>
