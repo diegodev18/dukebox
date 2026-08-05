@@ -54,12 +54,83 @@ export const interruptCommand = z.object({
   sessionId: z.string().uuid(),
 })
 
+/**
+ * Terminal size in character cells.
+ *
+ * A PTY with zero rows or columns is not a degenerate terminal, it is an
+ * invalid one: curses applications divide by these.
+ */
+const terminalSize = {
+  cols: z.number().int().positive().max(1000),
+  rows: z.number().int().positive().max(1000),
+}
+
+/** Open a new shell in the session's container. The server assigns the id. */
+export const terminalOpenCommand = z.object({
+  type: z.literal('terminal_open'),
+  sessionId: z.string().uuid(),
+  ...terminalSize,
+})
+
+/**
+ * Start receiving output from an existing terminal.
+ *
+ * The server replies with the scrollback buffer, so a reattached terminal
+ * redraws rather than resuming mid-screen.
+ */
+export const terminalAttachCommand = z.object({
+  type: z.literal('terminal_attach'),
+  sessionId: z.string().uuid(),
+  terminalId: z.string().min(1),
+  ...terminalSize,
+})
+
+/**
+ * Stop receiving output. The process keeps running.
+ *
+ * Sent when the panel is hidden. Distinct from `terminal_close`, which kills
+ * the shell — switching tabs must not end a long-running command.
+ */
+export const terminalDetachCommand = z.object({
+  type: z.literal('terminal_detach'),
+  sessionId: z.string().uuid(),
+  terminalId: z.string().min(1),
+})
+
+/** Keystrokes for the PTY, base64 encoded. Written through unmodified. */
+export const terminalInputCommand = z.object({
+  type: z.literal('terminal_input'),
+  sessionId: z.string().uuid(),
+  terminalId: z.string().min(1),
+  data: z.string(),
+})
+
+export const terminalResizeCommand = z.object({
+  type: z.literal('terminal_resize'),
+  sessionId: z.string().uuid(),
+  terminalId: z.string().min(1),
+  ...terminalSize,
+})
+
+/** Kill the shell and forget it. */
+export const terminalCloseCommand = z.object({
+  type: z.literal('terminal_close'),
+  sessionId: z.string().uuid(),
+  terminalId: z.string().min(1),
+})
+
 export const clientCommand = z.discriminatedUnion('type', [
   subscribeCommand,
   unsubscribeCommand,
   promptCommand,
   permissionResponseCommand,
   interruptCommand,
+  terminalOpenCommand,
+  terminalAttachCommand,
+  terminalDetachCommand,
+  terminalInputCommand,
+  terminalResizeCommand,
+  terminalCloseCommand,
 ])
 
 export type ClientCommand = z.infer<typeof clientCommand>
@@ -115,12 +186,65 @@ export const subscriptionClosedMessage = z.object({
   status: sessionStatus,
 })
 
+/** A terminal now exists and is streaming. */
+export const terminalOpenedMessage = z.object({
+  type: z.literal('terminal_opened'),
+  sessionId: z.string().uuid(),
+  terminalId: z.string().min(1),
+  title: z.string(),
+  cols: z.number().int().positive(),
+  rows: z.number().int().positive(),
+})
+
+/**
+ * Bytes from the PTY, base64 encoded.
+ *
+ * Base64 rather than a raw string because this is binary: ANSI escapes, and
+ * UTF-8 sequences split across chunk boundaries. Encoding it once here means no
+ * hop downstream has to guess.
+ */
+export const terminalOutputMessage = z.object({
+  type: z.literal('terminal_output'),
+  sessionId: z.string().uuid(),
+  terminalId: z.string().min(1),
+  data: z.string(),
+})
+
+/**
+ * The shell ended.
+ *
+ * `exitCode` is absent when the stream died without Docker reporting one, which
+ * is what a killed container looks like.
+ */
+export const terminalExitMessage = z.object({
+  type: z.literal('terminal_exit'),
+  sessionId: z.string().uuid(),
+  terminalId: z.string().min(1),
+  exitCode: z.number().int().optional(),
+})
+
+/**
+ * Every terminal alive in a session.
+ *
+ * Sent alongside the subscribe handshake. Without it the client must ask
+ * separately and the tab flashes empty before filling in.
+ */
+export const terminalListMessage = z.object({
+  type: z.literal('terminal_list'),
+  sessionId: z.string().uuid(),
+  terminals: z.array(z.object({ terminalId: z.string().min(1), title: z.string() })),
+})
+
 export const serverMessage = z.discriminatedUnion('type', [
   eventMessage,
   caughtUpMessage,
   sessionUpdateMessage,
   commandErrorMessage,
   subscriptionClosedMessage,
+  terminalOpenedMessage,
+  terminalOutputMessage,
+  terminalExitMessage,
+  terminalListMessage,
 ])
 
 export type ServerMessage = z.infer<typeof serverMessage>
