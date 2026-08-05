@@ -96,13 +96,15 @@ export function Session({ connection, onDisconnected }: Props) {
               return
             }
 
+            let fallback: string | null = null
             setSessions((current) => {
               const next = current.filter((session) => session.id !== sessionId)
-              setSelected((currentSelected) =>
-                currentSelected === sessionId ? (next[0]?.id ?? null) : currentSelected,
-              )
+              fallback = next[0]?.id ?? null
               return next
             })
+            setSelected((currentSelected) =>
+              currentSelected === sessionId ? fallback : currentSelected,
+            )
           })()
         }}
       />

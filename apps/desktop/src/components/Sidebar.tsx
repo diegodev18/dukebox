@@ -160,14 +160,18 @@ function SessionContextMenu({
   onDismiss: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  const dismiss = useRef(onDismiss)
+  const archive = useRef(onArchive)
+  dismiss.current = onDismiss
+  archive.current = onArchive
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) onDismiss()
+      if (ref.current && !ref.current.contains(event.target as Node)) dismiss.current()
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onDismiss()
+      if (event.key === 'Escape') dismiss.current()
     }
 
     // Capture so a click that would also select another session still closes
@@ -178,7 +182,7 @@ function SessionContextMenu({
       document.removeEventListener('pointerdown', onPointerDown, true)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [onDismiss])
+  }, [])
 
   return (
     <div
@@ -191,7 +195,7 @@ function SessionContextMenu({
       <button
         type="button"
         role="menuitem"
-        onClick={onArchive}
+        onClick={() => archive.current()}
         className="flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-muted"
       >
         Archive
