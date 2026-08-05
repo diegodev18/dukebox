@@ -1,4 +1,5 @@
 export * from './events.js'
+export * from './identity.js'
 export * from './session.js'
 export * from './api.js'
 export * from './commands.js'
