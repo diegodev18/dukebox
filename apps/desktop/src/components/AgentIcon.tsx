@@ -13,13 +13,18 @@ const LABELS: Record<string, string> = {
   'cursor-cli': 'Cursor CLI',
 }
 
+/** Agents the New Session picker can offer. More arrive as adapters land. */
+export const AVAILABLE_AGENTS = [{ id: 'claude-code', label: 'Claude Code' }] as const
+
+export type AvailableAgentId = (typeof AVAILABLE_AGENTS)[number]['id']
+
 interface Props {
   agentId: string
   className?: string
 }
 
 export function AgentIcon({ agentId, className = 'size-3.5' }: Props) {
-  const label = LABELS[agentId]
+  const label = agentLabel(agentId)
   const icon = iconFor(agentId)
   if (!icon || !label) return null
 
@@ -28,6 +33,11 @@ export function AgentIcon({ agentId, className = 'size-3.5' }: Props) {
       {icon}
     </span>
   )
+}
+
+/** Human name for an agent id, when one is known. */
+export function agentLabel(agentId: string): string | undefined {
+  return LABELS[agentId]
 }
 
 /** Whether `AgentIcon` has a mark for this id (else show the raw string). */

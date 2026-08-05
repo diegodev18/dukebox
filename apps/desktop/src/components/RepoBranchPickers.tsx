@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import { AgentIcon, AVAILABLE_AGENTS, agentLabel } from './AgentIcon.js'
 
 /**
- * Chip + searchable popover menus for picking a repository or a branch.
+ * Chip + searchable popover menus for picking a repository, branch, or agent.
  *
  * Anchored under the chip that opened them. Escape and an outside click close
  * the menu; choosing a row closes it and reports the value.
@@ -142,6 +143,50 @@ export function BranchPicker({
   )
 }
 
+export function AgentPicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string
+  onChange: (agentId: string) => void
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const label = agentLabel(value) ?? value
+
+  return (
+    <PickerShell
+      open={open}
+      onOpenChange={setOpen}
+      disabled={Boolean(disabled)}
+      label={
+        <span className="inline-flex items-center gap-1.5">
+          <AgentIcon agentId={value} className="size-3.5" />
+          <span className="truncate">{label || 'Agent'}</span>
+        </span>
+      }
+      ariaLabel="Agent"
+    >
+      <div className="max-h-64 overflow-y-auto py-1">
+        {AVAILABLE_AGENTS.map((agent) => (
+          <PickerRow
+            key={agent.id}
+            selected={agent.id === value}
+            onSelect={() => {
+              onChange(agent.id)
+              setOpen(false)
+            }}
+            icon={<AgentIcon agentId={agent.id} className="size-3.5" />}
+          >
+            <span className="truncate">{agent.label}</span>
+          </PickerRow>
+        ))}
+      </div>
+    </PickerShell>
+  )
+}
+
 function PickerShell({
   open,
   onOpenChange,
@@ -153,7 +198,7 @@ function PickerShell({
   open: boolean
   onOpenChange: (open: boolean) => void
   disabled?: boolean
-  label: string
+  label: React.ReactNode
   ariaLabel: string
   children: React.ReactNode
 }) {
