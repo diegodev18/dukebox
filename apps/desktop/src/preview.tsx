@@ -330,6 +330,13 @@ function Preview() {
       {creating ? (
         <NewSession
           client={fakeClient}
+          connection={{
+            serverName: 'debian-gp-micro-mia-01',
+            address: { host: 'debian-gp-micro-mia-01.tail1a2b3c.ts.net', port: 8787, tls: false },
+            deviceId: '00000000-0000-4000-8000-000000000020',
+            deviceToken: 'preview',
+            pairedAt: Date.now(),
+          }}
           projects={[
             {
               id: '00000000-0000-4000-8000-000000000010',

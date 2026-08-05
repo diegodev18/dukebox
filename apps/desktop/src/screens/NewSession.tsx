@@ -1,8 +1,14 @@
 import type { ProjectSummary, RepositorySummary, SessionSummary } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { AVAILABLE_AGENTS } from '../components/AgentIcon.js'
-import { AgentPicker, BranchPicker, RepoPicker } from '../components/RepoBranchPickers.js'
+import {
+  AgentPicker,
+  BranchPicker,
+  InstancePicker,
+  RepoPicker,
+} from '../components/RepoBranchPickers.js'
 import type { DukeboxClient } from '../lib/client.js'
+import type { Connection } from '../lib/connection.js'
 
 /**
  * Starting a session from the centre column.
@@ -14,6 +20,7 @@ import type { DukeboxClient } from '../lib/client.js'
 
 interface Props {
   client: DukeboxClient
+  connection: Connection
   projects: ProjectSummary[]
   onCreated: (session: SessionSummary, project: ProjectSummary | null) => void
 }
@@ -24,7 +31,7 @@ type Status =
   | { kind: 'starting' }
   | { kind: 'failed'; message: string }
 
-export function NewSession({ client, projects, onCreated }: Props) {
+export function NewSession({ client, connection, projects, onCreated }: Props) {
   const [repositories, setRepositories] = useState<RepositorySummary[]>([])
   const [target, setTarget] = useState<string>(projects[0]?.repoFullName ?? '')
   const [baseBranch, setBaseBranch] = useState<string>(projects[0]?.defaultBranch ?? '')
@@ -160,6 +167,12 @@ export function NewSession({ client, projects, onCreated }: Props) {
 
   const busy = status.kind === 'starting' || status.kind === 'loading'
   const options = mergeOptions(projects, repositories)
+
+  // The server this app is paired with is the only instance it can reach, so
+  // it is the whole list. Pairing with several is what makes this plural.
+  const instances = [
+    { id: connection.deviceId, name: connection.serverName, host: connection.address.host },
+  ]
   const canSend =
     !busy && Boolean(target) && Boolean(baseBranch) && Boolean(agentId) && prompt.trim() !== ''
 
@@ -176,6 +189,7 @@ export function NewSession({ client, projects, onCreated }: Props) {
             loading={branchesLoading}
           />
           <AgentPicker value={agentId} onChange={setAgentId} disabled={busy} />
+          <InstancePicker instances={instances} value={connection.deviceId} disabled={busy} />
         </div>
 
         <div className="rounded-[calc(var(--radius)*1.1)] border border-border bg-surface focus-within:border-muted-foreground/40">

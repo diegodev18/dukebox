@@ -5,6 +5,7 @@ import type { Connection } from '../lib/connection.js'
 import { AgentIcon, hasAgentIcon } from '../components/AgentIcon.js'
 import { Composer } from '../components/Composer.js'
 import { PullRequest } from '../components/PullRequest.js'
+import { SessionInfo } from '../components/SessionInfo.js'
 import { Sidebar } from '../components/Sidebar.js'
 import { Transcript } from '../components/Transcript.js'
 import { Workspace } from '../components/Workspace.js'
@@ -103,7 +104,6 @@ export function Session({ connection, onDisconnected }: Props) {
       }`}
     >
       <Sidebar
-        connection={connection}
         projects={projects}
         sessions={sessions}
         selectedId={creating ? null : selected}
@@ -138,13 +138,19 @@ export function Session({ connection, onDisconnected }: Props) {
       {loading ? (
         <div />
       ) : composing ? (
-        <NewSession client={client} projects={projects} onCreated={onSessionCreated} />
+        <NewSession
+          client={client}
+          connection={connection}
+          projects={projects}
+          onCreated={onSessionCreated}
+        />
       ) : current ? (
         <>
           <SessionColumn
             session={current}
             live={live}
             client={client}
+            connection={connection}
             onPullRequest={(url) =>
               setSessions((sessions) =>
                 sessions.map((session) =>
@@ -177,11 +183,13 @@ function SessionColumn({
   session,
   live,
   client,
+  connection,
   onPullRequest,
 }: {
   session: SessionSummary
   live: LiveSession
   client: DukeboxClient
+  connection: Connection
   onPullRequest: (url: string) => void
 }) {
   return (
@@ -192,6 +200,7 @@ function SessionColumn({
     <div className="flex min-h-0 min-w-0 flex-col">
       <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
         <h1 className="truncate font-medium">{session.title}</h1>
+        <SessionInfo session={session} connection={connection} />
         <span className="flex-1" />
 
         <PullRequest
