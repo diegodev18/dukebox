@@ -47,9 +47,9 @@ describe('mapOrbState', () => {
   })
 
   it('maps unanswered permissions to listening', () => {
-    expect(
-      mapOrbState({ kind: 'permission', id: '1', action: 'bash', detail: null }),
-    ).toBe('listening')
+    expect(mapOrbState({ kind: 'permission', id: '1', action: 'bash', detail: null })).toBe(
+      'listening',
+    )
     expect(
       mapOrbState({
         kind: 'permission',
@@ -62,9 +62,9 @@ describe('mapOrbState', () => {
   })
 
   it('maps running tools by name and finished tools to working', () => {
-    expect(
-      mapOrbState({ kind: 'tool', id: '1', name: 'Grep', input: { pattern: 'x' } }),
-    ).toBe('searching')
+    expect(mapOrbState({ kind: 'tool', id: '1', name: 'Grep', input: { pattern: 'x' } })).toBe(
+      'searching',
+    )
     expect(
       mapOrbState({
         kind: 'tool',
