@@ -6,6 +6,7 @@ import {
 } from '@dukebox/protocol'
 import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { AgentIcon } from './components/AgentIcon.js'
 import { Composer } from './components/Composer.js'
 import { Transcript } from './components/Transcript.js'
 import { PullRequest } from './components/PullRequest.js'
@@ -225,7 +226,7 @@ function Preview() {
 
             <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
               <span className="size-1.5 rounded-full bg-running motion-safe:animate-pulse" />
-              claude-code
+              <AgentIcon agentId="claude-code" />
             </span>
           </header>
 
