@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type { AgentEvent, EnvelopedEvent } from './events.js'
 import {
   answerPermission,
-  appendPrompt,
   applyEvent,
   applyEvents,
   emptyTranscript,
@@ -209,21 +208,40 @@ describe('running state', () => {
   })
 })
 
-describe('local additions', () => {
-  it('shows a prompt immediately and marks the session busy', () => {
-    const transcript = appendPrompt(emptyTranscript(), 'fix the bug', 'p1')
+describe('user prompts', () => {
+  it('shows the prompt and marks the session busy', () => {
+    const transcript = fold(at(1, { type: 'user_prompt', text: 'fix the bug' }))
 
     expect(transcript.blocks[0]).toMatchObject({ kind: 'prompt', text: 'fix the bug' })
     expect(transcript.running).toBe(true)
   })
 
-  it('does not consume a seq, so a reconnect still resumes correctly', () => {
-    // Prompts are local. Advancing lastSeq here would make the client ask the
-    // server to resume past an event it never received.
-    const transcript = appendPrompt(fold(at(4, { type: 'done', reason: 'completed' })), 'x', 'p1')
-    expect(transcript.lastSeq).toBe(4)
+  it('keeps the opening prompt above the reply it produced', () => {
+    // The case the transcript used to lose entirely: the first prompt is sent
+    // while the session provisions, so nothing but the log can carry it.
+    const transcript = fold(
+      at(1, { type: 'user_prompt', text: 'tell me about this project' }),
+      at(2, { type: 'assistant_text', delta: 'It is a ' }),
+      at(3, { type: 'assistant_text', delta: 'monorepo.' }),
+    )
+
+    expect(transcript.blocks).toMatchObject([
+      { kind: 'prompt', text: 'tell me about this project' },
+      { kind: 'text', text: 'It is a monorepo.' },
+    ])
   })
 
+  it('starts a new block per prompt rather than extending the last one', () => {
+    const transcript = fold(
+      at(1, { type: 'user_prompt', text: 'first' }),
+      at(2, { type: 'user_prompt', text: 'second' }),
+    )
+
+    expect(transcript.blocks).toHaveLength(2)
+  })
+})
+
+describe('local additions', () => {
   it('marks a permission answered', () => {
     const asked = fold(
       at(1, { type: 'permission_request', id: 'perm', action: 'write', detail: {} }),

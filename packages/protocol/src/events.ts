@@ -11,6 +11,20 @@ import { z } from 'zod'
  * replayed from storage, so variants must stay backward compatible.
  */
 
+/**
+ * What the user sent the agent.
+ *
+ * Recorded because the conversation is half the record: a transcript that shows
+ * only the agent's side reads as answers to questions nobody asked. Appended by
+ * the control plane at the moment it forwards the prompt, which is also the
+ * only place that sees the first one — that one is sent while the session is
+ * still provisioning, before any client is watching.
+ */
+export const userPromptEvent = z.object({
+  type: z.literal('user_prompt'),
+  text: z.string(),
+})
+
 /** A block of text from the agent, streamed in deltas. */
 export const assistantTextEvent = z.object({
   type: z.literal('assistant_text'),
@@ -119,6 +133,7 @@ export const terminalClosedEvent = z.object({
 
 export const agentEvent = z.discriminatedUnion('type', [
   sessionStartedEvent,
+  userPromptEvent,
   assistantTextEvent,
   thinkingEvent,
   toolCallEvent,

@@ -271,6 +271,12 @@ export class SessionManager {
     // Started before the first prompt so no early output is missed.
     void this.consume(session.id, adapter)
 
+    // Appended before it is sent, so the prompt is the first thing in the log
+    // rather than arriving after the agent's reply to it. This is the only
+    // record of the first prompt: it is sent from here while the session is
+    // still provisioning, with no client watching to remember it.
+    await this.deps.bus.append(session.id, { type: 'user_prompt', text: prompt })
+
     await adapter.send({ text: prompt })
   }
 
@@ -599,6 +605,11 @@ export class SessionManager {
     const running = this.running.get(sessionId) ?? (await this.resume(sessionId))
 
     await this.setStatus(sessionId, 'running')
+
+    // Recorded here rather than by the sender, so it survives a reload and
+    // reaches every other device watching this session.
+    await this.deps.bus.append(sessionId, { type: 'user_prompt', text })
+
     await running.adapter.send({ text, ...(images ? { images } : {}) })
   }
 

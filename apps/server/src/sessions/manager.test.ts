@@ -295,12 +295,30 @@ describe('agent events', () => {
 
     adapter.emit({ type: 'assistant_text', delta: 'working on it' })
 
+    // Polled on the agent's own output rather than on the log being non-empty:
+    // the prompt is already in there, so a length check passes before the
+    // agent has said anything.
+    await expect
+      .poll(
+        async () =>
+          (await bus.replay(session.id)).some((event) => event.event.type === 'assistant_text'),
+        { timeout: 5000 },
+      )
+      .toBe(true)
+  })
+
+  it('opens the log with the prompt that started the session', async () => {
+    // The first prompt is sent while the session provisions, so this log is the
+    // only place it is ever recorded.
+    const session = await startSession('rename the widget')
+    await waitForStatus(session.id, 'running')
+
     await expect
       .poll(async () => (await bus.replay(session.id)).length, { timeout: 5000 })
       .toBeGreaterThan(0)
 
-    const events = await bus.replay(session.id)
-    expect(events.some((event) => event.event.type === 'assistant_text')).toBe(true)
+    const [first] = await bus.replay(session.id)
+    expect(first?.event).toMatchObject({ type: 'user_prompt', text: 'rename the widget' })
   })
 
   it('numbers events so a client can resume', async () => {
@@ -311,9 +329,11 @@ describe('agent events', () => {
       adapter.emit({ type: 'assistant_text', delta })
     }
 
-    await expect.poll(async () => (await bus.replay(session.id)).length, { timeout: 5000 }).toBe(3)
+    // Four, not three: the prompt that started the session is the first event
+    // in the log, ahead of anything the agent produced in reply to it.
+    await expect.poll(async () => (await bus.replay(session.id)).length, { timeout: 5000 }).toBe(4)
 
-    expect((await bus.replay(session.id)).map((event) => event.seq)).toEqual([1, 2, 3])
+    expect((await bus.replay(session.id)).map((event) => event.seq)).toEqual([1, 2, 3, 4])
   })
 
   it('marks the session done when the turn ends', async () => {
@@ -407,6 +427,19 @@ describe('prompt, interrupt, and stop', () => {
 
     await manager.prompt(session.id, 'second')
     expect(adapter.prompts.map((prompt) => prompt.text)).toEqual(['first', 'second'])
+  })
+
+  it('records a follow-up prompt in the log, so it survives a reload', async () => {
+    const session = await startSession('first')
+    await waitForStatus(session.id, 'running')
+
+    await manager.prompt(session.id, 'second')
+
+    const prompts = (await bus.replay(session.id))
+      .map((event) => event.event)
+      .filter((event) => event.type === 'user_prompt')
+
+    expect(prompts).toMatchObject([{ text: 'first' }, { text: 'second' }])
   })
 
   it('rejects a prompt for a session that is not running', async () => {
