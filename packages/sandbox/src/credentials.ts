@@ -274,10 +274,20 @@ export class CredentialProxy {
 
     try {
       const credentials = await this.options.resolve(request)
-      // An empty reply is how a helper declines. Git then reports an
-      // authentication failure, which is what should happen for a repository
-      // this session is not allowed to reach.
-      return credentials ? formatCredentials(credentials) : '\n'
+
+      // A refusal is reported too. It is the correct answer for a repository
+      // outside this session, but it is also what a misconfigured session
+      // looks like, and the two are indistinguishable from git's side.
+      if (!credentials) {
+        this.options.onError?.(
+          new Error(
+            `declined a credential request for ${JSON.stringify(request.path ?? '(no path)')} on ${JSON.stringify(request.host ?? '(no host)')}`,
+          ),
+        )
+        return '\n'
+      }
+
+      return formatCredentials(credentials)
     } catch (error) {
       // Declining is the only reply git understands, so the reason cannot be
       // sent back over this socket — a failure to read the token would

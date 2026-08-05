@@ -403,8 +403,11 @@ describe('CredentialProxy', () => {
     expect(errors[0]?.message).toContain('not logged in')
   })
 
-  it('stays quiet when a repository is refused on purpose', async () => {
-    // A denied repository is the proxy working, not a fault to report.
+  it('reports which repository it refused', async () => {
+    // A refusal is the proxy working correctly, and also what a session
+    // pointed at the wrong repository looks like. git cannot tell those apart
+    // — it gets "no credential" either way — so the reason is logged rather
+    // than left to be inferred from a push that fails much later.
     const errors: Error[] = []
     const path = await socketPath()
 
@@ -419,7 +422,7 @@ describe('CredentialProxy', () => {
 
     await ask(path, 'protocol=https\nhost=github.com\npath=someone/else.git\n\n')
 
-    expect(errors).toHaveLength(0)
+    expect(errors[0]?.message).toContain('someone/else.git')
   })
 
   it('refuses to start twice', async () => {

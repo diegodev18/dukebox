@@ -713,7 +713,12 @@ async function askProxy(socketPath: string, repoFullName: string): Promise<strin
 
     socket.on('close', () => {
       if (reply.includes('password=')) finish('answers')
-      else if (reply.trim() === '') finish('listening but replied nothing')
+      // A bare newline is how the proxy declines, which is a different failure
+      // from saying nothing at all: it means the request reached `answer` and
+      // was turned down, by the repository check or by a token that could not
+      // be read.
+      else if (reply === '\n') finish('declined the request')
+      else if (reply === '') finish('closed without replying')
       else finish(`replied ${JSON.stringify(reply.slice(0, 40))}`)
     })
 
