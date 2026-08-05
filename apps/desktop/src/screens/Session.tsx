@@ -153,7 +153,18 @@ export function Session({ connection, onDisconnected }: Props) {
               )
             }
           />
-          <Workspace session={current} files={live.transcript.files} />
+          <Workspace
+            session={current}
+            files={live.transcript.files}
+            terminals={live.terminals}
+            onOpenTerminal={live.openTerminal}
+            onAttachTerminal={live.attachTerminal}
+            onDetachTerminal={live.detachTerminal}
+            onTerminalInput={live.sendTerminalInput}
+            onTerminalResize={live.resizeTerminal}
+            onCloseTerminal={live.closeTerminal}
+            onDrainTerminal={live.drainTerminal}
+          />
         </>
       ) : (
         <div />

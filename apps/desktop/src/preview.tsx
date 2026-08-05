@@ -11,6 +11,13 @@ import { Composer } from './components/Composer.js'
 import { Transcript } from './components/Transcript.js'
 import { PullRequest } from './components/PullRequest.js'
 import { Workspace } from './components/Workspace.js'
+import {
+  applyTerminalMessage,
+  drainTab,
+  emptyTerminalState,
+  removeTab,
+  type TerminalState,
+} from './lib/useTerminals.js'
 import { NewSession } from './screens/NewSession.js'
 import './styles.css'
 
@@ -174,6 +181,100 @@ const fakeClient = {
   },
 } as never
 
+/** A session's worth of terminal output, as a real shell would paint it. */
+const TERMINAL_SCRIPT = [
+  'node@dukebox:/workspace/repo$ pnpm test\r\n',
+  '\r\n',
+  ' \u001b[32m✓\u001b[0m packages/protocol/src/commands.test.ts (8)\r\n',
+  ' \u001b[32m✓\u001b[0m apps/server/src/sessions/terminals.test.ts (17)\r\n',
+  '\r\n',
+  ' Test Files  \u001b[32m2 passed\u001b[0m (2)\r\n',
+  '\r\n',
+  'node@dukebox:/workspace/repo$ ',
+].join('')
+
+/**
+ * Base64 that survives non-latin1 text.
+ *
+ * `btoa` alone throws on the check marks in the script above, the same way it
+ * would on anything a real shell prints outside ASCII.
+ */
+function encodeOutput(value: string): string {
+  const bytes = new TextEncoder().encode(value)
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+
+  return btoa(binary)
+}
+
+/**
+ * A terminal with no server behind it.
+ *
+ * Input is echoed locally so typing visibly does something — enough to exercise
+ * the panel, the tabs, and the xterm wiring without a container.
+ */
+function usePreviewTerminals() {
+  const [state, setState] = useState<TerminalState>(() =>
+    applyTerminalMessage(
+      applyTerminalMessage(emptyTerminalState(), {
+        type: 'terminal_opened',
+        sessionId: SESSION,
+        terminalId: 'preview-terminal',
+        title: '1',
+        cols: 80,
+        rows: 24,
+      }),
+      {
+        type: 'terminal_output',
+        sessionId: SESSION,
+        terminalId: 'preview-terminal',
+        data: encodeOutput(TERMINAL_SCRIPT),
+      },
+    ),
+  )
+
+  const emit = (terminalId: string, text: string) =>
+    setState((current) =>
+      applyTerminalMessage(current, {
+        type: 'terminal_output',
+        sessionId: SESSION,
+        terminalId,
+        data: encodeOutput(text),
+      }),
+    )
+
+  return {
+    terminals: state,
+    onOpenTerminal: () => {
+      const terminalId = `preview-terminal-${state.tabs.length + 1}`
+
+      setState((current) =>
+        applyTerminalMessage(current, {
+          type: 'terminal_opened',
+          sessionId: SESSION,
+          terminalId,
+          title: String(current.tabs.length + 1),
+          cols: 80,
+          rows: 24,
+        }),
+      )
+
+      emit(terminalId, 'node@dukebox:/workspace/repo$ ')
+    },
+    onAttachTerminal: () => {},
+    onDetachTerminal: () => {},
+    onTerminalInput: (terminalId: string, data: string) => {
+      // A real PTY echoes what it receives; without this the preview looks
+      // like a terminal that ignores the keyboard.
+      const typed = atob(data)
+      emit(terminalId, typed === '\r' ? '\r\nnode@dukebox:/workspace/repo$ ' : typed)
+    },
+    onTerminalResize: () => {},
+    onCloseTerminal: (terminalId: string) => setState((current) => removeTab(current, terminalId)),
+    onDrainTerminal: (terminalId: string) => setState((current) => drainTab(current, terminalId)),
+  }
+}
+
 /**
  * Pinned to a desktop size rather than the viewport, so the layout can be
  * judged in a browser window of any size. The real app is measured by the
@@ -182,6 +283,7 @@ const fakeClient = {
 function Preview() {
   const transcript = applyEvents(emptyTranscript(), script)
   const [creating, setCreating] = useState(true)
+  const terminals = usePreviewTerminals()
 
   const previewSession = {
     id: SESSION,
@@ -271,7 +373,7 @@ function Preview() {
             />
           </div>
 
-          <Workspace session={previewSession} files={transcript.files} />
+          <Workspace session={previewSession} files={transcript.files} {...terminals} />
         </>
       )}
     </div>

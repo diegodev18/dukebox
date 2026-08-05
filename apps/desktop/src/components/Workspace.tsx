@@ -1,6 +1,8 @@
 import type { FileChange, SessionSummary } from '@dukebox/protocol'
 import { useEffect, useState } from 'react'
+import type { TerminalState } from '../lib/useTerminals.js'
 import { Diff } from './Diff.js'
+import { Terminal } from './Terminal.js'
 
 /**
  * What the session is changing: files, diffs, a terminal, a preview.
@@ -17,14 +19,32 @@ import { Diff } from './Diff.js'
 
 const COLLAPSED_KEY = 'dukebox:workspace-collapsed'
 
-interface Props {
+/** How many terminals a session may have. Matches the server's own cap. */
+const MAX_TERMINALS = 4
+
+type WorkspaceTab = 'files' | 'terminal'
+
+/** The terminal half of the panel's props, threaded through from useSession. */
+interface TerminalProps {
+  terminals: TerminalState
+  onOpenTerminal: (cols: number, rows: number) => void
+  onAttachTerminal: (terminalId: string, cols: number, rows: number) => void
+  onDetachTerminal: (terminalId: string) => void
+  onTerminalInput: (terminalId: string, data: string) => void
+  onTerminalResize: (terminalId: string, cols: number, rows: number) => void
+  onCloseTerminal: (terminalId: string) => void
+  onDrainTerminal: (terminalId: string) => void
+}
+
+interface Props extends TerminalProps {
   session: SessionSummary | null
   /** What the session has changed so far, folded from the event stream. */
   files: FileChange[]
 }
 
-export function Workspace({ session, files }: Props) {
+export function Workspace({ session, files, ...terminalProps }: Props) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === 'true')
+  const [tab, setTab] = useState<WorkspaceTab>('files')
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, String(collapsed))
@@ -56,9 +76,55 @@ export function Workspace({ session, files }: Props) {
       {collapsed ? (
         <Metrics session={session} files={files} />
       ) : (
-        <Panels session={session} files={files} />
+        <>
+          <TabBar active={tab} onSelect={setTab} />
+          {tab === 'files' ? (
+            <Panels session={session} files={files} />
+          ) : (
+            <TerminalPanel session={session} {...terminalProps} />
+          )}
+        </>
       )}
     </aside>
+  )
+}
+
+/**
+ * Files or terminal.
+ *
+ * Two tabs rather than a menu: there are two of them, and a dropdown costs a
+ * click to show what a pair of labels shows for free. Only rendered expanded —
+ * a collapsed panel has no room, and the counts are what it exists to show.
+ */
+function TabBar({
+  active,
+  onSelect,
+}: {
+  active: WorkspaceTab
+  onSelect: (tab: WorkspaceTab) => void
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Workspace panels"
+      className="flex gap-1 border-b border-border px-2 py-1.5"
+    >
+      {(['files', 'terminal'] as const).map((tab) => (
+        <button
+          key={tab}
+          role="tab"
+          aria-selected={active === tab}
+          onClick={() => onSelect(tab)}
+          className={`rounded-[calc(var(--radius)*0.6)] px-2.5 py-1 text-[12.5px] capitalize ${
+            active === tab
+              ? 'bg-muted font-medium text-foreground'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          }`}
+        >
+          {tab}
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -114,7 +180,7 @@ function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; 
  *
  * One list rather than a tree: a session's diff is a handful of files, and a
  * tree of three entries is a widget pretending there is more to navigate than
- * there is. The terminal and preview tabs arrive later.
+ * there is. The preview tab arrives later.
  */
 function Panels({ session, files }: { session: SessionSummary | null; files: FileChange[] }) {
   const [open, setOpen] = useState<string | null>(null)
@@ -165,6 +231,128 @@ function Panels({ session, files }: { session: SessionSummary | null; files: Fil
           </div>
         )
       })}
+    </div>
+  )
+}
+
+/**
+ * The shells open in this session.
+ *
+ * Attaching and detaching happens here rather than in `Terminal`: leaving the
+ * panel should stop output reaching a component nobody is looking at, without
+ * killing the process behind it.
+ */
+function TerminalPanel({
+  session,
+  terminals,
+  onOpenTerminal,
+  onAttachTerminal,
+  onDetachTerminal,
+  onTerminalInput,
+  onTerminalResize,
+  onCloseTerminal,
+  onDrainTerminal,
+}: TerminalProps & { session: SessionSummary | null }) {
+  const [selected, setSelected] = useState<string | null>(null)
+
+  const tabs = terminals.tabs
+  const active = tabs.find((tab) => tab.terminalId === selected) ?? tabs[0] ?? null
+
+  // Select whichever terminal appeared last.
+  //
+  // Keyed on the newest id rather than on the tab list: this has to fire when a
+  // terminal is added, and not when one merely produces output. Without it,
+  // clicking `+` leaves the previous terminal on screen and the button reads as
+  // having done nothing.
+  const newestId = tabs.at(-1)?.terminalId ?? null
+  useEffect(() => {
+    if (newestId) setSelected(newestId)
+  }, [newestId])
+
+  // Attach while the panel is on screen, detach when it is not. The dependency
+  // is the id list rather than the tabs, which change identity on every chunk
+  // of output and would resubscribe constantly.
+  const ids = tabs.map((tab) => tab.terminalId).join(',')
+  useEffect(() => {
+    const current = ids ? ids.split(',') : []
+    for (const terminalId of current) onAttachTerminal(terminalId, 80, 24)
+
+    return () => {
+      for (const terminalId of current) onDetachTerminal(terminalId)
+    }
+  }, [ids, onAttachTerminal, onDetachTerminal])
+
+  if (!session) {
+    return (
+      <p className="px-4 py-4 text-[12.5px] text-muted-foreground">
+        Select a session to open a terminal in it.
+      </p>
+    )
+  }
+
+  if (tabs.length === 0) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-start gap-2.5 px-4 py-4">
+        <p className="text-[12.5px] text-muted-foreground">
+          No terminal is open. A shell here runs inside this session’s container.
+        </p>
+        <button
+          onClick={() => onOpenTerminal(80, 24)}
+          className="rounded-[calc(var(--radius)*0.6)] bg-muted px-2.5 py-1.5 text-[12.5px] font-medium hover:bg-border"
+        >
+          New terminal
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
+        {tabs.map((tab) => (
+          <span
+            key={tab.terminalId}
+            className={`flex items-center gap-1 rounded-[calc(var(--radius)*0.6)] pr-1 pl-2.5 text-[12.5px] ${
+              tab.terminalId === active?.terminalId ? 'bg-muted' : 'hover:bg-muted'
+            }`}
+          >
+            <button
+              onClick={() => setSelected(tab.terminalId)}
+              className={tab.exited ? 'py-1 text-muted-foreground line-through' : 'py-1'}
+            >
+              {tab.title}
+            </button>
+            <button
+              onClick={() => onCloseTerminal(tab.terminalId)}
+              aria-label={`Close terminal ${tab.title}`}
+              className="grid size-5 place-items-center rounded-[calc(var(--radius)*0.5)] text-muted-foreground hover:bg-border hover:text-foreground"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+
+        {tabs.length < MAX_TERMINALS && (
+          <button
+            onClick={() => onOpenTerminal(80, 24)}
+            aria-label="New terminal"
+            className="grid size-6 place-items-center rounded-[calc(var(--radius)*0.6)] text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            +
+          </button>
+        )}
+      </div>
+
+      {tabs.map((tab) => (
+        <Terminal
+          key={tab.terminalId}
+          tab={tab}
+          active={tab.terminalId === active?.terminalId}
+          onInput={(data) => onTerminalInput(tab.terminalId, data)}
+          onResize={(cols, rows) => onTerminalResize(tab.terminalId, cols, rows)}
+          onDrain={() => onDrainTerminal(tab.terminalId)}
+        />
+      ))}
     </div>
   )
 }
