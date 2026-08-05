@@ -1,0 +1,41 @@
+# Runs the same checks developers run locally. The host only provides Docker;
+# typecheck, format, and tests all execute inside the verify container.
+#
+# Sandbox tests create real session containers, so the agent image must exist
+# on the host daemon before verify.sh runs.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build dukebox/base-node
+        run: docker build -t dukebox/base-node:latest images/base-node
+
+      - name: Typecheck, format, and test
+        run: ./docker/verify.sh
+
+      - name: Clean up leftover session containers
+        if: always()
+        run: ./docker/verify.sh --clean-containers
+
+      - name: Tear down the dev stack
+        if: always()
+        run: ./docker/verify.sh --down
