@@ -468,8 +468,6 @@ export class SessionManager {
       throw new SessionError('that session’s container no longer exists')
     }
 
-    await container.start()
-
     const [project] = await this.deps.db
       .select()
       .from(projects)
@@ -477,11 +475,14 @@ export class SessionManager {
 
     if (!project) throw new SessionError('no such project')
 
-    const workspace = new Workspace(container)
-
-    // A fresh proxy: the old one died with the process that restarted, and
-    // without it a push has no credentials to reach GitHub with.
+    // Before the container starts, exactly as provisioning does it. Starting
+    // the container first lets Docker recreate the mount point as root, and
+    // the proxy — running as the service user — then cannot bind inside it.
     const credentials = await this.startCredentialProxy(sessionId, project.repoFullName)
+
+    await container.start()
+
+    const workspace = new Workspace(container)
     if (credentials) await workspace.installCredentialHelper()
 
     const adapter = this.createAdapter(session.agentId)

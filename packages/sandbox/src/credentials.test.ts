@@ -1,5 +1,5 @@
 import { connect } from 'node:net'
-import { mkdtemp, rm, stat } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -218,6 +218,37 @@ describe('CredentialProxy', () => {
     proxies.push(second)
 
     await expect(second.start()).resolves.toBeUndefined()
+  })
+
+  it('explains an unwritable directory rather than passing EACCES through', async ({ skip }) => {
+    // Docker creates a mount point as root, so a service running as anyone
+    // else cannot bind inside it. `listen` reports that as a bare EACCES on a
+    // path, which says nothing about whose directory it is or how to fix it.
+    //
+    // Root ignores permission bits, so this can only be checked as a normal
+    // user. Skipped rather than quietly passing where it proves nothing.
+    if (typeof process.getuid === 'function' && process.getuid() === 0) {
+      skip('permission bits do not apply to root')
+      return
+    }
+
+    const dir = await mkdtemp(join(tmpdir(), 'dukebox-cred-'))
+    directories.push(dir)
+
+    const locked = join(dir, 'locked')
+    await mkdir(locked)
+    await chmod(locked, 0o500)
+
+    const proxy = createSessionCredentialProxy({
+      socketPath: join(locked, 'credentials.sock'),
+      repoFullName: 'diego/dukebox',
+      readToken: async () => 'token',
+    })
+
+    await expect(proxy.start()).rejects.toThrow(/not writable by this process/)
+
+    // Restored so the directory can be cleaned up.
+    await chmod(locked, 0o700)
   })
 
   it('refuses to start twice', async () => {

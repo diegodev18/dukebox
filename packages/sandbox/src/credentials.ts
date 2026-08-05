@@ -1,5 +1,6 @@
 import { createServer, type Server } from 'node:net'
-import { chmod, mkdir, rm } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { access, chmod, mkdir, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 /**
@@ -139,9 +140,25 @@ export class CredentialProxy {
   async start(): Promise<void> {
     if (this.server) throw new Error('credential proxy already started')
 
-    await mkdir(dirname(this.options.socketPath), { recursive: true })
-    // A leftover socket from a crashed process would block the bind.
-    await rm(this.options.socketPath, { force: true })
+    const directory = dirname(this.options.socketPath)
+    await mkdir(directory, { recursive: true })
+
+    // A leftover socket from a crashed process would block the bind. `force`
+    // hides a missing file but not a directory this process cannot write to,
+    // which is its own failure and is reported below rather than here.
+    await rm(this.options.socketPath, { force: true }).catch(() => undefined)
+
+    // Docker creates a mount point as root. When the daemon made this
+    // directory to mount it into a container, a service running as anyone else
+    // cannot bind inside it — and `listen` reports that as a bare EACCES on a
+    // path, with nothing about whose it is or what to do.
+    await access(directory, constants.W_OK).catch(() => {
+      throw new Error(
+        `cannot create a credential socket in ${directory}: the directory is not writable by this process. ` +
+          `It is usually owned by root because Docker created it as a mount point. ` +
+          `Removing it lets the next session recreate it: sudo rm -rf ${directory}`,
+      )
+    })
 
     const server = createServer((socket) => {
       let input = ''
