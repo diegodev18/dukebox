@@ -59,6 +59,15 @@ describe('buildArgs', () => {
   it('omits the system prompt flag when there are no instructions', () => {
     expect(buildArgs(contextWith())).not.toContain('--append-system-prompt')
   })
+
+  it('passes --model when the caller picks one', () => {
+    const args = buildArgs(contextWith({ model: 'sonnet' }))
+    expect(args[args.indexOf('--model') + 1]).toBe('sonnet')
+  })
+
+  it('omits --model when none was chosen', () => {
+    expect(buildArgs(contextWith())).not.toContain('--model')
+  })
 })
 
 describe('encodeUserMessage', () => {

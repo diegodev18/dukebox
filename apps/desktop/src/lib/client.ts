@@ -133,6 +133,7 @@ export class DukeboxClient {
     agentId: string
     prompt?: string
     baseBranch?: string
+    model?: string
     purpose?: 'coding' | 'environment_setup'
   }): Promise<SessionSummary> {
     return this.request('/api/sessions', { method: 'POST', body: JSON.stringify(options) })
