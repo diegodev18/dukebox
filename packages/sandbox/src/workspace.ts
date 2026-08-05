@@ -270,8 +270,25 @@ export class Workspace {
    * what a session that never calls this uses.
    */
   async setCommitIdentity(identity: { name: string; email: string }): Promise<void> {
-    await this.run(['git', 'config', '--global', 'user.name', identity.name])
-    await this.run(['git', 'config', '--global', 'user.email', identity.email])
+    // `container.exec` rather than `run`: a global config write does not care
+    // where it runs from, and this is called before the clone, when the
+    // workspace directory `run` would sit in does not exist yet.
+    const settings: [string, string][] = [
+      ['user.name', identity.name],
+      ['user.email', identity.email],
+    ]
+
+    for (const [key, value] of settings) {
+      const result = await this.container.exec(['git', 'config', '--global', key, value])
+
+      if (result.exitCode !== 0) {
+        throw new WorkspaceError(
+          `command failed: git config --global ${key}`,
+          result.stderr || result.stdout,
+          result.exitCode,
+        )
+      }
+    }
   }
 
   /** Push the session branch. Credentials come from the credential proxy. */

@@ -1,6 +1,7 @@
 import { ClaudeCodeAdapter, type AgentAdapter } from '@dukebox/adapters'
 import { projects, sessions, type Database, type Session } from '@dukebox/db'
 import {
+  DEFAULT_COMMIT_IDENTITY,
   defaultProjectConfig,
   ENVIRONMENT_PROPOSAL_PATH,
   isTerminal,
@@ -245,6 +246,10 @@ export class SessionManager {
 
     // Must precede any git operation that reaches a remote.
     if (credentials) await workspace.installCredentialHelper()
+
+    // Before anything can commit, so the agent's own commits carry it too
+    // rather than only the ones Dukebox makes on its behalf.
+    await workspace.setCommitIdentity(DEFAULT_COMMIT_IDENTITY)
 
     const { branch } = await workspace.clone({
       url: this.deps.cloneUrl(repoFullName),
