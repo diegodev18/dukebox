@@ -1,14 +1,15 @@
 import type { ProjectSummary, RepositorySummary, SessionSummary } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
-import { BranchPicker, RepoPicker } from '../components/RepoBranchPickers.js'
+import { AVAILABLE_AGENTS } from '../components/AgentIcon.js'
+import { AgentPicker, BranchPicker, RepoPicker } from '../components/RepoBranchPickers.js'
 import type { DukeboxClient } from '../lib/client.js'
 
 /**
  * Starting a session from the centre column.
  *
- * Two choices sit above the prompt: which repository, and which branch to
- * branch from. Everything else — the agent, the container — keeps its default.
- * A repository that is not yet a project becomes one on the way through.
+ * Three choices sit above the prompt: which repository, which branch to
+ * branch from, and which agent. A repository that is not yet a project
+ * becomes one on the way through.
  */
 
 interface Props {
@@ -29,6 +30,7 @@ export function NewSession({ client, projects, onCreated }: Props) {
   const [baseBranch, setBaseBranch] = useState<string>(projects[0]?.defaultBranch ?? '')
   const [branches, setBranches] = useState<string[]>([])
   const [branchesLoading, setBranchesLoading] = useState(false)
+  const [agentId, setAgentId] = useState<string>(AVAILABLE_AGENTS[0].id)
   const [prompt, setPrompt] = useState('')
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const field = useRef<HTMLTextAreaElement>(null)
@@ -126,7 +128,7 @@ export function NewSession({ client, projects, onCreated }: Props) {
   }
 
   const submit = async () => {
-    if (!target || !prompt.trim() || !baseBranch) return
+    if (!target || !prompt.trim() || !baseBranch || !agentId) return
 
     setStatus({ kind: 'starting' })
 
@@ -142,7 +144,7 @@ export function NewSession({ client, projects, onCreated }: Props) {
 
       const session = await client.startSession({
         projectId: project.id,
-        agentId: 'claude-code',
+        agentId,
         prompt: prompt.trim(),
         baseBranch,
       })
@@ -158,7 +160,8 @@ export function NewSession({ client, projects, onCreated }: Props) {
 
   const busy = status.kind === 'starting' || status.kind === 'loading'
   const options = mergeOptions(projects, repositories)
-  const canSend = !busy && Boolean(target) && Boolean(baseBranch) && prompt.trim() !== ''
+  const canSend =
+    !busy && Boolean(target) && Boolean(baseBranch) && Boolean(agentId) && prompt.trim() !== ''
 
   return (
     <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
@@ -172,6 +175,7 @@ export function NewSession({ client, projects, onCreated }: Props) {
             disabled={busy || !target}
             loading={branchesLoading}
           />
+          <AgentPicker value={agentId} onChange={setAgentId} disabled={busy} />
         </div>
 
         <div className="rounded-[calc(var(--radius)*1.1)] border border-border bg-surface focus-within:border-muted-foreground/40">
