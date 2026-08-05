@@ -228,7 +228,24 @@ export class SessionContainer {
     raw.on('end', () => output.end())
     raw.on('error', (error: Error) => output.emit('error', error))
 
-    const stream = Duplex.from({ readable: output, writable: raw })
+    // Written by hand rather than with `Duplex.from`, which wires the two sides
+    // into a pipeline that treats a destroyed socket as a broken pipe. Closing
+    // a terminal destroys the socket by design, and the pipeline would report
+    // every one of those as ERR_STREAM_PREMATURE_CLOSE.
+    const stream = new Duplex({
+      read() {},
+      write(chunk, encoding, callback) {
+        raw.write(chunk, encoding, callback)
+      },
+      destroy(error, callback) {
+        raw.destroy()
+        output.destroy()
+        callback(error)
+      },
+    })
+
+    output.on('data', (chunk: Buffer) => stream.push(chunk))
+    output.on('end', () => stream.push(null))
 
     return {
       stream,
@@ -237,12 +254,10 @@ export class SessionContainer {
       resize: async (cols, rows) => {
         await exec.resize({ h: rows, w: cols })
       },
-      // The raw socket rather than the wrapper: destroying the wrapper leaves
-      // the hijacked connection open, and with it the shell process, which
-      // counts against the container's PID limit for as long as it lives.
+      // Destroying the socket is what ends the shell. Left open, the process
+      // lives on inside the container against its PID limit.
       close: async () => {
-        raw.destroy()
-        output.end()
+        stream.destroy()
       },
     }
   }
