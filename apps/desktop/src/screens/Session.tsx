@@ -2,6 +2,7 @@ import type { ProjectSummary, SessionSummary } from '@dukebox/protocol'
 import { useEffect, useMemo, useState } from 'react'
 import { DukeboxClient } from '../lib/client.js'
 import type { Connection } from '../lib/connection.js'
+import { AgentIcon, hasAgentIcon } from '../components/AgentIcon.js'
 import { Composer } from '../components/Composer.js'
 import { PullRequest } from '../components/PullRequest.js'
 import { Sidebar } from '../components/Sidebar.js'
@@ -196,7 +197,11 @@ function SessionColumn({
 
         <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
           <StatusDot status={session.status} />
-          {session.agentId}
+          {hasAgentIcon(session.agentId) ? (
+            <AgentIcon agentId={session.agentId} />
+          ) : (
+            session.agentId
+          )}
         </span>
       </header>
 
