@@ -5,7 +5,7 @@ import {
   type SessionStatus,
   type SessionSummary,
 } from '@dukebox/protocol'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
 import type { EventBus } from '../events/bus.js'
 import { SessionError, type SessionManager } from '../sessions/manager.js'
@@ -31,13 +31,17 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
   app.get('/sessions', async (c) => {
     const projectId = c.req.query('projectId')
 
+    // Archived sessions stay in the database for history, but the sidebar only
+    // wants the ones a person can still open.
+    const active = isNull(sessions.archivedAt)
+
     const rows = await (projectId
       ? deps.db
           .select()
           .from(sessions)
-          .where(eq(sessions.projectId, projectId))
+          .where(and(eq(sessions.projectId, projectId), active))
           .orderBy(desc(sessions.createdAt))
-      : deps.db.select().from(sessions).orderBy(desc(sessions.createdAt)))
+      : deps.db.select().from(sessions).where(active).orderBy(desc(sessions.createdAt)))
 
     return c.json({ sessions: rows.map(toSummary) })
   })
@@ -156,6 +160,26 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
 
     await deps.sessions.stop(sessionId)
     return c.json({ stopped: true })
+  })
+
+  /**
+   * Archive a session.
+   *
+   * Hides it from the sidebar. The row and its events stay put — this is not
+   * a delete.
+   */
+  app.post('/sessions/:id/archive', async (c) => {
+    const sessionId = c.req.param('id')
+
+    try {
+      await deps.sessions.archive(sessionId)
+      return c.json({ archived: true })
+    } catch (error) {
+      if (error instanceof SessionError) {
+        return c.json({ error: 'not_found', message: error.message }, 404)
+      }
+      throw error
+    }
   })
 
   return app

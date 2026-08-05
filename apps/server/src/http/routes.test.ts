@@ -44,6 +44,7 @@ const github = {
 const sessionManager = {
   start: vi.fn(),
   stop: vi.fn(async () => {}),
+  archive: vi.fn(async () => {}),
   openPullRequest: vi.fn(async () => 'https://github.com/diego/dukebox/pull/1'),
 } as unknown as SessionManager
 
@@ -538,6 +539,43 @@ describe('DELETE /api/sessions/:id', () => {
 
     expect(response.status).toBe(404)
     expect(sessionManager.stop).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/sessions/:id/archive', () => {
+  it('archives the session', async () => {
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await post(`/api/sessions/${session.id}/archive`, {})
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ archived: true })
+    expect(sessionManager.archive).toHaveBeenCalledWith(session.id)
+  })
+
+  it('returns 404 for an unknown session', async () => {
+    vi.mocked(sessionManager.archive).mockRejectedValueOnce(
+      new SessionError('no such session: 00000000-0000-4000-8000-000000000000'),
+    )
+
+    const response = await post('/api/sessions/00000000-0000-4000-8000-000000000000/archive', {})
+
+    expect(response.status).toBe(404)
+  })
+})
+
+describe('GET /api/sessions archived', () => {
+  it('omits archived sessions from the list', async () => {
+    const project = await createProject()
+    const active = await createSession(project.id, { title: 'Still here' })
+    await createSession(project.id, { title: 'Gone', archivedAt: new Date() })
+
+    const body = (await (await request('/api/sessions')).json()) as {
+      sessions: { id: string; title: string }[]
+    }
+
+    expect(body.sessions.map((session) => session.id)).toEqual([active.id])
   })
 })
 

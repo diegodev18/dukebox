@@ -86,6 +86,25 @@ export function Session({ connection, onDisconnected }: Props) {
         selectedId={selected}
         onSelect={setSelected}
         onNewSession={() => setCreating(true)}
+        onArchive={(sessionId) => {
+          void (async () => {
+            try {
+              await client.archiveSession(sessionId)
+            } catch {
+              // Leave the row where it is: a failed archive that vanishes
+              // from the list looks like the session was deleted.
+              return
+            }
+
+            setSessions((current) => {
+              const next = current.filter((session) => session.id !== sessionId)
+              setSelected((currentSelected) =>
+                currentSelected === sessionId ? (next[0]?.id ?? null) : currentSelected,
+              )
+              return next
+            })
+          })()
+        }}
       />
 
       <SessionColumn
