@@ -354,8 +354,15 @@ export class SessionManager {
 
     if (!session) throw new SessionError('no such session')
 
-    const committed = await running.workspace.commitAll(title ?? session.title ?? 'Agent changes')
-    if (!committed && !session.prUrl) {
+    // Whether the branch has anything on it, asked against the commit the
+    // session started from. `commitAll` returning null only means there is
+    // nothing *uncommitted* — an agent that committed its own work would look
+    // identical to one that did nothing, which is the case this used to
+    // refuse.
+    const changed = await running.workspace.changedFiles(running.baseCommit)
+    await running.workspace.commitAll(title ?? session.title ?? 'Agent changes')
+
+    if (changed.length === 0 && !session.prUrl) {
       throw new SessionError('there is nothing to open a pull request for')
     }
 

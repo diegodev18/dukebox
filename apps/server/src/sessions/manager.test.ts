@@ -554,6 +554,28 @@ describe('pull requests', () => {
     await withGitHub.stopAll()
   })
 
+  it('opens one for work the agent committed itself', async () => {
+    // Agents commit as they go. Asking whether anything is *uncommitted* makes
+    // that look identical to an agent that did nothing, which refused a pull
+    // request for work that was sitting right there on the branch.
+    const { manager: withGitHub } = managerWithGitHub()
+    const session = await startOn(withGitHub)
+
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo translated > README.es.md'], {
+      cwd: '/workspace/repo',
+    })
+    await container?.exec(['git', 'add', '-A'], { cwd: '/workspace/repo' })
+    await container?.exec(['git', 'commit', '-m', 'Translate the README'], {
+      cwd: '/workspace/repo',
+    })
+
+    const url = await withGitHub.openPullRequest(session.id)
+
+    expect(url).toContain('/pull/1')
+    await withGitHub.stopAll()
+  })
+
   it('records the pull request URL on the session', async () => {
     const { manager: withGitHub } = managerWithGitHub()
     const session = await startOn(withGitHub)
