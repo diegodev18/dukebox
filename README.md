@@ -124,6 +124,10 @@ second one:
 http://localhost:5173/preview.html
 ```
 
+## Author
+
+Diego Sanchez
+
 ## License
 
 MIT
