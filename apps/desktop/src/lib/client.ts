@@ -148,6 +148,15 @@ export class DukeboxClient {
     await this.request(`/api/sessions/${sessionId}`, { method: 'DELETE' })
   }
 
+  /**
+   * Hide a session from the sidebar.
+   *
+   * The history stays on the server; this only stops listing it.
+   */
+  async archiveSession(sessionId: string): Promise<void> {
+    await this.request(`/api/sessions/${sessionId}/archive`, { method: 'POST' })
+  }
+
   async agentCredentialsConfigured(): Promise<boolean> {
     const body = await this.request<{ configured: boolean }>('/api/agent-credentials')
     return body.configured

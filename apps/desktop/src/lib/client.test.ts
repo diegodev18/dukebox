@@ -99,6 +99,15 @@ describe('DukeboxClient', () => {
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(JSON.parse(init.body as string)).not.toHaveProperty('baseBranch')
   })
+
+  it('archives a session', async () => {
+    const fetchMock = respondWith({ archived: true })
+    await client.archiveSession('00000000-0000-4000-8000-000000000001')
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toContain('/api/sessions/00000000-0000-4000-8000-000000000001/archive')
+    expect(init.method).toBe('POST')
+  })
 })
 
 describe('reachable', () => {

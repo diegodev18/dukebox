@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
 import type { ProjectSummary, SessionSummary } from '@dukebox/protocol'
+import { useEffect, useRef, useState } from 'react'
 import type { Connection } from '../lib/connection.js'
 import { filterProjects, filterSessions } from '../lib/searchSessions.js'
 import { StatusDot } from '../screens/Session.js'
@@ -19,6 +19,7 @@ interface Props {
   selectedId: string | null
   onSelect: (sessionId: string) => void
   onNewSession: () => void
+  onArchive: (sessionId: string) => void
 }
 
 export function Sidebar({
@@ -28,7 +29,9 @@ export function Sidebar({
   selectedId,
   onSelect,
   onNewSession,
+  onArchive,
 }: Props) {
+  const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState('')
 
@@ -88,6 +91,10 @@ export function Sidebar({
                   // applying — clear it so the full list returns underneath.
                   if (searching) closeSearch()
                 }}
+                onContextMenu={(sessionId, event) => {
+                  event.preventDefault()
+                  setMenu({ sessionId, x: event.clientX, y: event.clientY })
+                }}
               />
             ))}
           </>
@@ -105,8 +112,26 @@ export function Sidebar({
           </div>
         </div>
       </div>
+
+      {menu && (
+        <SessionContextMenu
+          x={menu.x}
+          y={menu.y}
+          onArchive={() => {
+            onArchive(menu.sessionId)
+            setMenu(null)
+          }}
+          onDismiss={() => setMenu(null)}
+        />
+      )}
     </nav>
   )
+}
+
+interface ContextMenuState {
+  sessionId: string
+  x: number
+  y: number
 }
 
 function SearchField({
@@ -161,11 +186,13 @@ function ProjectGroup({
   sessions,
   selectedId,
   onSelect,
+  onContextMenu,
 }: {
   project: ProjectSummary
   sessions: SessionSummary[]
   selectedId: string | null
   onSelect: (sessionId: string) => void
+  onContextMenu: (sessionId: string, event: React.MouseEvent) => void
 }) {
   return (
     <>
@@ -178,6 +205,7 @@ function ProjectGroup({
         <button
           key={session.id}
           onClick={() => onSelect(session.id)}
+          onContextMenu={(event) => onContextMenu(session.id, event)}
           aria-current={session.id === selectedId}
           className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2.5 py-1.5 pr-4 pl-7.5 text-left text-[13.5px] text-muted-foreground hover:bg-muted hover:text-foreground aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
         >
@@ -187,6 +215,68 @@ function ProjectGroup({
         </button>
       ))}
     </>
+  )
+}
+
+/**
+ * Right-click menu for a session row.
+ *
+ * Positioned at the pointer rather than anchored to the row: a sidebar is too
+ * narrow for a menu that grows beside the item that opened it.
+ */
+function SessionContextMenu({
+  x,
+  y,
+  onArchive,
+  onDismiss,
+}: {
+  x: number
+  y: number
+  onArchive: () => void
+  onDismiss: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const dismiss = useRef(onDismiss)
+  const archive = useRef(onArchive)
+  dismiss.current = onDismiss
+  archive.current = onArchive
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) dismiss.current()
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') dismiss.current()
+    }
+
+    // Capture so a click that would also select another session still closes
+    // this first, rather than leaving a menu stranded over a new selection.
+    document.addEventListener('pointerdown', onPointerDown, true)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
+
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      aria-label="Session"
+      style={{ left: x, top: y }}
+      className="fixed z-50 min-w-36 rounded-[calc(var(--radius)*0.7)] border border-border bg-background py-1 shadow-md"
+    >
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => archive.current()}
+        className="flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-muted"
+      >
+        Archive
+      </button>
+    </div>
   )
 }
 

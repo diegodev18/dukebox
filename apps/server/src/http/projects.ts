@@ -4,7 +4,7 @@ import {
   type ProjectSummary,
   type RepositorySummary,
 } from '@dukebox/protocol'
-import { count, desc, eq } from 'drizzle-orm'
+import { count, desc, eq, and, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
 import type { GitHubClient } from '../github/client.js'
 
@@ -64,7 +64,7 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
         sessionCount: count(sessions.id),
       })
       .from(projects)
-      .leftJoin(sessions, eq(sessions.projectId, projects.id))
+      .leftJoin(sessions, and(eq(sessions.projectId, projects.id), isNull(sessions.archivedAt)))
       .groupBy(projects.id)
       .orderBy(desc(projects.createdAt))
 

@@ -705,6 +705,29 @@ export class SessionManager {
     }
   }
 
+  /**
+   * Hide a session from the sidebar without deleting its history.
+   *
+   * Stops the container first when it is still running — an archived session
+   * that keeps burning CPU would be worse than one that is merely out of sight.
+   */
+  async archive(sessionId: string): Promise<void> {
+    const [session] = await this.deps.db
+      .select({ id: sessions.id, archivedAt: sessions.archivedAt })
+      .from(sessions)
+      .where(eq(sessions.id, sessionId))
+
+    if (!session) throw new SessionError(`no such session: ${sessionId}`)
+    if (session.archivedAt) return
+
+    await this.stop(sessionId)
+
+    await this.deps.db
+      .update(sessions)
+      .set({ archivedAt: new Date(), updatedAt: new Date() })
+      .where(eq(sessions.id, sessionId))
+  }
+
   /** Stop every running session. Called on shutdown. */
   async stopAll(): Promise<void> {
     await Promise.all([...this.running.keys()].map((sessionId) => this.stop(sessionId)))

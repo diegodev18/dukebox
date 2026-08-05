@@ -223,6 +223,12 @@ export const sessions = pgTable(
     createdAt,
     updatedAt,
     endedAt: timestamp('ended_at', { withTimezone: true }),
+
+    /**
+     * When the session was archived. Null while it still belongs in the
+     * sidebar — archiving hides it without deleting the history.
+     */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
   },
   (table) => [
     index('sessions_project_id_idx').on(table.projectId),
