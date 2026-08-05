@@ -35,9 +35,11 @@ describe('buildArgs', () => {
     expect(buildArgs(contextWith())).toContain('--verbose')
   })
 
-  it('runs in acceptEdits mode, since the container is the safety boundary', () => {
+  it('bypasses permissions, since the container is the safety boundary', () => {
+    // acceptEdits would still prompt for Bash, and a headless session has
+    // nobody to answer the prompt.
     const args = buildArgs(contextWith())
-    expect(args[args.indexOf('--permission-mode') + 1]).toBe('acceptEdits')
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('bypassPermissions')
   })
 
   it('omits --resume for a new session', () => {
@@ -124,7 +126,8 @@ describe('ClaudeCodeAdapter', () => {
 
     expect(adapter.capabilities.resume).toBe(true)
     expect(adapter.capabilities.thinking).toBe(true)
-    // acceptEdits means the agent never asks, so no approval card is shown.
+    // bypassPermissions means the agent never asks, so no approval card is
+    // shown.
     expect(adapter.capabilities.permissions).toBe(false)
   })
 

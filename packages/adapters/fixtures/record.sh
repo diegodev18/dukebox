@@ -62,13 +62,13 @@ record() {
   echo "==> $name"
   echo "    $prompt"
 
-  # --permission-mode acceptEdits lets the agent edit files without prompting,
+  # --permission-mode bypassPermissions lets the agent act without prompting,
   # which is what a Dukebox session looks like. Errors are captured rather
   # than aborting: a failed run still produces a fixture worth having.
   if claude -p "$prompt" \
     --output-format stream-json \
     --verbose \
-    --permission-mode acceptEdits \
+    --permission-mode bypassPermissions \
     "$@" 2>"$work_dir/$name.stderr" | redact > "$fixtures_dir/$name.jsonl"; then
     echo "    $(wc -l < "$fixtures_dir/$name.jsonl" | tr -d ' ') events"
   else

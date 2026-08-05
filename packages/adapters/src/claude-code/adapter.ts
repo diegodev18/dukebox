@@ -13,7 +13,7 @@ import { ClaudeCodeMapper } from './mapper.js'
  */
 
 export const CLAUDE_CODE_CAPABILITIES: AgentCapabilities = {
-  // Sessions run with --permission-mode acceptEdits, so the agent edits
+  // Sessions run with --permission-mode bypassPermissions, so the agent acts
   // without asking. The container is the boundary that makes that safe.
   permissions: false,
   thinking: true,
@@ -33,8 +33,12 @@ export function buildArgs(context: SessionContext): string[] {
     // Without this, stream-json omits the tool calls and results that the
     // whole UI is built around.
     '--verbose',
+    // acceptEdits only covers file edits; Bash would still prompt, and a
+    // headless session has nobody to answer. The container's hardening — no
+    // privileges, dropped capabilities, no docker socket — is what makes
+    // running unattended safe.
     '--permission-mode',
-    'acceptEdits',
+    'bypassPermissions',
   ]
 
   if (context.resumeFrom) {
@@ -176,8 +180,9 @@ export class ClaudeCodeAdapter implements AgentAdapter {
   }
 
   async respondToPermission(): Promise<void> {
-    // Sessions run in acceptEdits mode, so the agent never asks. Accepting the
-    // call rather than throwing means callers need no special case.
+    // Sessions run in bypassPermissions mode, so the agent never asks.
+    // Accepting the call rather than throwing means callers need no special
+    // case.
   }
 
   async interrupt(): Promise<void> {
