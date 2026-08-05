@@ -1,0 +1,52 @@
+# Runs the same checks developers run locally. The host only provides Docker;
+# typecheck, format, and tests all execute inside the verify container.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Typecheck, format, and test
+        run: ./docker/verify.sh
+
+      - name: Clean up leftover session containers
+        if: always()
+        run: ./docker/verify.sh --clean-containers
+
+      - name: Tear down the dev stack
+        if: always()
+        run: ./docker/verify.sh --down
+
+  base-node:
+    name: Build agent image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build dukebox/base-node
+        run: docker build -t dukebox/base-node:latest images/base-node
