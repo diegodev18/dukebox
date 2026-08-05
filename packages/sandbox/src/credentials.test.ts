@@ -81,6 +81,39 @@ describe('HELPER_SCRIPT', () => {
     expect(reply).toContain('password=secret')
   })
 
+  it('answers a request git sent without a trailing blank line', async () => {
+    // Observed from real git: it writes "protocol=…\nhost=…\n" and then waits,
+    // with no blank line and no EOF. A helper that waits for either waits for
+    // something git is not going to send while it waits for the helper.
+    const reply = await askHelper('protocol=https\nhost=github.com\npath=diego/dukebox.git\n')
+    expect(reply).toContain('password=secret')
+  })
+
+  it('declines rather than hanging when given nothing to ask about', async () => {
+    // An empty request cannot be answered, and connecting anyway leaves git
+    // waiting on a proxy that has nothing to reply to.
+    const dir = await mkdtemp(join(tmpdir(), 'dukebox-helper-'))
+    cleanup.push(dir)
+
+    const helperPath = join(dir, 'helper')
+    await writeFile(helperPath, HELPER_SCRIPT)
+    await chmod(helperPath, 0o755)
+
+    const code = await new Promise<number | null>((resolve, reject) => {
+      const child = spawn(helperPath, ['get'], { stdio: ['pipe', 'ignore', 'ignore'] })
+      child.stdin.end()
+      child.on('close', resolve)
+
+      const timer = setTimeout(() => {
+        child.kill()
+        reject(new Error('the helper hung on an empty request'))
+      }, 5000)
+      child.on('close', () => clearTimeout(timer))
+    })
+
+    expect(code).toBe(1)
+  })
+
   it('does nothing for an operation other than get', async () => {
     // git also calls helpers to store and erase. Answering those would be
     // meaningless here, and hanging on them would stall the operation.

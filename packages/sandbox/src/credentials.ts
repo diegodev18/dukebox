@@ -53,26 +53,32 @@ const net = require("net");
 let input = "";
 let sent = false;
 
-// Forwarded on the blank line that ends a credential request, not on stdin
-// closing. git keeps the pipe open while it waits for the answer, so waiting
-// for "end" means waiting for something that only happens after git has
-// already given up — which it reports as "could not read Username", naming
-// neither the helper nor the socket.
 const forward = () => {
   if (sent) return;
   sent = true;
 
-  const socket = net.connect(${JSON.stringify(CONTAINER_SOCKET_PATH)}, () => socket.end(input));
+  // Nothing to ask about. Connecting anyway sends an empty request the proxy
+  // cannot answer, and git reads the silence as "no credential".
+  if (input.trim() === "") process.exit(1);
+
+  // The request is terminated here rather than assumed: git does not always
+  // send the blank line its own documentation describes, and the proxy needs
+  // one to know the request is complete.
+  const request = input.endsWith("\\n\\n") ? input : input.replace(/\\n*$/, "\\n") + "\\n";
+
+  const socket = net.connect(${JSON.stringify(CONTAINER_SOCKET_PATH)}, () => socket.end(request));
   socket.on("data", (chunk) => process.stdout.write(chunk));
   socket.on("close", () => process.exit(0));
   socket.on("error", () => process.exit(1));
 };
 
+// Sent as soon as the fields that identify a repository have arrived. Waiting
+// for a terminator means waiting for something git may never send, and waiting
+// for stdin to close means waiting for git, which is waiting for us.
 process.stdin.on("data", (chunk) => {
   input += chunk;
-  if (input.includes("\\n\\n")) forward();
+  if (input.includes("\\n\\n") || /(^|\\n)path=[^\\n]*\\n/.test(input)) forward();
 });
-// A request without a trailing blank line still ends when stdin does.
 process.stdin.on("end", forward);
 '
 `
@@ -188,16 +194,27 @@ export class CredentialProxy {
 
     const server = createServer((socket) => {
       let input = ''
+      let answered = false
+
+      const respond = async () => {
+        if (answered) return
+        answered = true
+        socket.end(await this.answer(input))
+      }
+
+      // A client that closes without the blank line has still finished asking.
+      // Waiting for a terminator that is never coming leaves git holding a
+      // connection until it times out and reports no credential at all.
+      socket.on('end', () => {
+        if (input.trim() !== '') void respond()
+        else socket.end()
+      })
 
       socket.on('data', (chunk: Buffer) => {
         input += chunk.toString()
 
         // Git signals the end of a request with a blank line.
-        if (!input.includes('\n\n')) return
-
-        void this.answer(input).then((reply) => {
-          socket.end(reply)
-        })
+        if (input.includes('\n\n')) void respond()
       })
 
       // A hung client would otherwise hold the connection open indefinitely.
