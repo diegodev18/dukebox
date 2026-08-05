@@ -411,6 +411,15 @@ export class SessionManager {
       throw new SessionError('there is nothing to open a pull request for')
     }
 
+    // A proxy that stopped listening — the service restarted, or the session
+    // was stopped and resumed — leaves its socket file behind. Restarted here
+    // rather than reported, because the fix is the same either way and the
+    // pull request is the moment it is needed.
+    if (running.credentials && !running.credentials.listening) {
+      const restarted = await this.startCredentialProxy(sessionId, running.repoFullName)
+      if (restarted) this.running.set(sessionId, { ...running, credentials: restarted })
+    }
+
     // Checked from inside the container, which is the only place it matters.
     // A bind mount is tied to the directory that existed when the container
     // was created, so one replaced since then leaves the container looking at
@@ -470,10 +479,10 @@ export class SessionManager {
       // cannot distinguish a proxy that is listening from one that replies,
       // and a socket file outlives the process that created it.
       const proxyState = running.credentials
-        ? await askProxy(
+        ? `${await askProxy(
             join(this.socketDirFor(sessionId), 'credentials.sock'),
             running.repoFullName,
-          )
+          )}, proxy listening: ${running.credentials.listening}, serving: ${running.repoFullName}`
         : 'proxy: not configured'
 
       const diagnosis = running.credentials

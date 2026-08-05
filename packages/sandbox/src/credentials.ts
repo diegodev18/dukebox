@@ -298,6 +298,11 @@ export class CredentialProxy {
     }
   }
 
+  /** Whether this proxy is still listening. */
+  get listening(): boolean {
+    return this.server !== undefined
+  }
+
   async stop(): Promise<void> {
     const server = this.server
     if (!server) return

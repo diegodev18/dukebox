@@ -425,6 +425,16 @@ describe('CredentialProxy', () => {
     expect(errors[0]?.message).toContain('someone/else.git')
   })
 
+  it('reports whether it is still listening', async () => {
+    // A stopped proxy leaves its socket file behind, so the file says nothing
+    // about whether anything answers. This is what the caller can ask instead.
+    const { proxy } = await startProxy('diego/dukebox')
+    expect(proxy.listening).toBe(true)
+
+    await proxy.stop()
+    expect(proxy.listening).toBe(false)
+  })
+
   it('refuses to start twice', async () => {
     const { proxy } = await startProxy('diego/dukebox')
     await expect(proxy.start()).rejects.toThrow('already started')
