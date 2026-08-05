@@ -141,6 +141,31 @@ export class SessionStream {
     this.send({ type: 'permission_response', sessionId, id, allow })
   }
 
+  openTerminal(sessionId: string, cols: number, rows: number): void {
+    this.send({ type: 'terminal_open', sessionId, cols, rows })
+  }
+
+  attachTerminal(sessionId: string, terminalId: string, cols: number, rows: number): void {
+    this.send({ type: 'terminal_attach', sessionId, terminalId, cols, rows })
+  }
+
+  detachTerminal(sessionId: string, terminalId: string): void {
+    this.send({ type: 'terminal_detach', sessionId, terminalId })
+  }
+
+  /** `data` is already base64: the caller encodes what the keyboard produced. */
+  sendTerminalInput(sessionId: string, terminalId: string, data: string): void {
+    this.send({ type: 'terminal_input', sessionId, terminalId, data })
+  }
+
+  resizeTerminal(sessionId: string, terminalId: string, cols: number, rows: number): void {
+    this.send({ type: 'terminal_resize', sessionId, terminalId, cols, rows })
+  }
+
+  closeTerminal(sessionId: string, terminalId: string): void {
+    this.send({ type: 'terminal_close', sessionId, terminalId })
+  }
+
   /** Stop for good. A stream closed this way does not reconnect. */
   close(): void {
     this.closed = true
