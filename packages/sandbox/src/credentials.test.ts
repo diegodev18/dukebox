@@ -126,6 +126,12 @@ describe('HELPER_SCRIPT', () => {
 
     const code = await new Promise<number | null>((resolve) => {
       const child = spawn(helperPath, ['store'], { stdio: ['pipe', 'ignore', 'ignore'] })
+      // Non-get ops exit before reading stdin, so the write races with close
+      // and can raise EPIPE. That is expected; swallow it so Vitest does not
+      // treat the race as an unhandled failure.
+      child.stdin.on('error', (err: NodeJS.ErrnoException) => {
+        if (err.code !== 'EPIPE') throw err
+      })
       child.stdin.end('protocol=https\nhost=github.com\n\n')
       child.on('close', resolve)
     })
