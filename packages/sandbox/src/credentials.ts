@@ -66,10 +66,33 @@ const forward = () => {
   // one to know the request is complete.
   const request = input.endsWith("\\n\\n") ? input : input.replace(/\\n*$/, "\\n") + "\\n";
 
+  let reply = "";
   const socket = net.connect(${JSON.stringify(CONTAINER_SOCKET_PATH)}, () => socket.end(request));
-  socket.on("data", (chunk) => process.stdout.write(chunk));
-  socket.on("close", () => process.exit(0));
-  socket.on("error", () => process.exit(1));
+
+  socket.on("data", (chunk) => { reply += chunk; process.stdout.write(chunk); });
+
+  // Silence is the failure that has to be named. A connection that opens and
+  // closes with nothing said exits 0 and looks to git exactly like a helper
+  // that had no credential to offer.
+  socket.on("close", () => {
+    if (reply === "") {
+      process.stderr.write("dukebox: the credential socket closed without replying\\n");
+      process.exit(1);
+    }
+    process.exit(0);
+  });
+
+  socket.on("error", (e) => {
+    process.stderr.write("dukebox: credential socket error: " + e.code + "\\n");
+    process.exit(1);
+  });
+
+  // The proxy spawns \`gh\` to answer, which is not instant on a small host.
+  socket.setTimeout(20000, () => {
+    process.stderr.write("dukebox: the credential socket did not reply within 20s\\n");
+    socket.destroy();
+    process.exit(1);
+  });
 };
 
 // Sent as soon as the fields that identify a repository have arrived. Waiting

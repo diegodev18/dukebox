@@ -18,6 +18,7 @@ import {
   type SessionContainer,
 } from '@dukebox/sandbox'
 import { eq } from 'drizzle-orm'
+import { connect } from 'node:net'
 import { join } from 'node:path'
 import type { EventBus } from '../events/bus.js'
 import type { GitHubClient } from '../github/client.js'
@@ -465,11 +466,21 @@ export class SessionManager {
             `host token: NO (${failure instanceof Error ? failure.message : 'unknown'})`,
         )
 
+      // The proxy answering from the host side. The container-side checks
+      // cannot distinguish a proxy that is listening from one that replies,
+      // and a socket file outlives the process that created it.
+      const proxyState = running.credentials
+        ? await askProxy(
+            join(this.socketDirFor(sessionId), 'credentials.sock'),
+            running.repoFullName,
+          )
+        : 'proxy: not configured'
+
       const diagnosis = running.credentials
         ? await running.workspace
             .diagnoseCredentials(Workspace.HELPER_PATH, CONTAINER_SOCKET_PATH, running.repoFullName)
-            .then((report) => `${report}, ${tokenState}`)
-            .catch(() => tokenState)
+            .then((report) => `${report}, ${tokenState}, ${proxyState}`)
+            .catch(() => `${tokenState}, ${proxyState}`)
         : 'credentials: not configured on this server'
 
       throw new SessionError(
@@ -672,4 +683,41 @@ export class SessionManager {
   isRunning(sessionId: string): boolean {
     return this.running.has(sessionId)
   }
+}
+
+/**
+ * Ask the credential proxy for a repository, from the host.
+ *
+ * A socket file outlives the process that created it, so its presence says
+ * nothing about whether anything is listening — and a proxy that is listening
+ * is still not necessarily one that replies. This is the only check that
+ * distinguishes the three, and it runs on the side the container cannot see.
+ */
+async function askProxy(socketPath: string, repoFullName: string): Promise<string> {
+  return new Promise((resolve) => {
+    const socket = connect(socketPath)
+    let reply = ''
+
+    const finish = (verdict: string) => {
+      socket.destroy()
+      resolve(`proxy: ${verdict}`)
+    }
+
+    socket.on('connect', () => {
+      socket.end(`protocol=https\nhost=github.com\npath=${repoFullName}.git\n\n`)
+    })
+
+    socket.on('data', (chunk: Buffer) => {
+      reply += chunk.toString()
+    })
+
+    socket.on('close', () => {
+      if (reply.includes('password=')) finish('answers')
+      else if (reply.trim() === '') finish('listening but replied nothing')
+      else finish(`replied ${JSON.stringify(reply.slice(0, 40))}`)
+    })
+
+    socket.on('error', (error: NodeJS.ErrnoException) => finish(`unreachable (${error.code})`))
+    setTimeout(() => finish('no reply within 10s'), 10_000)
+  })
 }
