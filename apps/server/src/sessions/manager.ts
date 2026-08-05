@@ -84,6 +84,8 @@ export interface StartSessionOptions {
   projectId: string
   agentId: string
   baseBranch?: string
+  /** Passed through to the adapter; absent means the agent's default. */
+  model?: string
   purpose?: SessionPurpose
   /** Required for coding sessions; ignored for environment_setup. */
   prompt?: string
@@ -177,26 +179,33 @@ export class SessionManager {
 
     // Deliberately not awaited: provisioning is slow, and its progress reaches
     // the client as events rather than as a blocked request.
-    void this.provision(session, project.repoFullName, prompt).catch(async (error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error)
+    void this.provision(session, project.repoFullName, prompt, options.model).catch(
+      async (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error)
 
-      await this.deps.bus
-        .append(session.id, { type: 'error', message, fatal: true })
-        .catch(() => undefined)
-      await this.setStatus(session.id, 'failed', { errorMessage: message })
-    })
+        await this.deps.bus
+          .append(session.id, { type: 'error', message, fatal: true })
+          .catch(() => undefined)
+        await this.setStatus(session.id, 'failed', { errorMessage: message })
+      },
+    )
 
     return session
   }
 
-  private async provision(session: Session, repoFullName: string, prompt: string): Promise<void> {
+  private async provision(
+    session: Session,
+    repoFullName: string,
+    prompt: string,
+    model?: string,
+  ): Promise<void> {
     // Started before the container so the socket exists to be mounted. It
     // answers only for this session's repository, so an agent that asks for
     // any other gets nothing.
     const credentials = await this.startCredentialProxy(session.id, repoFullName)
 
     try {
-      await this.provisionWith(session, repoFullName, prompt, credentials)
+      await this.provisionWith(session, repoFullName, prompt, credentials, model)
     } catch (error) {
       // The session never reached `running`, so `stop` would not find it and
       // the socket would be left listening for a session that failed.
@@ -210,6 +219,7 @@ export class SessionManager {
     repoFullName: string,
     prompt: string,
     credentials: CredentialProxy | undefined,
+    model?: string,
   ): Promise<void> {
     const purpose = (session.purpose as SessionPurpose) || 'coding'
     const config = await this.configFor(session.projectId)
@@ -274,6 +284,7 @@ export class SessionManager {
       container,
       workingDir: '/workspace/repo',
       ...(config.instructions && purpose === 'coding' ? { instructions: config.instructions } : {}),
+      ...(model ? { model } : {}),
       ...(session.agentSessionId ? { resumeFrom: session.agentSessionId } : {}),
     })
 

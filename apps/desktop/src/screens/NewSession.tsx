@@ -1,14 +1,19 @@
 import type { ProjectSummary, RepositorySummary, SessionSummary } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
-import { AVAILABLE_AGENTS } from '../components/AgentIcon.js'
-import { AgentPicker, BranchPicker, RepoPicker } from '../components/RepoBranchPickers.js'
+import { AVAILABLE_AGENTS, DEFAULT_MODEL } from '../components/AgentIcon.js'
+import {
+  AgentPicker,
+  BranchPicker,
+  ModelPicker,
+  RepoPicker,
+} from '../components/RepoBranchPickers.js'
 import type { DukeboxClient } from '../lib/client.js'
 
 /**
  * Starting a session from the centre column.
  *
- * Three choices sit above the prompt: which repository, which branch to
- * branch from, and which agent. A repository that is not yet a project
+ * Choices sit above the prompt: which repository, which branch to branch
+ * from, which agent, and which model. A repository that is not yet a project
  * becomes one on the way through.
  *
  * Projects without a saved environment are steered into an environment_setup
@@ -44,6 +49,7 @@ export function NewSession({ client, projects, onCreated, preferSetupProjectId }
   const [branches, setBranches] = useState<string[]>([])
   const [branchesLoading, setBranchesLoading] = useState(false)
   const [agentId, setAgentId] = useState<string>(AVAILABLE_AGENTS[0].id)
+  const [model, setModel] = useState<string>(DEFAULT_MODEL)
   const [prompt, setPrompt] = useState('')
   const [forceSetup, setForceSetup] = useState(Boolean(preferSetupProjectId))
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
@@ -165,6 +171,7 @@ export function NewSession({ client, projects, onCreated, preferSetupProjectId }
         const session = await client.startSession({
           projectId: project.id,
           agentId,
+          model,
           baseBranch,
           purpose: 'environment_setup',
         })
@@ -175,6 +182,7 @@ export function NewSession({ client, projects, onCreated, preferSetupProjectId }
       const session = await client.startSession({
         projectId: project.id,
         agentId,
+        model,
         prompt: prompt.trim(),
         baseBranch,
         purpose: 'coding',
@@ -208,6 +216,7 @@ export function NewSession({ client, projects, onCreated, preferSetupProjectId }
             loading={branchesLoading}
           />
           <AgentPicker value={agentId} onChange={setAgentId} disabled={busy} />
+          <ModelPicker value={model} onChange={setModel} disabled={busy} />
         </div>
 
         {needsEnvironment ? (

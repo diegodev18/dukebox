@@ -18,6 +18,28 @@ export const AVAILABLE_AGENTS = [{ id: 'claude-code', label: 'Claude Code' }] as
 
 export type AvailableAgentId = (typeof AVAILABLE_AGENTS)[number]['id']
 
+/**
+ * Claude Code model aliases for the New Session picker.
+ *
+ * These map to `claude --model <alias>` and always resolve to the latest
+ * version of that family available to the account.
+ */
+export const AVAILABLE_MODELS = [
+  { id: 'sonnet', label: 'Sonnet' },
+  { id: 'opus', label: 'Opus' },
+  { id: 'haiku', label: 'Haiku' },
+  { id: 'fable', label: 'Fable' },
+] as const
+
+export type AvailableModelId = (typeof AVAILABLE_MODELS)[number]['id']
+
+export const DEFAULT_MODEL: AvailableModelId = 'sonnet'
+
+/** Human name for a model id, when one is known. */
+export function modelLabel(modelId: string): string | undefined {
+  return AVAILABLE_MODELS.find((model) => model.id === modelId)?.label
+}
+
 interface Props {
   agentId: string
   className?: string

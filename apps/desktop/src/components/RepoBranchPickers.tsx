@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { AgentIcon, AVAILABLE_AGENTS, agentLabel } from './AgentIcon.js'
+import {
+  AgentIcon,
+  AVAILABLE_AGENTS,
+  AVAILABLE_MODELS,
+  agentLabel,
+  modelLabel,
+} from './AgentIcon.js'
 
 /**
- * Chip + searchable popover menus for picking a repository, branch, or agent.
+ * Chip + searchable popover menus for picking a repository, branch, agent, or
+ * model.
  *
  * Anchored under the chip that opened them. Escape and an outside click close
  * the menu; choosing a row closes it and reports the value.
@@ -180,6 +187,44 @@ export function AgentPicker({
             icon={<AgentIcon agentId={agent.id} className="size-3.5" />}
           >
             <span className="truncate">{agent.label}</span>
+          </PickerRow>
+        ))}
+      </div>
+    </PickerShell>
+  )
+}
+
+export function ModelPicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string
+  onChange: (modelId: string) => void
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const label = modelLabel(value) ?? value
+
+  return (
+    <PickerShell
+      open={open}
+      onOpenChange={setOpen}
+      disabled={Boolean(disabled)}
+      label={<span className="truncate">{label || 'Model'}</span>}
+      ariaLabel="Model"
+    >
+      <div className="max-h-64 overflow-y-auto py-1">
+        {AVAILABLE_MODELS.map((model) => (
+          <PickerRow
+            key={model.id}
+            selected={model.id === value}
+            onSelect={() => {
+              onChange(model.id)
+              setOpen(false)
+            }}
+          >
+            <span className="truncate">{model.label}</span>
           </PickerRow>
         ))}
       </div>

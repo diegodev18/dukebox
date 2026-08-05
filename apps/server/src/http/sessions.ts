@@ -74,7 +74,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
     }
 
     try {
-      const { baseBranch, prompt, purpose, ...rest } = parsed.data
+      const { baseBranch, prompt, purpose, model, ...rest } = parsed.data
 
       const session = await deps.sessions.start({
         ...rest,
@@ -84,6 +84,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
         // undefined is not the same as an absent one, and the manager treats
         // an absent base branch as "use the project's default".
         ...(baseBranch ? { baseBranch } : {}),
+        ...(model ? { model } : {}),
       })
 
       return c.json(toSummary(session), 202)

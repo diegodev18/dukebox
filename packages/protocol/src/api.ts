@@ -129,6 +129,13 @@ export const createSessionRequest = z
     agentId: z.string().min(1),
     /** Defaults to the project's default branch. */
     baseBranch: z.string().optional(),
+    /**
+     * Model the agent should use for this session.
+     *
+     * Passed through to the adapter (e.g. Claude Code `--model`). When absent,
+     * the agent uses its own default.
+     */
+    model: z.string().min(1).optional(),
     purpose: sessionPurpose.default('coding'),
     /** Required for coding sessions; ignored for environment_setup (server prompt). */
     prompt: z.string().optional(),

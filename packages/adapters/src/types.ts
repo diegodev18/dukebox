@@ -22,6 +22,13 @@ export interface SessionContext {
   /** Extra instructions from `.duke/config.yaml`, appended to the prompt. */
   instructions?: string
   /**
+   * Model the agent should use for this session.
+   *
+   * Adapters that accept a model flag (e.g. Claude Code `--model`) pass it
+   * through; others ignore it. Absent means the agent's own default.
+   */
+  model?: string
+  /**
    * The agent's own session identifier from a previous run.
    *
    * Present only when resuming, and only meaningful to the adapter that

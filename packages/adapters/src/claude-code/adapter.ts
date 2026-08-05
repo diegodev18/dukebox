@@ -41,6 +41,10 @@ export function buildArgs(context: SessionContext): string[] {
     'bypassPermissions',
   ]
 
+  if (context.model) {
+    args.push('--model', context.model)
+  }
+
   if (context.resumeFrom) {
     args.push('--resume', context.resumeFrom)
   }
