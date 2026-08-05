@@ -229,6 +229,27 @@ describe('Workspace', () => {
     })
   })
 
+  describe('installCredentialHelper', () => {
+    it('makes git send the repository with every credential request', async () => {
+      // Without `useHttpPath` git asks only "protocol=https, host=github.com".
+      // The proxy cannot tell which repository that is about, so it refuses —
+      // and every push fails while every check on the helper looks correct,
+      // because a check that sends a path gets an answer.
+      const { workspace, container } = await freshWorkspace()
+      await workspace.installCredentialHelper()
+
+      const result = await container.exec([
+        'git',
+        'config',
+        '--global',
+        '--get',
+        'credential.useHttpPath',
+      ])
+
+      expect(result.stdout.trim()).toBe('true')
+    })
+  })
+
   describe('diagnoseCredentials', () => {
     it('names each thing that is missing', async () => {
       // A container with no helper and no socket: the report has to say which,

@@ -74,6 +74,12 @@ export class Workspace {
    * Must run before any git operation that talks to a remote. The helper asks
    * the host for credentials over a Unix socket; no token is written into the
    * container, so an agent reading its own filesystem finds nothing to steal.
+   *
+   * `credential.useHttpPath` is what makes the isolation work at all. Without
+   * it git asks only `protocol=https, host=github.com` — no repository — and
+   * the proxy cannot tell which repository is being asked about, so it refuses
+   * every request. With it, each request names its repository and the proxy
+   * can answer for this session's and no other.
    */
   async installCredentialHelper(): Promise<void> {
     // Transferred base64-encoded. The script contains quotes, newlines and
@@ -89,7 +95,8 @@ export class Workspace {
       `mkdir -p "$(dirname ${Workspace.HELPER_PATH})" &&
        echo '${encoded}' | base64 -d > ${Workspace.HELPER_PATH} &&
        chmod +x ${Workspace.HELPER_PATH} &&
-       git config --global credential.helper ${Workspace.HELPER_PATH}`,
+       git config --global credential.helper ${Workspace.HELPER_PATH} &&
+       git config --global credential.useHttpPath true`,
     ])
 
     if (result.exitCode !== 0) {

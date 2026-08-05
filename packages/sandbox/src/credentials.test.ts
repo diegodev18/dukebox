@@ -204,6 +204,10 @@ describe('matchesRepository', () => {
   })
 
   it('refuses a request with no path', () => {
+    // git sends no path unless `credential.useHttpPath` is set, and refusing
+    // is correct: without one there is no way to know which repository is
+    // being asked about, and answering would hand the token to any of them.
+    // `installCredentialHelper` sets that option for exactly this reason.
     expect(matchesRepository({ host: 'github.com' }, 'diego/dukebox')).toBe(false)
   })
 
