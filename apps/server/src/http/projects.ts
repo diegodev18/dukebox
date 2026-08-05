@@ -64,10 +64,7 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
         sessionCount: count(sessions.id),
       })
       .from(projects)
-      .leftJoin(
-        sessions,
-        and(eq(sessions.projectId, projects.id), isNull(sessions.archivedAt)),
-      )
+      .leftJoin(sessions, and(eq(sessions.projectId, projects.id), isNull(sessions.archivedAt)))
       .groupBy(projects.id)
       .orderBy(desc(projects.createdAt))
 
