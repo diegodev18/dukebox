@@ -262,6 +262,18 @@ export class Workspace {
     return result.exitCode === 0
   }
 
+  /**
+   * Who the session's commits are authored by.
+   *
+   * Set per session rather than baked into the image, so a project can commit
+   * as whoever its owner wants. The image still carries a default, which is
+   * what a session that never calls this uses.
+   */
+  async setCommitIdentity(identity: { name: string; email: string }): Promise<void> {
+    await this.run(['git', 'config', '--global', 'user.name', identity.name])
+    await this.run(['git', 'config', '--global', 'user.email', identity.email])
+  }
+
   /** Push the session branch. Credentials come from the credential proxy. */
   async push(branch: string): Promise<void> {
     await this.run(['git', 'push', '--set-upstream', 'origin', branch])

@@ -23,6 +23,7 @@ import { join } from 'node:path'
 import type { EventBus } from '../events/bus.js'
 import type { GitHubClient } from '../github/client.js'
 import { AGENT_CREDENTIAL_SECRET, type SecretStore } from '../secrets/store.js'
+import { pullRequestContent } from './summary.js'
 
 /**
  * Session lifecycle.
@@ -405,7 +406,18 @@ export class SessionManager {
     // identical to one that did nothing, which is the case this used to
     // refuse.
     const changed = await running.workspace.changedFiles(running.baseCommit)
-    await running.workspace.commitAll(title ?? session.title ?? 'Agent changes')
+
+    // The same summary the pull request uses, so a commit read on its own says
+    // what changed rather than repeating the instruction.
+    const summary = pullRequestContent({
+      prompt: session.title ?? '',
+      events: await this.deps.bus.replay(sessionId).catch(() => []),
+      changedFiles: changed,
+      sessionId,
+      branch: session.branch,
+    })
+
+    await running.workspace.commitAll(title ?? summary.title)
 
     if (changed.length === 0 && !session.prUrl) {
       throw new SessionError('there is nothing to open a pull request for')
@@ -506,14 +518,16 @@ export class SessionManager {
     // A second push to the same branch updates the existing pull request
     // rather than failing, so a follow-up turn extends the same review.
     const existing = await github.findPullRequest(running.repoFullName, session.branch)
+
     const url =
       existing ??
       (await github.createPullRequest({
         repoFullName: running.repoFullName,
         head: session.branch,
         base: session.baseBranch,
-        title: title ?? session.title ?? 'Agent changes',
-        body: `Opened by Dukebox from session \`${sessionId}\`.`,
+        // An explicit title still wins: someone who names it means it.
+        title: title ?? summary.title,
+        body: summary.body,
       }))
 
     await this.deps.db.update(sessions).set({ prUrl: url }).where(eq(sessions.id, sessionId))

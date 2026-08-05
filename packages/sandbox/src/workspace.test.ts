@@ -229,6 +229,37 @@ describe('Workspace', () => {
     })
   })
 
+  describe('setCommitIdentity', () => {
+    it('authors commits as whoever the session names', async () => {
+      const { workspace, container } = await freshWorkspace()
+      await workspace.setCommitIdentity({ name: 'Diego', email: 'diego@example.com' })
+
+      await container.exec(['sh', '-c', 'echo changed > README.md'], { cwd: WORKSPACE_DIR })
+      await workspace.commitAll('A change')
+
+      const author = await container.exec(['git', 'log', '-1', '--format=%an <%ae>'], {
+        cwd: WORKSPACE_DIR,
+      })
+
+      expect(author.stdout.trim()).toBe('Diego <diego@example.com>')
+    })
+
+    it('leaves the image default in place when never called', async () => {
+      // A session that names nobody still commits as something identifiable
+      // rather than failing on git's "please tell me who you are".
+      const { workspace, container } = await freshWorkspace()
+
+      await container.exec(['sh', '-c', 'echo changed > README.md'], { cwd: WORKSPACE_DIR })
+      await workspace.commitAll('A change')
+
+      const author = await container.exec(['git', 'log', '-1', '--format=%an'], {
+        cwd: WORKSPACE_DIR,
+      })
+
+      expect(author.stdout.trim()).not.toBe('')
+    })
+  })
+
   describe('installCredentialHelper', () => {
     it('makes git send the repository with every credential request', async () => {
       // Without `useHttpPath` git asks only "protocol=https, host=github.com".
