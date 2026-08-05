@@ -116,6 +116,15 @@ const script: EnvelopedEvent[] = [
       after: `export const module${index} = ${index}`,
     }),
   ),
+
+  // Leave one tool open so the transcript shows a live thinking-orb on the
+  // tool row and another at the tail while `running` is true.
+  event({
+    type: 'tool_call',
+    id: 'grep-live',
+    name: 'Grep',
+    input: { pattern: 'demuxStream', path: 'packages/sandbox' },
+  }),
 ]
 
 /**

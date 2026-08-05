@@ -1,5 +1,7 @@
 import type { Block, ToolBlock, Transcript as TranscriptData } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
+import { ThinkingOrb } from 'thinking-orbs'
+import { activityBlock, mapOrbState, orbStateForTool } from '../lib/orbState.js'
 
 /**
  * The conversation.
@@ -43,7 +45,7 @@ export function Transcript({ transcript, onRespond }: Props) {
           <BlockView key={block.id} block={block} onRespond={onRespond} />
         ))}
 
-        {transcript.running && <Working />}
+        {transcript.running && <Working blocks={transcript.blocks} />}
       </div>
     </div>
   )
@@ -128,7 +130,13 @@ function Tool({ block }: { block: ToolBlock }) {
         </span>
 
         {running && (
-          <span className="size-1.5 flex-none rounded-full bg-running motion-safe:animate-pulse" />
+          <ThinkingOrb
+            state={orbStateForTool(block.name)}
+            size={20}
+            theme="auto"
+            className="flex-none"
+            aria-label={`${block.name} running`}
+          />
         )}
         {failed && <span className="flex-none text-[12px] text-destructive">failed</span>}
       </button>
@@ -185,16 +193,12 @@ function Permission({
   )
 }
 
-function Working() {
+function Working({ blocks }: { blocks: Block[] }) {
+  const state = mapOrbState(activityBlock(blocks))
+
   return (
-    <div className="flex items-center gap-1.5" aria-label="Working">
-      {[0, 1, 2].map((index) => (
-        <span
-          key={index}
-          className="size-1.5 rounded-full bg-muted-foreground motion-safe:animate-pulse"
-          style={{ animationDelay: `${index * 160}ms` }}
-        />
-      ))}
+    <div className="flex items-center">
+      <ThinkingOrb state={state} size={20} theme="auto" />
     </div>
   )
 }
