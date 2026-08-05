@@ -425,6 +425,21 @@ describe('CredentialProxy', () => {
     expect(errors[0]?.message).toContain('someone/else.git')
   })
 
+  it('answers when reading the token takes a moment', async () => {
+    // The request arrives with the client's FIN attached, and answering means
+    // spawning `gh`. Without `allowHalfOpen` Node closes the socket on that
+    // FIN, and the reply — written after the await — goes to a socket that is
+    // already gone. Both ends then see a connection closed in silence, which
+    // is what a push failing for no stated reason looks like.
+    const { path } = await startProxy('diego/dukebox', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 120))
+      return 'gho_token'
+    })
+
+    const reply = await ask(path, 'protocol=https\nhost=github.com\npath=diego/dukebox.git\n\n')
+    expect(reply).toContain('password=gho_token')
+  })
+
   it('reports whether it is still listening', async () => {
     // A stopped proxy leaves its socket file behind, so the file says nothing
     // about whether anything answers. This is what the caller can ask instead.

@@ -215,7 +215,12 @@ export class CredentialProxy {
       )
     })
 
-    const server = createServer((socket) => {
+    // `allowHalfOpen` is load-bearing. A client sends its request and closes
+    // its own side immediately; without this Node closes the whole socket on
+    // that FIN, and answering means awaiting `gh`, so the reply is written to
+    // a socket that is already gone. The connection then looks — from both
+    // ends — like one that was accepted and closed in silence.
+    const server = createServer({ allowHalfOpen: true }, (socket) => {
       let input = ''
       let answered = false
 
@@ -228,6 +233,9 @@ export class CredentialProxy {
       // A client that closes without the blank line has still finished asking.
       // Waiting for a terminator that is never coming leaves git holding a
       // connection until it times out and reports no credential at all.
+      // With `allowHalfOpen` the socket no longer closes itself on the
+      // client's FIN, so an empty request has to be closed explicitly or it
+      // would sit open until the timeout.
       socket.on('end', () => {
         if (input.trim() !== '') void respond()
         else socket.end()
