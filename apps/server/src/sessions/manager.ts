@@ -16,6 +16,7 @@ import {
   WorkspaceError,
   type CredentialProxy,
   type SessionContainer,
+  type TerminalHandle,
 } from '@dukebox/sandbox'
 import { eq } from 'drizzle-orm'
 import { connect } from 'node:net'
@@ -64,6 +65,14 @@ export interface SessionManagerDeps {
   secrets?: SecretStore
   /** Overridable so tests can drive a fake agent. */
   createAdapter?: (agentId: string) => AgentAdapter
+  /**
+   * Called when a session stops, before its status is written.
+   *
+   * The terminal registry hangs off this rather than importing the manager: a
+   * PTY belonging to a stopped container is dead weight, and the manager is the
+   * only place that knows when that happened.
+   */
+  onSessionStopped?: (sessionId: string) => Promise<void>
 }
 
 export interface StartSessionOptions {
@@ -661,6 +670,22 @@ export class SessionManager {
     return running
   }
 
+  /**
+   * Open an interactive shell in a session's container.
+   *
+   * Deliberately not tracked here: the terminal registry owns the lifetime, and
+   * a second owner would mean two places deciding when a PTY dies.
+   */
+  async openTerminal(
+    sessionId: string,
+    size: { cols: number; rows: number },
+  ): Promise<TerminalHandle> {
+    const running = this.running.get(sessionId)
+    if (!running) throw new SessionError('that session is not running')
+
+    return running.container.openTerminal({ ...size, cwd: '/workspace/repo' })
+  }
+
   async interrupt(sessionId: string): Promise<void> {
     const running = this.running.get(sessionId)
     if (!running) throw new SessionError('that session is not running')
@@ -690,6 +715,10 @@ export class SessionManager {
 
     await running.adapter.stop()
     await running.container.stop()
+
+    // Before the status write, so a client reacting to the status change never
+    // finds a terminal that is still listed but already dead.
+    await this.deps.onSessionStopped?.(sessionId).catch(() => undefined)
 
     // Stopped with the session: a socket left listening would keep answering
     // credential requests for a session that is over.
