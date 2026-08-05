@@ -80,6 +80,16 @@
 }
 
 @layer base {
+  /* The window is the viewport. Columns scroll inside themselves; the page
+     must not. Without this, a tall transcript or file list can push past
+     `h-svh` and the body starts scrolling — which hides the composer. */
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
   body {
     margin: 0;
     background: var(--color-background);

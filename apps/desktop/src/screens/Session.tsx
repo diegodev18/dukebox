@@ -78,7 +78,10 @@ export function Session({ connection, onDisconnected }: Props) {
   const current = sessions.find((session) => session.id === selected) ?? null
 
   return (
-    <div className="grid h-svh grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)] has-[[data-collapsed]]:grid-cols-[236px_minmax(0,1fr)_244px]">
+    // `h-full` fills the locked `#root`; `overflow-hidden` keeps any column
+    // that still misbehaves from scrolling the window itself. Internal
+    // panels (`Transcript`, sidebar list, workspace files) own their scroll.
+    <div className="grid h-full grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)] overflow-hidden has-[[data-collapsed]]:grid-cols-[236px_minmax(0,1fr)_244px]">
       <Sidebar
         connection={connection}
         projects={projects}

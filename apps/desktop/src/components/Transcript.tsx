@@ -37,7 +37,7 @@ export function Transcript({ transcript, onRespond }: Props) {
   }
 
   return (
-    <div ref={scroller} onScroll={handleScroll} className="flex-1 overflow-y-auto px-6 py-5.5">
+    <div ref={scroller} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto px-6 py-5.5">
       <div className="measure flex flex-col gap-4">
         {transcript.blocks.map((block) => (
           <BlockView key={block.id} block={block} onRespond={onRespond} />

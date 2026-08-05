@@ -44,7 +44,7 @@ export function Sidebar({
   return (
     <nav
       aria-label="Sessions"
-      className="flex flex-col overflow-hidden border-r border-border bg-surface"
+      className="flex min-h-0 flex-col overflow-hidden border-r border-border bg-surface"
     >
       <div className="px-2 pt-2.5 pb-1">
         {searching ? (
@@ -61,7 +61,7 @@ export function Sidebar({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto py-2">
         {projects.length === 0 ? (
           <p className="px-4 py-3 text-[12.5px] text-muted-foreground">
             No projects yet. Connect a repository to start.

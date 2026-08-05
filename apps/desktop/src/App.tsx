@@ -98,7 +98,7 @@ function Checking() {
   }, [])
 
   return (
-    <div className="grid min-h-svh place-items-center">
+    <div className="grid h-full place-items-center">
       {slow && <p className="text-muted-foreground">Checking your connection…</p>}
     </div>
   )

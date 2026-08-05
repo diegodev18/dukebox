@@ -75,7 +75,7 @@ export function Pairing({ onPaired }: Props) {
   const working = status.kind === 'working'
 
   return (
-    <main className="grid min-h-svh place-items-center px-6">
+    <main className="grid h-full place-items-center px-6">
       <div className="w-full max-w-md">
         <h1 className="text-xl font-semibold tracking-tight">Connect to your server</h1>
         <p className="mt-2 text-muted-foreground">
