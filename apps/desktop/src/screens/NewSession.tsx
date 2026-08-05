@@ -1,23 +1,20 @@
 import type { ProjectSummary, RepositorySummary, SessionSummary } from '@dukebox/protocol'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { BranchPicker, RepoPicker } from '../components/RepoBranchPickers.js'
 import type { DukeboxClient } from '../lib/client.js'
 
 /**
- * Starting a session.
+ * Starting a session from the centre column.
  *
- * Two things are needed: which repository, and what to do first. Everything
- * else — the branch, the agent, the container — has a default worth keeping,
- * and asking about them here would turn one decision into five.
- *
- * A repository that is not yet a project becomes one on the way through. That
- * distinction matters to the server and to nobody else.
+ * Two choices sit above the prompt: which repository, and which branch to
+ * branch from. Everything else — the agent, the container — keeps its default.
+ * A repository that is not yet a project becomes one on the way through.
  */
 
 interface Props {
   client: DukeboxClient
   projects: ProjectSummary[]
   onCreated: (session: SessionSummary, project: ProjectSummary | null) => void
-  onCancel: () => void
 }
 
 type Status =
@@ -26,11 +23,15 @@ type Status =
   | { kind: 'starting' }
   | { kind: 'failed'; message: string }
 
-export function NewSession({ client, projects, onCreated, onCancel }: Props) {
+export function NewSession({ client, projects, onCreated }: Props) {
   const [repositories, setRepositories] = useState<RepositorySummary[]>([])
   const [target, setTarget] = useState<string>(projects[0]?.repoFullName ?? '')
+  const [baseBranch, setBaseBranch] = useState<string>(projects[0]?.defaultBranch ?? '')
+  const [branches, setBranches] = useState<string[]>([])
+  const [branchesLoading, setBranchesLoading] = useState(false)
   const [prompt, setPrompt] = useState('')
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
+  const field = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -40,7 +41,10 @@ export function NewSession({ client, projects, onCreated, onCancel }: Props) {
       .then((found) => {
         if (cancelled) return
         setRepositories(found)
-        setTarget((current) => current || found[0]?.fullName || '')
+        setTarget((current) => {
+          if (current) return current
+          return projects[0]?.repoFullName || found[0]?.fullName || ''
+        })
         setStatus({ kind: 'idle' })
       })
       .catch((error: unknown) => {
@@ -59,11 +63,70 @@ export function NewSession({ client, projects, onCreated, onCancel }: Props) {
     return () => {
       cancelled = true
     }
-  }, [client])
+  }, [client, projects])
 
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (!target || !prompt.trim()) return
+  // Resolve the branch list whenever the chosen repository changes. A project
+  // can ask GitHub for every branch; a bare repository only has its default.
+  useEffect(() => {
+    if (!target) {
+      setBranches([])
+      setBaseBranch('')
+      return
+    }
+
+    const project = projects.find((candidate) => candidate.repoFullName === target)
+    const repository = repositories.find((candidate) => candidate.fullName === target)
+    const fallback = project?.defaultBranch || repository?.defaultBranch || 'main'
+
+    let cancelled = false
+
+    if (!project) {
+      setBranches([fallback])
+      setBaseBranch(fallback)
+      setBranchesLoading(false)
+      return
+    }
+
+    setBranchesLoading(true)
+    client
+      .listBranches(project.id)
+      .then((found) => {
+        if (cancelled) return
+        setBranches(found.length > 0 ? found : [fallback])
+        setBaseBranch((current) => (found.includes(current) ? current : found[0] || fallback))
+        setBranchesLoading(false)
+      })
+      .catch(() => {
+        if (cancelled) return
+        // Branch listing is best-effort: the default is enough to start, and a
+        // hard failure here would block the whole form for a secondary choice.
+        setBranches([fallback])
+        setBaseBranch(fallback)
+        setBranchesLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [client, target, projects, repositories])
+
+  useEffect(() => {
+    const element = field.current
+    if (!element) return
+
+    element.style.height = 'auto'
+    element.style.height = `${Math.min(element.scrollHeight, 200)}px`
+  }, [prompt])
+
+  const selectRepo = (fullName: string) => {
+    setTarget(fullName)
+    const project = projects.find((candidate) => candidate.repoFullName === fullName)
+    const repository = repositories.find((candidate) => candidate.fullName === fullName)
+    setBaseBranch(project?.defaultBranch || repository?.defaultBranch || 'main')
+  }
+
+  const submit = async () => {
+    if (!target || !prompt.trim() || !baseBranch) return
 
     setStatus({ kind: 'starting' })
 
@@ -81,6 +144,7 @@ export function NewSession({ client, projects, onCreated, onCancel }: Props) {
         projectId: project.id,
         agentId: 'claude-code',
         prompt: prompt.trim(),
+        baseBranch,
       })
 
       onCreated(session, created)
@@ -94,89 +158,63 @@ export function NewSession({ client, projects, onCreated, onCancel }: Props) {
 
   const busy = status.kind === 'starting' || status.kind === 'loading'
   const options = mergeOptions(projects, repositories)
+  const canSend = !busy && Boolean(target) && Boolean(baseBranch) && prompt.trim() !== ''
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="New session"
-      className="fixed inset-0 z-50 grid place-items-center bg-background/70 px-6"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onCancel()
-      }}
-    >
-      <form
-        onSubmit={submit}
-        className="w-full max-w-lg rounded-[var(--radius)] border border-border-strong bg-surface p-5"
-      >
-        <h2 className="font-medium">New session</h2>
-        <p className="mt-1 text-[13px] text-muted-foreground">
-          It runs on your server, in its own container, on a branch of its own.
-        </p>
+    <div className="grid min-h-0 min-w-0 place-items-center px-6">
+      <div className="w-full max-w-xl">
+        <div className="mb-3 flex flex-wrap items-center gap-1">
+          <RepoPicker options={options} value={target} onChange={selectRepo} disabled={busy} />
+          <BranchPicker
+            branches={branches}
+            value={baseBranch}
+            onChange={setBaseBranch}
+            disabled={busy || !target}
+            loading={branchesLoading}
+          />
+        </div>
 
-        <label htmlFor="repository" className="mt-5 block text-[13px] font-medium">
-          Repository
-        </label>
-        <select
-          id="repository"
-          value={target}
-          onChange={(event) => setTarget(event.target.value)}
-          disabled={busy || options.length === 0}
-          className="mt-1.5 w-full rounded-[calc(var(--radius)*0.7)] border border-border-strong bg-background px-2.5 py-2 text-[13px] disabled:opacity-60"
-        >
-          {options.length === 0 && <option value="">No repositories found</option>}
-          {options.map((option) => (
-            <option key={option.fullName} value={option.fullName}>
-              {option.fullName}
-              {option.isRegistered ? '' : ' — new'}
-            </option>
-          ))}
-        </select>
+        <div className="rounded-[calc(var(--radius)*1.1)] border border-border bg-surface focus-within:border-muted-foreground/40">
+          <textarea
+            ref={field}
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault()
+                void submit()
+              }
+            }}
+            rows={3}
+            disabled={busy}
+            placeholder="Ask for a change…"
+            aria-label="What should it do?"
+            className="block w-full resize-none bg-transparent px-3.5 pt-3.5 pb-2 outline-none placeholder:text-muted-foreground disabled:opacity-50"
+          />
 
-        <label htmlFor="prompt" className="mt-4 block text-[13px] font-medium">
-          What should it do?
-        </label>
-        <textarea
-          id="prompt"
-          value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
-          onKeyDown={(event) => {
-            // Enter submits, as it does in the composer. A form whose two
-            // fields behave differently is a form people learn twice.
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault()
-              void submit(event)
-            }
-          }}
-          rows={3}
-          disabled={busy}
-          placeholder="Add a health check endpoint and a test for it"
-          className="mt-1.5 w-full resize-none rounded-[calc(var(--radius)*0.7)] border border-border-strong bg-background px-2.5 py-2 text-[13px] outline-none placeholder:text-muted-foreground disabled:opacity-60"
-        />
+          <div className="flex items-center justify-end gap-2 px-2.5 pb-2.5">
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={!canSend}
+              aria-label={status.kind === 'starting' ? 'Starting' : 'Start session'}
+              className="inline-flex size-8 items-center justify-center rounded-full bg-foreground text-background disabled:opacity-40"
+            >
+              {status.kind === 'starting' ? (
+                <span className="text-[11px] font-medium">…</span>
+              ) : (
+                <SendIcon />
+              )}
+            </button>
+          </div>
+        </div>
 
         {status.kind === 'failed' && (
           <p role="alert" className="mt-3 text-[13px] text-destructive">
             {status.message}
           </p>
         )}
-
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-[calc(var(--radius)*0.6)] border border-border px-3 py-1.5 text-[12.5px] font-medium hover:bg-muted"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={busy || !target || prompt.trim() === ''}
-            className="rounded-[calc(var(--radius)*0.6)] bg-foreground px-3 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
-          >
-            {status.kind === 'starting' ? 'Starting…' : 'Start'}
-          </button>
-        </div>
-      </form>
+      </div>
     </div>
   )
 }
@@ -209,4 +247,21 @@ function mergeOptions(
     }))
 
   return [...registered, ...rest]
+}
+
+function SendIcon() {
+  return (
+    <svg
+      className="size-4"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 12.5V3.5M4.5 7 8 3.5 11.5 7" />
+    </svg>
+  )
 }

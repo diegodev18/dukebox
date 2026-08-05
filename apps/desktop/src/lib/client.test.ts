@@ -72,6 +72,15 @@ describe('DukeboxClient', () => {
     expect(projects).toHaveLength(1)
   })
 
+  it('lists branches for a project', async () => {
+    const fetchMock = respondWith({ branches: ['main', 'develop'] })
+    const branches = await client.listBranches('00000000-0000-4000-8000-000000000001')
+
+    expect(branches).toEqual(['main', 'develop'])
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toContain('/api/projects/00000000-0000-4000-8000-000000000001/branches')
+  })
+
   it('reports a failure with the server code a caller can branch on', async () => {
     respondWith({ error: 'already_exists', message: 'that is already a project' }, { status: 409 })
 
@@ -98,6 +107,19 @@ describe('DukeboxClient', () => {
 
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(JSON.parse(init.body as string)).not.toHaveProperty('baseBranch')
+  })
+
+  it('forwards a base branch when the caller picks one', async () => {
+    const fetchMock = respondWith({ id: 's1' })
+    await client.startSession({
+      projectId: 'p1',
+      agentId: 'claude-code',
+      prompt: 'go',
+      baseBranch: 'develop',
+    })
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string).baseBranch).toBe('develop')
   })
 
   it('archives a session', async () => {

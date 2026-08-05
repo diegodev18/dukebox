@@ -112,6 +112,13 @@ export class DukeboxClient {
     })
   }
 
+  async listBranches(projectId: string): Promise<string[]> {
+    const body = await this.request<{ branches: string[] }>(
+      `/api/projects/${encodeURIComponent(projectId)}/branches`,
+    )
+    return body.branches
+  }
+
   async listSessions(projectId?: string): Promise<SessionSummary[]> {
     const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''
     const body = await this.request<{ sessions: SessionSummary[] }>(`/api/sessions${query}`)
