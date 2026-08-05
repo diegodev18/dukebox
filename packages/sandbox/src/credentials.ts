@@ -51,12 +51,29 @@ export const HELPER_SCRIPT = `#!/bin/sh
 exec node -e '
 const net = require("net");
 let input = "";
-process.stdin.on("data", (chunk) => { input += chunk; });
-process.stdin.on("end", () => {
+let sent = false;
+
+// Forwarded on the blank line that ends a credential request, not on stdin
+// closing. git keeps the pipe open while it waits for the answer, so waiting
+// for "end" means waiting for something that only happens after git has
+// already given up — which it reports as "could not read Username", naming
+// neither the helper nor the socket.
+const forward = () => {
+  if (sent) return;
+  sent = true;
+
   const socket = net.connect(${JSON.stringify(CONTAINER_SOCKET_PATH)}, () => socket.end(input));
   socket.on("data", (chunk) => process.stdout.write(chunk));
+  socket.on("close", () => process.exit(0));
   socket.on("error", () => process.exit(1));
+};
+
+process.stdin.on("data", (chunk) => {
+  input += chunk;
+  if (input.includes("\\n\\n")) forward();
 });
+// A request without a trailing blank line still ends when stdin does.
+process.stdin.on("end", forward);
 '
 `
 

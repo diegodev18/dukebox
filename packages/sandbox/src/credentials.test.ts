@@ -1,15 +1,105 @@
-import { connect } from 'node:net'
-import { chmod, mkdir, mkdtemp, rm, stat } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { connect, createServer } from 'node:net'
+import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  CONTAINER_SOCKET_PATH,
   CredentialProxy,
   createSessionCredentialProxy,
   formatCredentials,
+  HELPER_SCRIPT,
   matchesRepository,
   parseCredentialRequest,
 } from './credentials.js'
+
+/**
+ * The helper as git actually invokes it.
+ *
+ * git writes the request, then waits with the pipe still open. A helper that
+ * waits for stdin to close waits for something that only happens after git has
+ * given up, and git reports that as "could not read Username … No such device
+ * or address" — naming neither the helper nor the socket.
+ */
+describe('HELPER_SCRIPT', () => {
+  const cleanup: string[] = []
+
+  afterEach(async () => {
+    await Promise.all(cleanup.map((path) => rm(path, { recursive: true, force: true })))
+    cleanup.length = 0
+  })
+
+  /** Run the helper against a socket that answers, without closing its stdin. */
+  async function askHelper(request: string): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), 'dukebox-helper-'))
+    cleanup.push(dir)
+
+    const socketPath = join(dir, 'credentials.sock')
+    const server = createServer((socket) => {
+      let input = ''
+      socket.on('data', (chunk: Buffer) => {
+        input += chunk.toString()
+        if (input.includes('\n\n')) socket.end('username=x-access-token\npassword=secret\n')
+      })
+    })
+
+    await new Promise<void>((resolve) => server.listen(socketPath, resolve))
+
+    const helperPath = join(dir, 'helper')
+    await writeFile(helperPath, HELPER_SCRIPT.replace(CONTAINER_SOCKET_PATH, socketPath))
+    await chmod(helperPath, 0o755)
+
+    try {
+      return await new Promise<string>((resolve, reject) => {
+        const child = spawn(helperPath, ['get'], { stdio: ['pipe', 'pipe', 'ignore'] })
+
+        let output = ''
+        child.stdout.on('data', (chunk: Buffer) => {
+          output += chunk.toString()
+        })
+
+        child.on('close', () => resolve(output))
+        child.on('error', reject)
+
+        // Written and then left open, which is what git does.
+        child.stdin.write(request)
+
+        const timer = setTimeout(() => {
+          child.kill()
+          reject(new Error('the helper never answered'))
+        }, 5000)
+        child.on('close', () => clearTimeout(timer))
+      })
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  }
+
+  it('answers without waiting for stdin to close', async () => {
+    const reply = await askHelper('protocol=https\nhost=github.com\npath=diego/dukebox.git\n\n')
+    expect(reply).toContain('password=secret')
+  })
+
+  it('does nothing for an operation other than get', async () => {
+    // git also calls helpers to store and erase. Answering those would be
+    // meaningless here, and hanging on them would stall the operation.
+    const dir = await mkdtemp(join(tmpdir(), 'dukebox-helper-'))
+    cleanup.push(dir)
+
+    const helperPath = join(dir, 'helper')
+    await writeFile(helperPath, HELPER_SCRIPT)
+    await chmod(helperPath, 0o755)
+
+    const code = await new Promise<number | null>((resolve) => {
+      const child = spawn(helperPath, ['store'], { stdio: ['pipe', 'ignore', 'ignore'] })
+      child.stdin.end('protocol=https\nhost=github.com\n\n')
+      child.on('close', resolve)
+    })
+
+    expect(code).toBe(0)
+  })
+})
 
 describe('parseCredentialRequest', () => {
   it('reads the fields git sends', () => {
