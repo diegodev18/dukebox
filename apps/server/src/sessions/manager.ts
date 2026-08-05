@@ -312,6 +312,35 @@ export class SessionManager {
   }
 
   /** Where this session's credential socket lives on the host. */
+  /**
+   * The commit a session branched from.
+   *
+   * Stored sessions carry it. Sessions that predate that column have to
+   * recover it from the remote-tracking ref, because falling back to `HEAD`
+   * would measure the branch against the agent's own latest commit and report
+   * that nothing changed — hiding the very work someone is trying to open a
+   * pull request for.
+   *
+   * Recovered values are written back, so the recovery happens once.
+   */
+  private async baseCommitFor(session: Session, workspace: Workspace): Promise<string> {
+    if (session.baseCommit) return session.baseCommit
+
+    const recovered = await workspace.baseCommitFromRemote(session.baseBranch)
+    if (!recovered) {
+      // HEAD is the last resort and is known to be wrong for a session that
+      // committed. It keeps the session usable rather than refusing to resume.
+      return workspace.headCommit()
+    }
+
+    await this.deps.db
+      .update(sessions)
+      .set({ baseCommit: recovered })
+      .where(eq(sessions.id, session.id))
+
+    return recovered
+  }
+
   private socketDirFor(sessionId: string): string {
     return join(this.deps.credentialSocketDir ?? '', sessionId)
   }
@@ -501,7 +530,7 @@ export class SessionManager {
       adapter,
       // The commit the branch started from, so diffs and the pull request
       // check still measure against the same point they did before.
-      baseCommit: session.baseCommit ?? (await workspace.headCommit()),
+      baseCommit: await this.baseCommitFor(session, workspace),
       repoFullName: project.repoFullName,
       ...(credentials ? { credentials } : {}),
     }

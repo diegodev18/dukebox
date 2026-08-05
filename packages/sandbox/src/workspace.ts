@@ -128,6 +128,27 @@ export class Workspace {
   }
 
   /**
+   * The commit the session branch grew from.
+   *
+   * Recovered from the remote-tracking ref rather than remembered, for
+   * sessions that started before the base commit was persisted. `HEAD` is not
+   * a substitute: it is the agent's own latest commit, so measuring against it
+   * reports that nothing changed no matter how much did.
+   *
+   * Returns null when the ref is missing, which is the honest answer — a wrong
+   * base is worse than no base, because it silently hides work.
+   */
+  async baseCommitFromRemote(baseBranch: string): Promise<string | null> {
+    // `exec` rather than `run`: a missing ref is an answer, not a failure.
+    const result = await this.container.exec(['git', 'rev-parse', `origin/${baseBranch}`], {
+      cwd: WORKSPACE_DIR,
+    })
+
+    const commit = result.stdout.trim()
+    return result.exitCode === 0 && commit !== '' ? commit : null
+  }
+
+  /**
    * Run the project's setup commands.
    *
    * Each runs through a shell because `.duke/config.yaml` contains command

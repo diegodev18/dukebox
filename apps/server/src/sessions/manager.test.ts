@@ -585,6 +585,28 @@ describe('pull requests', () => {
     await afterRestart.stopAll()
   })
 
+  it('opens one for a session that predates the stored base commit', async () => {
+    // Sessions started before base_commit existed have it null. Falling back
+    // to HEAD measures the branch against the agent's own commit and finds
+    // nothing, which refused a pull request for work sitting on the branch.
+    const { manager: first } = managerWithGitHub()
+    const session = await startOn(first)
+
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo hola > README.es.md'], { cwd: '/workspace/repo' })
+    await container?.exec(['git', 'add', '-A'], { cwd: '/workspace/repo' })
+    await container?.exec(['git', 'commit', '-m', 'Translate'], { cwd: '/workspace/repo' })
+
+    // What an older row looks like.
+    await db.update(sessions).set({ baseCommit: null }).where(eq(sessions.id, session.id))
+
+    const { manager: afterRestart } = managerWithGitHub()
+    const url = await afterRestart.openPullRequest(session.id)
+
+    expect(url).toContain('/pull/1')
+    await afterRestart.stopAll()
+  })
+
   it('says so when the container is gone rather than reporting it not running', async () => {
     // Without a container there is no workspace to resume into, and the two
     // send someone to different places: wait, or start over.
