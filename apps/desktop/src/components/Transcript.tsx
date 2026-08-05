@@ -1,4 +1,10 @@
-import type { Block, ToolBlock, Transcript as TranscriptData } from '@dukebox/protocol'
+import type {
+  Block,
+  SessionPurpose,
+  SessionStatus,
+  ToolBlock,
+  Transcript as TranscriptData,
+} from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { ThinkingOrb } from 'thinking-orbs'
 import { activityBlock, mapOrbState, orbStateForTool } from '../lib/orbState.js'
@@ -15,9 +21,13 @@ import { Markdown } from './Markdown.js'
 interface Props {
   transcript: TranscriptData
   onRespond: (id: string, allow: boolean) => void
+  /** When set, the seeded environment-setup prompt renders as a compact pill. */
+  purpose?: SessionPurpose
+  running?: boolean
+  status?: SessionStatus
 }
 
-export function Transcript({ transcript, onRespond }: Props) {
+export function Transcript({ transcript, onRespond, purpose, running, status }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
 
@@ -39,6 +49,13 @@ export function Transcript({ transcript, onRespond }: Props) {
     pinned.current = distance < 60
   }
 
+  // The server seeds environment_setup with a long fixed prompt. Collapse that
+  // first prompt into a Cursor-style summary; later user prompts stay full text.
+  const setupPromptId =
+    purpose === 'environment_setup'
+      ? transcript.blocks.find((block) => block.kind === 'prompt')?.id
+      : undefined
+
   return (
     <div
       ref={scroller}
@@ -47,7 +64,14 @@ export function Transcript({ transcript, onRespond }: Props) {
     >
       <div className="measure flex flex-col gap-4">
         {transcript.blocks.map((block) => (
-          <BlockView key={block.id} block={block} onRespond={onRespond} />
+          <BlockView
+            key={block.id}
+            block={block}
+            onRespond={onRespond}
+            compactSetup={block.id === setupPromptId}
+            {...(running !== undefined ? { running } : {})}
+            {...(status !== undefined ? { status } : {})}
+          />
         ))}
 
         {transcript.running && <Working blocks={transcript.blocks} />}
@@ -56,9 +80,30 @@ export function Transcript({ transcript, onRespond }: Props) {
   )
 }
 
-function BlockView({ block, onRespond }: { block: Block; onRespond: Props['onRespond'] }) {
+function BlockView({
+  block,
+  onRespond,
+  compactSetup,
+  running,
+  status,
+}: {
+  block: Block
+  onRespond: Props['onRespond']
+  compactSetup?: boolean
+  running?: boolean
+  status?: SessionStatus
+}) {
   switch (block.kind) {
     case 'prompt':
+      if (compactSetup) {
+        return (
+          <SetupPrompt
+            text={block.text}
+            {...(running !== undefined ? { running } : {})}
+            {...(status !== undefined ? { status } : {})}
+          />
+        )
+      }
       return (
         <p
           data-selectable
@@ -91,6 +136,82 @@ function BlockView({ block, onRespond }: { block: Block; onRespond: Props['onRes
         </p>
       )
   }
+}
+
+/**
+ * Seeded environment-setup prompt, shown like Cursor's task chip: a short
+ * labelled pill instead of the full system instructions.
+ */
+function SetupPrompt({
+  text,
+  running,
+  status,
+}: {
+  text: string
+  running?: boolean
+  status?: SessionStatus
+}) {
+  const [open, setOpen] = useState(false)
+  const duration = formatSetupDuration(running, status)
+
+  return (
+    <div className="flex flex-col items-start gap-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-label="Configure environment"
+        className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-[13px] text-running hover:bg-muted/60"
+      >
+        <SetupIcon />
+        Configure environment
+      </button>
+
+      {duration ? <p className="text-[12px] text-muted-foreground">{duration}</p> : null}
+
+      {open && (
+        <pre
+          data-selectable
+          className="max-h-64 w-full overflow-auto rounded-[var(--radius)] border border-border bg-surface px-3 py-2.5 font-mono text-[12px] whitespace-pre-wrap text-muted-foreground"
+        >
+          {text}
+        </pre>
+      )}
+    </div>
+  )
+}
+
+function formatSetupDuration(
+  running: boolean | undefined,
+  status: SessionStatus | undefined,
+): string | null {
+  // No endedAt on the session summary, so a wall-clock delta would lie for
+  // old sessions. Show live progress only; Cursor's "Worked for Ns" needs a
+  // real elapsed interval we do not have yet.
+  if (running || status === 'running' || status === 'provisioning') {
+    return 'Working…'
+  }
+  return null
+}
+
+function SetupIcon() {
+  return (
+    <svg
+      className="size-3.5 flex-none"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="4" cy="4" r="1.5" />
+      <circle cx="12" cy="8" r="1.5" />
+      <circle cx="4" cy="12" r="1.5" />
+      <path d="M5.5 4h4.5a2 2 0 0 1 2 2v1.5M5.5 12h4.5a2 2 0 0 0 2-2V9.5" />
+    </svg>
+  )
 }
 
 /** Reasoning, collapsed. Available, but never the first thing read. */
