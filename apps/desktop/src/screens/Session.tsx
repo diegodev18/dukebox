@@ -4,7 +4,6 @@ import { DukeboxClient } from '../lib/client.js'
 import type { Connection } from '../lib/connection.js'
 import { AgentIcon, hasAgentIcon } from '../components/AgentIcon.js'
 import { Composer } from '../components/Composer.js'
-import { EnvironmentReview } from '../components/EnvironmentReview.js'
 import { PullRequest } from '../components/PullRequest.js'
 import { SessionInfo } from '../components/SessionInfo.js'
 import { Sidebar } from '../components/Sidebar.js'
@@ -178,9 +177,6 @@ export function Session({ connection, onDisconnected }: Props) {
                 ),
               )
             }
-            onEnvironmentSaved={() => {
-              void refreshProjects()
-            }}
           />
           <Workspace
             session={current}
@@ -193,6 +189,19 @@ export function Session({ connection, onDisconnected }: Props) {
             onTerminalResize={live.resizeTerminal}
             onCloseTerminal={live.closeTerminal}
             onDrainTerminal={live.drainTerminal}
+            environmentReview={
+              current.purpose === 'environment_setup' &&
+              (current.status === 'done' || current.status === 'failed')
+                ? {
+                    client,
+                    projectId: current.projectId,
+                    sessionId: current.id,
+                    onSaved: () => {
+                      void refreshProjects()
+                    },
+                  }
+                : null
+            }
           />
         </>
       ) : (
@@ -208,19 +217,13 @@ function SessionColumn({
   client,
   connection,
   onPullRequest,
-  onEnvironmentSaved,
 }: {
   session: SessionSummary
   live: LiveSession
   client: DukeboxClient
   connection: Connection
   onPullRequest: (url: string) => void
-  onEnvironmentSaved: () => void
 }) {
-  const showEnvironmentReview =
-    session.purpose === 'environment_setup' &&
-    (session.status === 'done' || session.status === 'failed')
-
   return (
     // `min-h-0` is what makes the transcript scroll instead of the window
     // growing. A flex item defaults to `min-height: auto`, which refuses to
@@ -263,23 +266,23 @@ function SessionColumn({
         </p>
       )}
 
-      <Transcript transcript={live.transcript} onRespond={live.respond} />
+      <Transcript
+        transcript={live.transcript}
+        onRespond={live.respond}
+        purpose={session.purpose}
+        running={live.transcript.running}
+        status={session.status}
+      />
 
-      {showEnvironmentReview ? (
-        <EnvironmentReview
-          client={client}
-          projectId={session.projectId}
-          sessionId={session.id}
-          onSaved={onEnvironmentSaved}
-        />
-      ) : (
-        <Composer
-          onSend={live.send}
-          onInterrupt={live.interrupt}
-          running={live.transcript.running}
-          disabled={live.status === 'offline' || session.purpose === 'environment_setup'}
-        />
-      )}
+      <Composer
+        onSend={live.send}
+        onInterrupt={live.interrupt}
+        running={live.transcript.running}
+        disabled={live.status === 'offline'}
+        {...(session.purpose === 'environment_setup'
+          ? { placeholder: 'Add context for the setup agent…' }
+          : {})}
+      />
     </div>
   )
 }
