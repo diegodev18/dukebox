@@ -254,6 +254,37 @@ describe('start', () => {
     expect(row?.containerId).toMatch(/^[0-9a-f]{12,}$/)
   })
 
+  it('configures git to commit as the Dukebox identity', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+
+    const container = await sandbox.get(session.id)
+    const result = await container!.exec([
+      'sh',
+      '-c',
+      'git config --global user.name && git config --global user.email',
+    ])
+
+    expect(result.stdout.trim().split('\n')).toEqual(['Dukebox', 'dukebox@withdiego.dev'])
+  })
+
+  it('attributes commits to that identity, not the image default', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+
+    // The config is only worth setting if it reaches a commit: the image
+    // carries its own identity, and a commit made before this is applied
+    // would silently be authored by "Dukebox Agent" instead.
+    const container = await sandbox.get(session.id)
+    const result = await container!.exec([
+      'sh',
+      '-c',
+      "cd /workspace/repo && git commit --allow-empty -m probe --quiet && git log -1 '--format=%an|%ae'",
+    ])
+
+    expect(result.stdout.trim()).toBe('Dukebox|dukebox@withdiego.dev')
+  })
+
   it('rejects an unknown project', async () => {
     await expect(
       manager.start({
