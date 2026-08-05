@@ -229,6 +229,38 @@ describe('Workspace', () => {
     })
   })
 
+  describe('diagnoseCredentials', () => {
+    it('names each thing that is missing', async () => {
+      // A container with no helper and no socket: the report has to say which,
+      // because git's own failure says neither.
+      const { workspace } = await freshWorkspace()
+
+      const report = await workspace.diagnoseCredentials(
+        '/home/node/.dukebox/credential-helper',
+        '/run/dukebox/credentials.sock',
+      )
+
+      expect(report).toContain('helper configured: NO')
+      expect(report).toContain('socket present: NO')
+      expect(report).toContain('helper answers: NO')
+    })
+
+    it('reports a helper that is installed', async () => {
+      const { workspace } = await freshWorkspace()
+      await workspace.installCredentialHelper()
+
+      const report = await workspace.diagnoseCredentials(
+        '/home/node/.dukebox/credential-helper',
+        '/run/dukebox/credentials.sock',
+      )
+
+      expect(report).toContain('helper configured: yes')
+      expect(report).toContain('helper executable: yes')
+      // Still no socket, which is exactly the distinction worth drawing.
+      expect(report).toContain('socket present: NO')
+    })
+  })
+
   describe('credentialSocketReachable', () => {
     it('is false when nothing is at the path', async () => {
       const { workspace } = await freshWorkspace()

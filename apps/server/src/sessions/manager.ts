@@ -432,8 +432,24 @@ export class SessionManager {
       // rejected credentials, a protected branch, a remote that moved on. The
       // command line alone sends someone looking in the wrong place.
       const detail = error instanceof WorkspaceError ? error.stderr.trim() : ''
+
+      // git names none of the things that can actually be wrong, so the state
+      // of the credential path is collected from inside the container and sent
+      // with the failure rather than left for someone to go and look for.
+      const diagnosis = running.credentials
+        ? await running.workspace
+            .diagnoseCredentials(Workspace.HELPER_PATH, CONTAINER_SOCKET_PATH)
+            .catch(() => '')
+        : 'credentials: not configured on this server'
+
       throw new SessionError(
-        detail ? `could not push ${session.branch}: ${detail}` : `could not push ${session.branch}`,
+        [
+          `could not push ${session.branch}`,
+          detail && `: ${detail}`,
+          diagnosis && ` [${diagnosis}]`,
+        ]
+          .filter(Boolean)
+          .join(''),
       )
     }
 

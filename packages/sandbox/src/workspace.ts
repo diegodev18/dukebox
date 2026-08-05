@@ -65,7 +65,8 @@ export class Workspace {
   }
 
   /** Path to the credential helper inside the container. */
-  private static readonly HELPER_PATH = '/home/node/.dukebox/credential-helper'
+  /** Where the credential helper is installed. Public so failures can name it. */
+  static readonly HELPER_PATH = '/home/node/.dukebox/credential-helper'
 
   /**
    * Install the git credential helper.
@@ -257,6 +258,49 @@ export class Workspace {
   /** Push the session branch. Credentials come from the credential proxy. */
   async push(branch: string): Promise<void> {
     await this.run(['git', 'push', '--set-upstream', 'origin', branch])
+  }
+
+  /**
+   * Why git could not authenticate, asked from inside the container.
+   *
+   * git's own failure names none of the things that can be wrong: whether a
+   * helper is configured, whether the file exists, whether the socket is
+   * mounted, whether the helper answers. Each has to be checked where git runs
+   * — from outside, every one of them can look fine.
+   */
+  async diagnoseCredentials(helperPath: string, socketPath: string): Promise<string> {
+    const checks: [string, string[]][] = [
+      ['helper configured', ['git', 'config', '--global', '--get', 'credential.helper']],
+      ['helper executable', ['test', '-x', helperPath]],
+      ['socket present', ['test', '-S', socketPath]],
+    ]
+
+    const findings: string[] = []
+
+    for (const [label, command] of checks) {
+      const result = await this.container.exec(command, { cwd: WORKSPACE_DIR })
+      const detail = result.stdout.trim()
+
+      findings.push(
+        result.exitCode === 0 ? `${label}: yes${detail ? ` (${detail})` : ''}` : `${label}: NO`,
+      )
+    }
+
+    // The helper end to end, driven the way git drives it. This is the check
+    // that distinguishes "everything is in place" from "it actually answers".
+    const answered = await this.container.exec([
+      'sh',
+      '-c',
+      `printf 'protocol=https\\nhost=github.com\\npath=x/y.git\\n\\n' | ${helperPath} get`,
+    ])
+
+    findings.push(
+      answered.stdout.includes('password=')
+        ? 'helper answers: yes'
+        : `helper answers: NO (exit ${answered.exitCode})`,
+    )
+
+    return findings.join(', ')
   }
 }
 
