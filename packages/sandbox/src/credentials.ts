@@ -218,7 +218,17 @@ export class CredentialProxy {
       })
 
       // A hung client would otherwise hold the connection open indefinitely.
-      socket.setTimeout(5000, () => socket.destroy())
+      // Generous because answering means running `gh auth token`, a process
+      // spawn that is not instant on a small VPS — and a timeout here closes
+      // the connection with no reply, which git reports as no credential at
+      // all rather than as a timeout.
+      socket.setTimeout(30_000, () => {
+        this.options.onError?.(
+          new Error('a credential request was still unanswered after 30s and was dropped'),
+        )
+        socket.destroy()
+      })
+
       socket.on('error', () => socket.destroy())
     })
 

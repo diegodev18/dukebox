@@ -24,6 +24,13 @@ User=dukebox
 Group=dukebox
 
 WorkingDirectory=/opt/dukebox
+
+# systemd does not set HOME for system services. Without it `gh` looks for its
+# configuration under the wrong path, finds no host entry, and returns nothing
+# — which the credential proxy then serves to git as "no credential", and git
+# reports as "could not read Username". The account is signed in the whole
+# time; the process just cannot see where that was recorded.
+Environment=HOME=/var/lib/dukebox
 Environment=NODE_ENV=production
 Environment=DUKEBOX_CONFIG=/etc/dukebox/config.toml
 EnvironmentFile=/etc/dukebox/env

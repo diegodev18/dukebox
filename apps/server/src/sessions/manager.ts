@@ -454,10 +454,22 @@ export class SessionManager {
       // git names none of the things that can actually be wrong, so the state
       // of the credential path is collected from inside the container and sent
       // with the failure rather than left for someone to go and look for.
+      // Whether the host can produce a token at all. The container-side checks
+      // cannot see this: a proxy that serves nothing because `gh` gave it
+      // nothing looks exactly like one that was never asked.
+      const tokenState = await github
+        .token()
+        .then(() => 'host token: yes')
+        .catch(
+          (failure: unknown) =>
+            `host token: NO (${failure instanceof Error ? failure.message : 'unknown'})`,
+        )
+
       const diagnosis = running.credentials
         ? await running.workspace
             .diagnoseCredentials(Workspace.HELPER_PATH, CONTAINER_SOCKET_PATH, running.repoFullName)
-            .catch(() => '')
+            .then((report) => `${report}, ${tokenState}`)
+            .catch(() => tokenState)
         : 'credentials: not configured on this server'
 
       throw new SessionError(
