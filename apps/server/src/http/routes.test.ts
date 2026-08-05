@@ -356,6 +356,20 @@ describe('POST /api/sessions', () => {
     expect(options && 'baseBranch' in options).toBe(false)
   })
 
+  it('passes the model through when given', async () => {
+    const project = await createProject()
+    vi.mocked(sessionManager.start).mockResolvedValueOnce(await createSession(project.id))
+
+    await post('/api/sessions', {
+      projectId: project.id,
+      agentId: 'claude-code',
+      model: 'opus',
+      prompt: 'x',
+    })
+
+    expect(sessionManager.start).toHaveBeenCalledWith(expect.objectContaining({ model: 'opus' }))
+  })
+
   it('reports an unknown project as a bad request', async () => {
     vi.mocked(sessionManager.start).mockRejectedValueOnce(new SessionError('no such project'))
 
