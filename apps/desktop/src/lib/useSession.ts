@@ -10,6 +10,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DukeboxClient } from './client.js'
 import type { Connection } from './connection.js'
 import { SessionStream, type StreamStatus } from './stream.js'
+import {
+  applyTerminalMessage,
+  drainTab,
+  emptyTerminalState,
+  removeTab,
+  type TerminalState,
+} from './useTerminals.js'
 
 /**
  * One session, live.
@@ -30,6 +37,16 @@ export interface LiveSession {
   send: (text: string) => void
   interrupt: () => void
   respond: (id: string, allow: boolean) => void
+  /** The shells open in this session's container. */
+  terminals: TerminalState
+  openTerminal: (cols: number, rows: number) => void
+  attachTerminal: (terminalId: string, cols: number, rows: number) => void
+  detachTerminal: (terminalId: string) => void
+  sendTerminalInput: (terminalId: string, data: string) => void
+  resizeTerminal: (terminalId: string, cols: number, rows: number) => void
+  closeTerminal: (terminalId: string) => void
+  /** Forget output already written to xterm, so it is not replayed. */
+  drainTerminal: (terminalId: string) => void
 }
 
 export function useSession(
@@ -40,6 +57,7 @@ export function useSession(
   const [transcript, setTranscript] = useState<Transcript>(emptyTranscript)
   const [status, setStatus] = useState<StreamStatus>('connecting')
   const [error, setError] = useState<string | null>(null)
+  const [terminals, setTerminals] = useState<TerminalState>(emptyTerminalState)
 
   // The socket is read by callbacks that must not re-run when it changes, and
   // the seq is read by the socket at reconnect time — both need a ref rather
@@ -81,6 +99,12 @@ export function useSession(
               return
             case 'caught_up':
               return
+            case 'terminal_list':
+            case 'terminal_opened':
+            case 'terminal_output':
+            case 'terminal_exit':
+              setTerminals((current) => applyTerminalMessage(current, message))
+              return
           }
         },
       },
@@ -104,6 +128,10 @@ export function useSession(
     setTranscript(emptyTranscript())
     lastSeqRef.current = 0
     setError(null)
+
+    // Terminals belong to the session that owns them. Left in place, the new
+    // session would show tabs whose ids mean nothing to it.
+    setTerminals(emptyTerminalState())
 
     const stream = streamRef.current
     stream?.subscribe(sessionId)
@@ -141,5 +169,72 @@ export function useSession(
     [sessionId],
   )
 
-  return { transcript, status, error, send, interrupt, respond }
+  const openTerminal = useCallback(
+    (cols: number, rows: number) => {
+      if (sessionId) streamRef.current?.openTerminal(sessionId, cols, rows)
+    },
+    [sessionId],
+  )
+
+  const attachTerminal = useCallback(
+    (terminalId: string, cols: number, rows: number) => {
+      if (sessionId) streamRef.current?.attachTerminal(sessionId, terminalId, cols, rows)
+    },
+    [sessionId],
+  )
+
+  const detachTerminal = useCallback(
+    (terminalId: string) => {
+      if (sessionId) streamRef.current?.detachTerminal(sessionId, terminalId)
+    },
+    [sessionId],
+  )
+
+  const sendTerminalInput = useCallback(
+    (terminalId: string, data: string) => {
+      if (sessionId) streamRef.current?.sendTerminalInput(sessionId, terminalId, data)
+    },
+    [sessionId],
+  )
+
+  const resizeTerminal = useCallback(
+    (terminalId: string, cols: number, rows: number) => {
+      if (sessionId) streamRef.current?.resizeTerminal(sessionId, terminalId, cols, rows)
+    },
+    [sessionId],
+  )
+
+  const closeTerminal = useCallback(
+    (terminalId: string) => {
+      if (!sessionId) return
+
+      streamRef.current?.closeTerminal(sessionId, terminalId)
+
+      // Removed here rather than waiting for the server to confirm: the tab was
+      // closed deliberately, and leaving it on screen makes the X feel broken.
+      setTerminals((current) => removeTab(current, terminalId))
+    },
+    [sessionId],
+  )
+
+  const drainTerminal = useCallback((terminalId: string) => {
+    setTerminals((current) => drainTab(current, terminalId))
+  }, [])
+
+  return {
+    transcript,
+    status,
+    error,
+    send,
+    interrupt,
+    respond,
+    terminals,
+    openTerminal,
+    attachTerminal,
+    detachTerminal,
+    sendTerminalInput,
+    resizeTerminal,
+    closeTerminal,
+    drainTerminal,
+  }
 }

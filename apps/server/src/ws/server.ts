@@ -9,6 +9,7 @@ import type { IncomingMessage, Server } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { authenticateDevice } from '../auth/pairing.js'
 import type { EventBus } from '../events/bus.js'
+import type { TerminalRegistry } from '../sessions/terminals.js'
 
 /**
  * Live session traffic.
@@ -26,11 +27,30 @@ export interface WebSocketDeps {
   onPrompt?: (sessionId: string, text: string, images?: string[]) => Promise<void>
   onInterrupt?: (sessionId: string) => Promise<void>
   onPermissionResponse?: (sessionId: string, id: string, allow: boolean) => Promise<void>
+  /** Live terminals. Absent on a server without sessions. */
+  terminals?: TerminalRegistry
+  /** Records that a person opened or closed a shell. Never records I/O. */
+  auditTerminal?: (
+    sessionId: string,
+    event: { type: 'terminal_opened' | 'terminal_closed'; terminalId: string; deviceId: string },
+  ) => Promise<void>
 }
+
+/**
+ * How far behind a socket may fall before terminal output is dropped for it.
+ *
+ * One megabyte is roughly a screen-refresh storm's worth of backlog. Past that
+ * the client is not keeping up, and buffering more only delays the truth while
+ * the control plane pays for it in memory.
+ */
+const BACKPRESSURE_BYTES = 1024 * 1024
 
 /** One connected app, and whatever it is watching. */
 class Connection {
   private readonly subscriptions = new Map<string, () => Promise<void>>()
+
+  /** Terminals this socket is watching, and how to stop watching them. */
+  private readonly attached = new Map<string, () => void>()
 
   constructor(
     private readonly socket: WebSocket,
@@ -85,6 +105,150 @@ class Connection {
         return this.forward(command.sessionId, () =>
           this.deps.onPermissionResponse?.(command.sessionId, command.id, command.allow),
         )
+      case 'terminal_open':
+        return this.openTerminal(command.sessionId, command.cols, command.rows)
+      case 'terminal_attach':
+        return this.attachTerminal(command.sessionId, command.terminalId, {
+          cols: command.cols,
+          rows: command.rows,
+        })
+      case 'terminal_detach':
+        return this.detachTerminal(command.terminalId)
+      case 'terminal_input':
+        return this.withTerminals(command.sessionId, (terminals) => {
+          terminals.write(
+            command.sessionId,
+            command.terminalId,
+            Buffer.from(command.data, 'base64'),
+          )
+        })
+      case 'terminal_resize':
+        return this.withTerminals(command.sessionId, (terminals) =>
+          terminals.resize(command.sessionId, command.terminalId, command.cols, command.rows),
+        )
+      case 'terminal_close':
+        return this.closeTerminal(command.sessionId, command.terminalId)
+    }
+  }
+
+  private async openTerminal(sessionId: string, cols: number, rows: number): Promise<void> {
+    await this.withTerminals(sessionId, async (terminals) => {
+      const info = await terminals.open(sessionId, { cols, rows })
+
+      this.send({
+        type: 'terminal_opened',
+        sessionId,
+        terminalId: info.terminalId,
+        title: info.title,
+        cols,
+        rows,
+      })
+
+      // The opener is attached automatically: a terminal you have to ask for
+      // twice before it says anything looks broken.
+      this.attachTo(sessionId, info.terminalId, terminals)
+
+      await this.deps.auditTerminal?.(sessionId, {
+        type: 'terminal_opened',
+        terminalId: info.terminalId,
+        deviceId: this.device.id,
+      })
+    })
+  }
+
+  private async attachTerminal(
+    sessionId: string,
+    terminalId: string,
+    size: { cols: number; rows: number },
+  ): Promise<void> {
+    await this.withTerminals(sessionId, async (terminals) => {
+      this.attachTo(sessionId, terminalId, terminals)
+      await terminals.resize(sessionId, terminalId, size.cols, size.rows)
+    })
+  }
+
+  /**
+   * Start forwarding a terminal to this socket.
+   *
+   * The scrollback goes out first so the client redraws a full screen rather
+   * than joining mid-line.
+   */
+  private attachTo(sessionId: string, terminalId: string, terminals: TerminalRegistry): void {
+    if (this.attached.has(terminalId)) return
+
+    const listener = (chunk: Buffer) => {
+      // Dropped rather than queued when the socket is already backed up. A
+      // terminal that skips lines under a flood of output is survivable; a
+      // control plane buffering megabytes for one slow client is not.
+      if (this.socket.bufferedAmount > BACKPRESSURE_BYTES) return
+
+      this.send({
+        type: 'terminal_output',
+        sessionId,
+        terminalId,
+        data: chunk.toString('base64'),
+      })
+    }
+
+    const onExit = (exitCode?: number) => {
+      this.attached.delete(terminalId)
+      this.send({
+        type: 'terminal_exit',
+        sessionId,
+        terminalId,
+        ...(exitCode === undefined ? {} : { exitCode }),
+      })
+    }
+
+    const scrollback = terminals.attach(sessionId, terminalId, listener, onExit)
+    if (scrollback.length > 0) {
+      this.send({
+        type: 'terminal_output',
+        sessionId,
+        terminalId,
+        data: scrollback.toString('base64'),
+      })
+    }
+
+    this.attached.set(terminalId, () => terminals.detach(sessionId, terminalId, listener))
+  }
+
+  private detachTerminal(terminalId: string): void {
+    const stop = this.attached.get(terminalId)
+    if (!stop) return
+
+    this.attached.delete(terminalId)
+    stop()
+  }
+
+  private async closeTerminal(sessionId: string, terminalId: string): Promise<void> {
+    await this.withTerminals(sessionId, async (terminals) => {
+      await terminals.close(sessionId, terminalId)
+      this.detachTerminal(terminalId)
+
+      await this.deps.auditTerminal?.(sessionId, {
+        type: 'terminal_closed',
+        terminalId,
+        deviceId: this.device.id,
+      })
+    })
+  }
+
+  /** Run a terminal action, reporting failure to the client rather than throwing. */
+  private async withTerminals(
+    sessionId: string,
+    action: (terminals: TerminalRegistry) => Promise<void> | void,
+  ): Promise<void> {
+    const terminals = this.deps.terminals
+    if (!terminals) {
+      this.fail('terminals are not available on this server', sessionId)
+      return
+    }
+
+    try {
+      await action(terminals)
+    } catch (error) {
+      this.fail(error instanceof Error ? error.message : 'terminal command failed', sessionId)
     }
   }
 
@@ -137,6 +301,16 @@ class Connection {
       sessionId,
       lastSeq: Math.max(highestReplayed, buffered.at(-1)?.seq ?? 0),
     })
+
+    // Sent with the handshake rather than on request: a client that has to ask
+    // separately shows an empty terminal tab until a second round trip lands.
+    if (this.deps.terminals) {
+      this.send({
+        type: 'terminal_list',
+        sessionId,
+        terminals: this.deps.terminals.list(sessionId),
+      })
+    }
   }
 
   private async unsubscribe(sessionId: string): Promise<void> {
@@ -163,6 +337,11 @@ class Connection {
 
   /** Release every subscription. Called when the socket closes. */
   async close(): Promise<void> {
+    // Terminals are detached, not closed: the whole point of the registry
+    // owning the PTY is that a dropped connection leaves the shell running.
+    for (const stop of this.attached.values()) stop()
+    this.attached.clear()
+
     const stops = [...this.subscriptions.values()]
     this.subscriptions.clear()
     await Promise.all(stops.map((stop) => stop()))

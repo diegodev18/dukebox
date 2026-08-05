@@ -12,6 +12,7 @@ import { GitHubClient } from './github/client.js'
 import { SecretStore } from './secrets/store.js'
 import { createApp } from './http/app.js'
 import { SessionManager } from './sessions/manager.js'
+import { TerminalRegistry } from './sessions/terminals.js'
 import { attachWebSocketServer } from './ws/server.js'
 
 /**
@@ -65,6 +66,12 @@ async function main() {
   // key fails at startup with an explanation rather than mid-session.
   const secretStore = await SecretStore.open(db, config.security.masterKeyFile)
 
+  // Declared before the manager that fills it in: the two reference each other
+  // — the registry opens PTYs through the manager, and the manager closes them
+  // when a session stops — and a `const` pair would leave TypeScript unable to
+  // infer either type.
+  let terminals: TerminalRegistry
+
   const sessions = new SessionManager({
     db,
     bus,
@@ -76,6 +83,14 @@ async function main() {
     credentialSocketDir: '/run/dukebox/sessions',
     // No token in the URL: git gets credentials from the proxy instead.
     cloneUrl: (repoFullName) => `https://github.com/${repoFullName}.git`,
+    // Referenced through the closure because the registry is built from this
+    // manager. The callback only runs once a session stops, long after both
+    // exist.
+    onSessionStopped: (sessionId) => terminals.closeSession(sessionId),
+  })
+
+  terminals = new TerminalRegistry({
+    openTerminal: (sessionId, size) => sessions.openTerminal(sessionId, size),
   })
 
   const app = createApp({
@@ -99,6 +114,10 @@ async function main() {
     onInterrupt: (sessionId) => sessions.interrupt(sessionId),
     onPermissionResponse: (sessionId, id, allow) =>
       sessions.respondToPermission(sessionId, id, allow),
+    terminals,
+    // Only that a shell was opened or closed, and by which device. What was
+    // typed in it never reaches the event stream.
+    auditTerminal: (sessionId, event) => bus.append(sessionId, event).then(() => undefined),
   })
 
   const shutdown = async () => {

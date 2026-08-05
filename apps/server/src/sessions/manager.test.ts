@@ -472,6 +472,60 @@ describe('prompt, interrupt, and stop', () => {
   })
 })
 
+describe('terminals', () => {
+  it('opens a shell in a running session', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+
+    const terminal = await manager.openTerminal(session.id, { cols: 80, rows: 24 })
+
+    const chunks: Buffer[] = []
+    terminal.stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+    terminal.stream.write('printf TERMINAL-READY\n')
+
+    const deadline = Date.now() + 20_000
+    while (Date.now() < deadline && !Buffer.concat(chunks).includes('TERMINAL-READY')) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+
+    expect(Buffer.concat(chunks).toString()).toContain('TERMINAL-READY')
+
+    await terminal.close()
+  })
+
+  it('refuses when the session is not running', async () => {
+    await expect(
+      manager.openTerminal('00000000-0000-4000-8000-000000000000', { cols: 80, rows: 24 }),
+    ).rejects.toThrow(SessionError)
+  })
+
+  it('tells the terminal registry when a session stops', async () => {
+    const stopped: string[] = []
+
+    // A separate manager so the hook can be observed. The shared one in
+    // beforeEach is built without it.
+    const watched = new SessionManager({
+      db,
+      bus,
+      sandbox,
+      cloneUrl: () => originUrl,
+      createAdapter: () => adapter,
+      onSessionStopped: async (sessionId) => {
+        stopped.push(sessionId)
+      },
+    })
+
+    const projectId = await createProject()
+    const session = await watched.start({ projectId, agentId: 'fake', prompt: 'do the thing' })
+    createdSessions.push(session.id)
+    await waitForStatus(session.id, 'running')
+
+    await watched.stop(session.id)
+
+    expect(stopped).toEqual([session.id])
+  })
+})
+
 describe('pull requests', () => {
   /** A manager whose GitHub calls are recorded rather than made. */
   function managerWithGitHub(overrides: Partial<GitHubClient> = {}) {

@@ -91,6 +91,32 @@ export const doneEvent = z.object({
   reason: z.enum(['completed', 'interrupted', 'error']),
 })
 
+/**
+ * Someone opened a shell in this session's container.
+ *
+ * Recorded because a person ran commands here, and the transcript otherwise
+ * shows only what the agent did. Deliberately carries no I/O: people paste
+ * secrets into shells, and a keystroke log in the database would be a liability
+ * worth more than the forensics.
+ *
+ * Unlike every other variant here, this one and its sibling are emitted by the
+ * control plane rather than by an agent adapter. They belong in this union
+ * anyway: the union is the session's persisted stream, which is where an audit
+ * record has to live.
+ */
+export const terminalOpenedEvent = z.object({
+  type: z.literal('terminal_opened'),
+  terminalId: z.string(),
+  deviceId: z.string(),
+})
+
+export const terminalClosedEvent = z.object({
+  type: z.literal('terminal_closed'),
+  terminalId: z.string(),
+  deviceId: z.string(),
+  exitCode: z.number().int().optional(),
+})
+
 export const agentEvent = z.discriminatedUnion('type', [
   sessionStartedEvent,
   assistantTextEvent,
@@ -102,6 +128,8 @@ export const agentEvent = z.discriminatedUnion('type', [
   usageEvent,
   errorEvent,
   doneEvent,
+  terminalOpenedEvent,
+  terminalClosedEvent,
 ])
 
 export type AgentEvent = z.infer<typeof agentEvent>

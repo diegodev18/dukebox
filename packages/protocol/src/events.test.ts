@@ -88,3 +88,32 @@ describe('isEventOfType', () => {
     expect(isEventOfType(event, 'assistant_text')).toBe(false)
   })
 })
+
+describe('terminal audit events', () => {
+  it('parses terminal_opened', () => {
+    const result = agentEvent.safeParse({
+      type: 'terminal_opened',
+      terminalId: 't1',
+      deviceId: 'device-1',
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  it('parses terminal_closed with an exit code', () => {
+    const result = agentEvent.safeParse({
+      type: 'terminal_closed',
+      terminalId: 't1',
+      deviceId: 'device-1',
+      exitCode: 0,
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  it('requires the device that opened the terminal', () => {
+    const result = agentEvent.safeParse({ type: 'terminal_opened', terminalId: 't1' })
+
+    expect(result.success).toBe(false)
+  })
+})
