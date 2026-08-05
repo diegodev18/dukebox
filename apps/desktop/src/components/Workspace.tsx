@@ -136,7 +136,7 @@ function Panels({ session, files }: { session: SessionSummary | null; files: Fil
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="min-h-0 flex-1 overflow-y-auto">
       {files.map((file) => {
         const expanded = open === file.path
 

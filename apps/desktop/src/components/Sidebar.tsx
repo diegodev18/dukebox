@@ -30,7 +30,7 @@ export function Sidebar({
   return (
     <nav
       aria-label="Sessions"
-      className="flex flex-col overflow-hidden border-r border-border bg-surface"
+      className="flex min-h-0 flex-col overflow-hidden border-r border-border bg-surface"
     >
       <div className="px-2 pt-2.5 pb-1">
         <SidebarAction icon={<PlusIcon />} onClick={onNewSession}>
