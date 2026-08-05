@@ -2,6 +2,7 @@ import type { Block, ToolBlock, Transcript as TranscriptData } from '@dukebox/pr
 import { useEffect, useRef, useState } from 'react'
 import { ThinkingOrb } from 'thinking-orbs'
 import { activityBlock, mapOrbState, orbStateForTool } from '../lib/orbState.js'
+import { Markdown } from './Markdown.js'
 
 /**
  * The conversation.
@@ -39,7 +40,11 @@ export function Transcript({ transcript, onRespond }: Props) {
   }
 
   return (
-    <div ref={scroller} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto px-6 py-5.5">
+    <div
+      ref={scroller}
+      onScroll={handleScroll}
+      className="min-h-0 flex-1 overflow-y-auto px-6 py-5.5"
+    >
       <div className="measure flex flex-col gap-4">
         {transcript.blocks.map((block) => (
           <BlockView key={block.id} block={block} onRespond={onRespond} />
@@ -55,13 +60,16 @@ function BlockView({ block, onRespond }: { block: Block; onRespond: Props['onRes
   switch (block.kind) {
     case 'prompt':
       return (
-        <p className="rounded-[var(--radius)] bg-surface px-3.5 py-2.5 whitespace-pre-wrap">
+        <p
+          data-selectable
+          className="rounded-[var(--radius)] bg-surface px-3.5 py-2.5 whitespace-pre-wrap"
+        >
           {block.text}
         </p>
       )
 
     case 'text':
-      return <p className="whitespace-pre-wrap">{block.text}</p>
+      return <Markdown>{block.text}</Markdown>
 
     case 'thinking':
       return <Thinking text={block.text} />
@@ -100,7 +108,11 @@ function Thinking({ text }: { text: string }) {
         Thought for a moment
       </button>
 
-      {open && <p className="mt-2 pl-5 whitespace-pre-wrap opacity-80">{text}</p>}
+      {open && (
+        <div className="mt-2 pl-5 opacity-80">
+          <Markdown>{text}</Markdown>
+        </div>
+      )}
     </div>
   )
 }
