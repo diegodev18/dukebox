@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { sessionSummary } from './session.js'
+import { environmentProposal } from './config.js'
+import { sessionPurpose, sessionSummary } from './session.js'
 
 /**
  * The REST surface between the desktop app and the control plane.
@@ -39,6 +40,13 @@ export const projectSummary = z.object({
   defaultBranch: z.string(),
   /** Image built after the project's setup ran, when one exists. */
   hasSnapshot: z.boolean(),
+  /**
+   * Whether the project has a saved environment (`configOverride`).
+   *
+   * Drives the desktop: without one, the user is steered into environment
+   * setup before a normal coding session.
+   */
+  hasEnvironment: z.boolean(),
   createdAt: z.number().int().positive(),
   /** Sessions that have run for this project. */
   sessionCount: z.number().int().nonnegative(),
@@ -58,17 +66,82 @@ export type CreateProjectRequest = z.infer<typeof createProjectRequest>
 export const listProjectsResponse = z.object({ projects: z.array(projectSummary) })
 
 // ---------------------------------------------------------------------------
+// Project environment
+// ---------------------------------------------------------------------------
+
+/**
+ * The project's environment as the desktop reviews and edits it.
+ *
+ * Secret values never leave the server: the response carries names and whether
+ * each one is already stored, not the plaintext.
+ */
+export const projectEnvironmentResponse = z.object({
+  /** Saved config when one exists; null until the user confirms a proposal. */
+  config: z
+    .object({
+      image: z.string(),
+      setup: z.array(z.string()),
+      env: z.record(z.string()),
+      instructions: z.string(),
+    })
+    .nullable(),
+  /** Agent proposal waiting for review, if any. */
+  draft: environmentProposal.nullable(),
+  /** Project secret names that are already stored (values never returned). */
+  secretNames: z.array(z.string()),
+})
+
+export type ProjectEnvironmentResponse = z.infer<typeof projectEnvironmentResponse>
+
+/**
+ * Confirm (or replace) the project's environment.
+ *
+ * `secrets` holds plaintext values to store; they become `${secret.NAME}` refs
+ * in `config.env`. `literalEnv` supplies non-secret values keyed by name.
+ */
+export const putProjectEnvironmentRequest = z.object({
+  setup: z.array(z.string()),
+  /** Env names that should be secret references; values go in `secrets`. */
+  secretEnv: z.array(z.string()).default([]),
+  /** Non-secret env literals. */
+  literalEnv: z.record(z.string()).default({}),
+  /** Secret values to upsert (name → plaintext). */
+  secrets: z.record(z.string()).default({}),
+  instructions: z.string().optional(),
+  image: z.string().optional(),
+})
+
+export type PutProjectEnvironmentRequest = z.infer<typeof putProjectEnvironmentRequest>
+
+export const environmentProposalResponse = z.object({
+  proposal: environmentProposal.nullable(),
+})
+
+export type EnvironmentProposalResponse = z.infer<typeof environmentProposalResponse>
+
+// ---------------------------------------------------------------------------
 // Sessions
 // ---------------------------------------------------------------------------
 
-export const createSessionRequest = z.object({
-  projectId: z.string().uuid(),
-  agentId: z.string().min(1),
-  /** Defaults to the project's default branch. */
-  baseBranch: z.string().optional(),
-  /** The first thing the agent is asked to do. */
-  prompt: z.string().min(1),
-})
+export const createSessionRequest = z
+  .object({
+    projectId: z.string().uuid(),
+    agentId: z.string().min(1),
+    /** Defaults to the project's default branch. */
+    baseBranch: z.string().optional(),
+    purpose: sessionPurpose.default('coding'),
+    /** Required for coding sessions; ignored for environment_setup (server prompt). */
+    prompt: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.purpose === 'coding' && (!data.prompt || data.prompt.trim().length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['prompt'],
+        message: 'prompt is required for coding sessions',
+      })
+    }
+  })
 
 export type CreateSessionRequest = z.infer<typeof createSessionRequest>
 

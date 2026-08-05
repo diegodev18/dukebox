@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   defaultProjectConfig,
+  environmentProposal,
   mergeProjectConfig,
   parseSecretReference,
   projectConfig,
+  proposalToConfigOverride,
   serverConfig,
 } from './config.js'
 
@@ -90,5 +92,53 @@ describe('serverConfig', () => {
   it('rejects an unknown transport', () => {
     const result = serverConfig.safeParse({ ...minimal, server: { transport: 'carrier-pigeon' } })
     expect(result.success).toBe(false)
+  })
+})
+
+describe('environmentProposal', () => {
+  it('defaults setup and env', () => {
+    const proposal = environmentProposal.parse({})
+    expect(proposal.setup).toEqual([])
+    expect(proposal.env).toEqual({})
+  })
+
+  it('accepts setup commands and env metadata', () => {
+    const proposal = environmentProposal.parse({
+      setup: ['pnpm install'],
+      env: { DATABASE_URL: { secret: true, description: 'Postgres' } },
+      instructions: 'Run typecheck after edits.',
+    })
+    expect(proposal.setup).toEqual(['pnpm install'])
+    expect(proposal.env.DATABASE_URL?.secret).toBe(true)
+    expect(proposal.instructions).toBe('Run typecheck after edits.')
+  })
+})
+
+describe('proposalToConfigOverride', () => {
+  it('turns secret env into ${secret.NAME} references', () => {
+    const override = proposalToConfigOverride(
+      {
+        setup: ['pnpm install'],
+        env: {
+          DATABASE_URL: { secret: true },
+          NODE_ENV: { secret: false },
+        },
+      },
+      { NODE_ENV: 'development' },
+    )
+
+    expect(override.setup).toEqual(['pnpm install'])
+    expect(override.env).toEqual({
+      DATABASE_URL: '${secret.DATABASE_URL}',
+      NODE_ENV: 'development',
+    })
+  })
+
+  it('omits non-secret env without a literal value', () => {
+    const override = proposalToConfigOverride({
+      setup: [],
+      env: { NODE_ENV: { secret: false } },
+    })
+    expect(override.env).toEqual({})
   })
 })

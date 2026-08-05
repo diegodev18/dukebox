@@ -336,6 +336,7 @@ function Preview() {
               repoFullName: 'diegodev18/dukebox',
               defaultBranch: 'main',
               hasSnapshot: false,
+              hasEnvironment: true,
               createdAt: Date.now(),
               sessionCount: 1,
             },
