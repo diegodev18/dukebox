@@ -251,6 +251,50 @@ describe('CredentialProxy', () => {
     await chmod(locked, 0o700)
   })
 
+  it('reports a token it could not read instead of only declining', async () => {
+    // git understands a credential or a refusal, nothing else, so the reason
+    // has to leave by another door or an expired token looks exactly like a
+    // repository denied on purpose.
+    const errors: Error[] = []
+    const path = await socketPath()
+
+    const proxy = createSessionCredentialProxy({
+      socketPath: path,
+      repoFullName: 'diego/dukebox',
+      readToken: async () => {
+        throw new Error('gh auth token failed: not logged in')
+      },
+      onError: (error) => errors.push(error),
+    })
+    proxies.push(proxy)
+    await proxy.start()
+
+    const reply = await ask(path, 'protocol=https\nhost=github.com\npath=diego/dukebox.git\n\n')
+
+    // Still declines, because that is the only thing git can act on.
+    expect(reply.trim()).toBe('')
+    expect(errors[0]?.message).toContain('not logged in')
+  })
+
+  it('stays quiet when a repository is refused on purpose', async () => {
+    // A denied repository is the proxy working, not a fault to report.
+    const errors: Error[] = []
+    const path = await socketPath()
+
+    const proxy = createSessionCredentialProxy({
+      socketPath: path,
+      repoFullName: 'diego/dukebox',
+      readToken: async () => 'token',
+      onError: (error) => errors.push(error),
+    })
+    proxies.push(proxy)
+    await proxy.start()
+
+    await ask(path, 'protocol=https\nhost=github.com\npath=someone/else.git\n\n')
+
+    expect(errors).toHaveLength(0)
+  })
+
   it('refuses to start twice', async () => {
     const { proxy } = await startProxy('diego/dukebox')
     await expect(proxy.start()).rejects.toThrow('already started')

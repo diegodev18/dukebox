@@ -76,6 +76,15 @@ export interface CredentialProxyOptions {
    * intended outcome for a repository this session has no business touching.
    */
   resolve: (request: CredentialRequest) => Promise<Credentials | null>
+  /**
+   * Called when resolving throws.
+   *
+   * Git only understands a credential or a refusal, so the reason for a
+   * failure cannot travel back over the socket. Without this it is lost
+   * entirely, and an expired token looks exactly like a repository that was
+   * denied on purpose.
+   */
+  onError?: (error: Error) => void
 }
 
 export interface Credentials {
@@ -202,7 +211,12 @@ export class CredentialProxy {
       // authentication failure, which is what should happen for a repository
       // this session is not allowed to reach.
       return credentials ? formatCredentials(credentials) : '\n'
-    } catch {
+    } catch (error) {
+      // Declining is the only reply git understands, so the reason cannot be
+      // sent back over this socket — a failure to read the token would
+      // otherwise be indistinguishable from a repository that was refused on
+      // purpose, and both surface as "authentication failed" much later.
+      this.options.onError?.(error instanceof Error ? error : new Error(String(error)))
       return '\n'
     }
   }
@@ -228,9 +242,12 @@ export function createSessionCredentialProxy(options: {
   socketPath: string
   repoFullName: string
   readToken: () => Promise<string>
+  /** Surfaces a token that could not be read. See `CredentialProxyOptions`. */
+  onError?: (error: Error) => void
 }): CredentialProxy {
   return new CredentialProxy({
     socketPath: options.socketPath,
+    ...(options.onError ? { onError: options.onError } : {}),
     resolve: async (request) => {
       if (!matchesRepository(request, options.repoFullName)) return null
 

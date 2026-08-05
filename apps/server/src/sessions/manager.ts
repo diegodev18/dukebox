@@ -12,6 +12,7 @@ import {
   createSessionCredentialProxy,
   Sandbox,
   Workspace,
+  WorkspaceError,
   type CredentialProxy,
   type SessionContainer,
 } from '@dukebox/sandbox'
@@ -365,6 +366,12 @@ export class SessionManager {
       // Read per request rather than captured here, so the token is never held
       // for longer than one in-flight call.
       readToken: () => github.token(),
+      // git is told only that the request was declined, so without this a
+      // token that could not be read surfaces as a push failing for no stated
+      // reason.
+      onError: (error) => {
+        console.error(`credential proxy for session ${sessionId}:`, error.message)
+      },
     })
 
     await proxy.start()
@@ -402,7 +409,17 @@ export class SessionManager {
       throw new SessionError('there is nothing to open a pull request for')
     }
 
-    await running.workspace.push(session.branch)
+    try {
+      await running.workspace.push(session.branch)
+    } catch (error) {
+      // git's own stderr is the only thing that says why a push failed —
+      // rejected credentials, a protected branch, a remote that moved on. The
+      // command line alone sends someone looking in the wrong place.
+      const detail = error instanceof WorkspaceError ? error.stderr.trim() : ''
+      throw new SessionError(
+        detail ? `could not push ${session.branch}: ${detail}` : `could not push ${session.branch}`,
+      )
+    }
 
     // A second push to the same branch updates the existing pull request
     // rather than failing, so a follow-up turn extends the same review.

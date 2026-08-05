@@ -607,6 +607,24 @@ describe('pull requests', () => {
     await afterRestart.stopAll()
   })
 
+  it("includes git's own words when a push fails", async () => {
+    // "command failed: git push ..." names what ran and not what went wrong,
+    // which sends someone looking in the wrong place.
+    const { manager: withGitHub } = managerWithGitHub()
+    const session = await startOn(withGitHub)
+
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+    // A remote that cannot be reached is the shape of every real push failure.
+    await container?.exec(['git', 'remote', 'set-url', 'origin', '/nonexistent/repo.git'], {
+      cwd: '/workspace/repo',
+    })
+
+    await expect(withGitHub.openPullRequest(session.id)).rejects.toThrow(/could not push/)
+
+    await withGitHub.stopAll()
+  })
+
   it('says so when the container is gone rather than reporting it not running', async () => {
     // Without a container there is no workspace to resume into, and the two
     // send someone to different places: wait, or start over.
