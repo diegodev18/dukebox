@@ -39,7 +39,7 @@ export function Sidebar({
         <SidebarAction icon={<SearchIcon />}>Search</SidebarAction>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto py-2">
         {projects.length === 0 ? (
           <p className="px-4 py-3 text-[12.5px] text-muted-foreground">
             No projects yet. Connect a repository to start.
