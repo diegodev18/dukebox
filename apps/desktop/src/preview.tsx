@@ -177,7 +177,7 @@ function Preview() {
 
   return (
     <div
-      className="grid h-svh grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)]"
+      className="grid h-full grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)] overflow-hidden"
       style={{ width: 1440 }}
     >
       <div className="border-r border-border bg-surface p-2">

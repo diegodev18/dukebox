@@ -1,6 +1,7 @@
 import type { ProjectSummary, SessionSummary } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import type { Connection } from '../lib/connection.js'
+import { filterProjects, filterSessions } from '../lib/searchSessions.js'
 import { StatusDot } from '../screens/Session.js'
 
 /**
@@ -31,23 +32,46 @@ export function Sidebar({
   onArchive,
 }: Props) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
+  const [searching, setSearching] = useState(false)
+  const [query, setQuery] = useState('')
+
+  const visibleSessions = filterSessions(query, sessions, projects)
+  const visibleProjects = filterProjects(query, projects, sessions)
+  const filtering = searching && query.trim() !== ''
+
+  const closeSearch = () => {
+    setSearching(false)
+    setQuery('')
+  }
 
   return (
     <nav
       aria-label="Sessions"
-      className="flex flex-col overflow-hidden border-r border-border bg-surface"
+      className="flex min-h-0 flex-col overflow-hidden border-r border-border bg-surface"
     >
       <div className="px-2 pt-2.5 pb-1">
-        <SidebarAction icon={<PlusIcon />} onClick={onNewSession}>
-          New session
-        </SidebarAction>
-        <SidebarAction icon={<SearchIcon />}>Search</SidebarAction>
+        {searching ? (
+          <SearchField value={query} onChange={setQuery} onClose={closeSearch} />
+        ) : (
+          <>
+            <SidebarAction icon={<PlusIcon />} onClick={onNewSession}>
+              New session
+            </SidebarAction>
+            <SidebarAction icon={<SearchIcon />} onClick={() => setSearching(true)}>
+              Search
+            </SidebarAction>
+          </>
+        )}
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto py-2">
         {projects.length === 0 ? (
           <p className="px-4 py-3 text-[12.5px] text-muted-foreground">
             No projects yet. Connect a repository to start.
+          </p>
+        ) : filtering && visibleSessions.length === 0 ? (
+          <p className="px-4 py-3 text-[12.5px] text-muted-foreground">
+            No sessions match “{query.trim()}”.
           </p>
         ) : (
           <>
@@ -55,13 +79,18 @@ export function Sidebar({
               Projects
             </p>
 
-            {projects.map((project) => (
+            {visibleProjects.map((project) => (
               <ProjectGroup
                 key={project.id}
                 project={project}
-                sessions={sessions.filter((session) => session.projectId === project.id)}
+                sessions={visibleSessions.filter((session) => session.projectId === project.id)}
                 selectedId={selectedId}
-                onSelect={onSelect}
+                onSelect={(sessionId) => {
+                  onSelect(sessionId)
+                  // A pick from search is a destination, not a filter to keep
+                  // applying — clear it so the full list returns underneath.
+                  if (searching) closeSearch()
+                }}
                 onContextMenu={(sessionId, event) => {
                   event.preventDefault()
                   setMenu({ sessionId, x: event.clientX, y: event.clientY })
@@ -103,6 +132,53 @@ interface ContextMenuState {
   sessionId: string
   x: number
   y: number
+}
+
+function SearchField({
+  value,
+  onChange,
+  onClose,
+}: {
+  value: string
+  onChange: (value: string) => void
+  onClose: () => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  return (
+    <div className="flex items-center gap-1.5 rounded-[calc(var(--radius)*0.7)] border border-border-strong bg-background px-2 py-1">
+      <span className="text-muted-foreground">
+        <SearchIcon />
+      </span>
+      <input
+        ref={inputRef}
+        type="search"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            onClose()
+          }
+        }}
+        placeholder="Search sessions"
+        aria-label="Search sessions"
+        className="min-w-0 flex-1 bg-transparent py-0.5 text-[13px] outline-none placeholder:text-muted-foreground"
+      />
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close search"
+        className="rounded px-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        Esc
+      </button>
+    </div>
+  )
 }
 
 function ProjectGroup({

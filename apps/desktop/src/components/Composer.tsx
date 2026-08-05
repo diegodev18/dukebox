@@ -39,7 +39,7 @@ export function Composer({ onSend, onInterrupt, running, disabled }: Props) {
   }
 
   return (
-    <div className="px-6 pb-5">
+    <div className="shrink-0 px-6 pb-5">
       <div className="measure rounded-[var(--radius)] border border-border bg-surface focus-within:border-muted-foreground/40">
         <textarea
           ref={field}
