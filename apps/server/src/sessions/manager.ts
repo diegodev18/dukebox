@@ -9,6 +9,7 @@ import {
 } from '@dukebox/protocol'
 import {
   CONTAINER_SOCKET_DIR,
+  CONTAINER_SOCKET_PATH,
   createSessionCredentialProxy,
   Sandbox,
   Workspace,
@@ -407,6 +408,21 @@ export class SessionManager {
 
     if (changed.length === 0 && !session.prUrl) {
       throw new SessionError('there is nothing to open a pull request for')
+    }
+
+    // Checked from inside the container, which is the only place it matters.
+    // A bind mount is tied to the directory that existed when the container
+    // was created, so one replaced since then leaves the container looking at
+    // nothing while the host holds a working socket.
+    if (
+      running.credentials &&
+      !(await running.workspace.credentialSocketReachable(CONTAINER_SOCKET_PATH))
+    ) {
+      throw new SessionError(
+        `the credential socket is not visible inside this session's container, so git has no way to authenticate. ` +
+          `This happens when its socket directory on the host was removed and recreated after the container started. ` +
+          `Starting a new session for this project rebuilds the mount.`,
+      )
     }
 
     try {

@@ -229,6 +229,22 @@ describe('Workspace', () => {
     })
   })
 
+  describe('credentialSocketReachable', () => {
+    it('is false when nothing is at the path', async () => {
+      const { workspace } = await freshWorkspace()
+      expect(await workspace.credentialSocketReachable('/run/dukebox/credentials.sock')).toBe(false)
+    })
+
+    it('is false for a regular file, which cannot serve credentials', async () => {
+      // A bind mount pointing at a replaced directory can leave something that
+      // is not a socket. git's own error names neither.
+      const { workspace, container } = await freshWorkspace()
+      await container.exec(['sh', '-c', 'mkdir -p /run/dukebox && touch /run/dukebox/notasocket'])
+
+      expect(await workspace.credentialSocketReachable('/run/dukebox/notasocket')).toBe(false)
+    })
+  })
+
   describe('commitAll', () => {
     it('commits changes and returns the new head', async () => {
       const { workspace: ws, container: target } = await freshWorkspace()

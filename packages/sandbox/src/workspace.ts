@@ -240,6 +240,20 @@ export class Workspace {
     return this.headCommit()
   }
 
+  /**
+   * Whether the credential socket is reachable from inside the container.
+   *
+   * The host can hold a perfectly good socket that the container cannot see:
+   * a bind mount is bound to the directory that existed when the container was
+   * created, so a directory replaced since then leaves the mount pointing at
+   * something gone. git reports that as "could not read Username … No such
+   * device or address", which names neither the socket nor the mount.
+   */
+  async credentialSocketReachable(socketPath: string): Promise<boolean> {
+    const result = await this.container.exec(['test', '-S', socketPath])
+    return result.exitCode === 0
+  }
+
   /** Push the session branch. Credentials come from the credential proxy. */
   async push(branch: string): Promise<void> {
     await this.run(['git', 'push', '--set-upstream', 'origin', branch])
