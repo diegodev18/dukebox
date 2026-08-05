@@ -188,7 +188,11 @@ function Preview() {
 
   return (
     <div
-      className="grid h-full grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)] overflow-hidden"
+      className={`grid h-full overflow-hidden ${
+        creating
+          ? 'grid-cols-[236px_minmax(0,1fr)]'
+          : 'grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)]'
+      }`}
       style={{ width: 1440 }}
     >
       <div className="border-r border-border bg-surface p-2">
@@ -222,40 +226,39 @@ function Preview() {
           onCreated={() => setCreating(false)}
         />
       ) : (
-        <div className="flex min-h-0 min-w-0 flex-col">
-          <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
-            <h1 className="truncate font-medium">Fix the demux bug</h1>
-            <span className="flex-1" />
-            <PullRequest
-              client={fakeClient}
-              session={previewSession}
-              changedFiles={transcript.files.length}
-              onOpened={(url) => console.log('opened', url)}
+        <>
+          <div className="flex min-h-0 min-w-0 flex-col">
+            <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
+              <h1 className="truncate font-medium">Fix the demux bug</h1>
+              <span className="flex-1" />
+              <PullRequest
+                client={fakeClient}
+                session={previewSession}
+                changedFiles={transcript.files.length}
+                onOpened={(url) => console.log('opened', url)}
+              />
+
+              <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+                <span className="size-1.5 rounded-full bg-running motion-safe:animate-pulse" />
+                <AgentIcon agentId="claude-code" />
+              </span>
+            </header>
+
+            <Transcript
+              transcript={{ ...transcript, running: true }}
+              onRespond={(id, allow) => console.log('respond', id, allow)}
             />
 
-            <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
-              <span className="size-1.5 rounded-full bg-running motion-safe:animate-pulse" />
-              <AgentIcon agentId="claude-code" />
-            </span>
-          </header>
+            <Composer
+              onSend={(text) => console.log('send', text)}
+              onInterrupt={() => console.log('interrupt')}
+              running={false}
+            />
+          </div>
 
-          <Transcript
-            transcript={{ ...transcript, running: true }}
-            onRespond={(id, allow) => console.log('respond', id, allow)}
-          />
-
-          <Composer
-            onSend={(text) => console.log('send', text)}
-            onInterrupt={() => console.log('interrupt')}
-            running={false}
-          />
-        </div>
+          <Workspace session={previewSession} files={transcript.files} />
+        </>
       )}
-
-      <Workspace
-        session={creating ? null : previewSession}
-        files={creating ? [] : transcript.files}
-      />
     </div>
   )
 }

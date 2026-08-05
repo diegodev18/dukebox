@@ -161,7 +161,7 @@ export function NewSession({ client, projects, onCreated }: Props) {
   const canSend = !busy && Boolean(target) && Boolean(baseBranch) && prompt.trim() !== ''
 
   return (
-    <div className="grid min-h-0 min-w-0 place-items-center px-6">
+    <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
       <div className="w-full max-w-xl">
         <div className="mb-3 flex flex-wrap items-center gap-1">
           <RepoPicker options={options} value={target} onChange={selectRepo} disabled={busy} />

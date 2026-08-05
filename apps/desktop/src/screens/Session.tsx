@@ -77,12 +77,31 @@ export function Session({ connection, onDisconnected }: Props) {
   })
 
   const current = sessions.find((session) => session.id === selected) ?? null
+  // New session has no diffs to show — drop the workspace column so the
+  // composer centres in the whole main pane rather than in a squeezed middle.
+  const composing = !loading && (creating || current === null)
+
+  const onSessionCreated = (session: SessionSummary, project: ProjectSummary | null) => {
+    // Added locally rather than refetched: the session exists but its
+    // container is still building, and a list that only updates on the
+    // next poll makes a started session look like it failed.
+    if (project) setProjects((current) => [project, ...current])
+    setSessions((current) => [session, ...current])
+    setSelected(session.id)
+    setCreating(false)
+  }
 
   return (
     // `h-full` fills the locked `#root`; `overflow-hidden` keeps any column
     // that still misbehaves from scrolling the window itself. Internal
     // panels (`Transcript`, sidebar list, workspace files) own their scroll.
-    <div className="grid h-full grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)] overflow-hidden has-[[data-collapsed]]:grid-cols-[236px_minmax(0,1fr)_244px]">
+    <div
+      className={`grid h-full overflow-hidden ${
+        composing
+          ? 'grid-cols-[236px_minmax(0,1fr)]'
+          : 'grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)] has-[[data-collapsed]]:grid-cols-[236px_minmax(0,1fr)_244px]'
+      }`}
+    >
       <Sidebar
         connection={connection}
         projects={projects}
@@ -118,39 +137,27 @@ export function Session({ connection, onDisconnected }: Props) {
 
       {loading ? (
         <div />
-      ) : creating || !current ? (
-        <NewSession
-          client={client}
-          projects={projects}
-          onCreated={(session, project) => {
-            // Added locally rather than refetched: the session exists but its
-            // container is still building, and a list that only updates on the
-            // next poll makes a started session look like it failed.
-            if (project) setProjects((current) => [project, ...current])
-            setSessions((current) => [session, ...current])
-            setSelected(session.id)
-            setCreating(false)
-          }}
-        />
+      ) : composing ? (
+        <NewSession client={client} projects={projects} onCreated={onSessionCreated} />
+      ) : current ? (
+        <>
+          <SessionColumn
+            session={current}
+            live={live}
+            client={client}
+            onPullRequest={(url) =>
+              setSessions((sessions) =>
+                sessions.map((session) =>
+                  session.id === selected ? { ...session, pullRequestUrl: url } : session,
+                ),
+              )
+            }
+          />
+          <Workspace session={current} files={live.transcript.files} />
+        </>
       ) : (
-        <SessionColumn
-          session={current}
-          live={live}
-          client={client}
-          onPullRequest={(url) =>
-            setSessions((sessions) =>
-              sessions.map((session) =>
-                session.id === selected ? { ...session, pullRequestUrl: url } : session,
-              ),
-            )
-          }
-        />
+        <div />
       )}
-
-      <Workspace
-        session={creating ? null : current}
-        files={creating ? [] : live.transcript.files}
-      />
     </div>
   )
 }
