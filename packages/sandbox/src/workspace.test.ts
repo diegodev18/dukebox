@@ -238,6 +238,7 @@ describe('Workspace', () => {
       const report = await workspace.diagnoseCredentials(
         '/home/node/.dukebox/credential-helper',
         '/run/dukebox/credentials.sock',
+        'diego/dukebox',
       )
 
       expect(report).toContain('helper configured: NO')
@@ -252,6 +253,7 @@ describe('Workspace', () => {
       const report = await workspace.diagnoseCredentials(
         '/home/node/.dukebox/credential-helper',
         '/run/dukebox/credentials.sock',
+        'diego/dukebox',
       )
 
       expect(report).toContain('helper configured: yes')

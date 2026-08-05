@@ -268,7 +268,11 @@ export class Workspace {
    * mounted, whether the helper answers. Each has to be checked where git runs
    * — from outside, every one of them can look fine.
    */
-  async diagnoseCredentials(helperPath: string, socketPath: string): Promise<string> {
+  async diagnoseCredentials(
+    helperPath: string,
+    socketPath: string,
+    repoFullName: string,
+  ): Promise<string> {
     const checks: [string, string[]][] = [
       ['helper configured', ['git', 'config', '--global', '--get', 'credential.helper']],
       ['helper executable', ['test', '-x', helperPath]],
@@ -291,7 +295,9 @@ export class Workspace {
     const answered = await this.container.exec([
       'sh',
       '-c',
-      `printf 'protocol=https\\nhost=github.com\\npath=x/y.git\\n\\n' | ${helperPath} get`,
+      // The session's own repository. Asking for anything else is refused by
+      // design, which would report the proxy working as a failure.
+      `printf 'protocol=https\\nhost=github.com\\npath=${repoFullName}.git\\n\\n' | ${helperPath} get`,
     ])
 
     findings.push(

@@ -428,6 +428,24 @@ export class SessionManager {
     try {
       await running.workspace.push(session.branch)
     } catch (error) {
+      // A repository that does not exist — renamed, deleted, or never pushed —
+      // refuses authentication exactly like a bad token, because GitHub will
+      // not confirm a private repository is missing to someone who might not
+      // be allowed to know. Checked first so it is not reported as a
+      // credential problem.
+      const reachable = await github
+        .defaultBranch(running.repoFullName)
+        .then(() => true)
+        .catch(() => false)
+
+      if (!reachable) {
+        throw new SessionError(
+          `${running.repoFullName} could not be reached on GitHub. ` +
+            `Check the repository exists and that the account Dukebox is signed in as can push to it. ` +
+            `GitHub reports a repository you cannot access the same way it reports one that is not there.`,
+        )
+      }
+
       // git's own stderr is the only thing that says why a push failed —
       // rejected credentials, a protected branch, a remote that moved on. The
       // command line alone sends someone looking in the wrong place.
@@ -438,7 +456,7 @@ export class SessionManager {
       // with the failure rather than left for someone to go and look for.
       const diagnosis = running.credentials
         ? await running.workspace
-            .diagnoseCredentials(Workspace.HELPER_PATH, CONTAINER_SOCKET_PATH)
+            .diagnoseCredentials(Workspace.HELPER_PATH, CONTAINER_SOCKET_PATH, running.repoFullName)
             .catch(() => '')
         : 'credentials: not configured on this server'
 

@@ -480,6 +480,9 @@ describe('pull requests', () => {
     const github = {
       token: async () => 'gho_test',
       findPullRequest: async () => null,
+      // Reachable unless a test says otherwise: a push failure checks this to
+      // tell a missing repository from a credential problem.
+      defaultBranch: async () => 'main',
       createPullRequest: async (options: Parameters<GitHubClient['createPullRequest']>[0]) => {
         created.push(options)
         return 'https://github.com/diego/dukebox/pull/1'
@@ -605,6 +608,30 @@ describe('pull requests', () => {
 
     expect(url).toContain('/pull/1')
     await afterRestart.stopAll()
+  })
+
+  it('names an unreachable repository rather than blaming credentials', async () => {
+    // GitHub refuses a repository you cannot see exactly as it refuses one
+    // that does not exist, and git reports both as an authentication failure.
+    // Someone whose repository was renamed should not be sent to check a token.
+    const { manager: withGitHub } = managerWithGitHub({
+      defaultBranch: async () => {
+        throw new Error('gh: Could not resolve to a Repository')
+      },
+    })
+
+    const session = await startOn(withGitHub)
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+    await container?.exec(['git', 'remote', 'set-url', 'origin', '/nonexistent/repo.git'], {
+      cwd: '/workspace/repo',
+    })
+
+    await expect(withGitHub.openPullRequest(session.id)).rejects.toThrow(
+      /could not be reached on GitHub/,
+    )
+
+    await withGitHub.stopAll()
   })
 
   it("includes git's own words when a push fails", async () => {
