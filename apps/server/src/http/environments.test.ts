@@ -436,6 +436,7 @@ describe('per-environment config', () => {
     expect(response.status).toBe(200)
     const body = (await response.json()) as {
       config: { setup: string[]; env: Record<string, string>; instructions: string }
+      draft: unknown
       secretNames: string[]
     }
 
@@ -444,6 +445,17 @@ describe('per-environment config', () => {
       NODE_ENV: 'development',
       DATABASE_URL: '${secret.DATABASE_URL}',
     })
+    // Survives the round trip through mergeProjectConfig rather than being
+    // dropped on the way to the response.
+    expect(body.config.instructions).toBe('Run typecheck.')
+
+    // The response echoes the stored name, which is what the app renders; the
+    // value is checked against the store below, so nothing here reveals it.
+    expect(body.secretNames).toContain('DATABASE_URL')
+
+    // Saving is what clears a pending proposal, and the response says so
+    // without the app needing a second request to find out.
+    expect(body.draft).toBeNull()
 
     const [saved] = await db.select().from(environments).where(eq(environments.id, environment.id))
     expect(saved!.configOverride).toMatchObject({ setup: ['pnpm install'] })
