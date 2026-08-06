@@ -3,7 +3,15 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createDatabase } from './client.js'
-import { devices, messages, pairingCodes, projects, secrets, sessions } from './schema.js'
+import {
+  devices,
+  environments,
+  messages,
+  pairingCodes,
+  projects,
+  secrets,
+  sessions,
+} from './schema.js'
 
 /**
  * Integration tests against a real Postgres.
@@ -158,6 +166,80 @@ describe('projects', () => {
   it('rejects the same repository twice', async () => {
     await insertProject('diego/dukebox')
     await expect(insertProject('diego/dukebox')).rejects.toThrow()
+  })
+})
+
+describe('environments', () => {
+  it('migrates a project with a config override into one Default environment', async () => {
+    // A project carrying an override before the migration becomes exactly one
+    // environment, matching every branch.
+    const [project] = await db
+      .insert(projects)
+      .values({ repoFullName: 'acme/with-config', defaultBranch: 'main' })
+      .returning()
+
+    const [environment] = await db
+      .insert(environments)
+      .values({
+        projectId: project.id,
+        name: 'Default',
+        branchPattern: '**',
+        position: 0,
+        configOverride: { setup: ['pnpm install'] },
+      })
+      .returning()
+
+    expect(environment.branchPattern).toBe('**')
+    expect(environment.position).toBe(0)
+    expect(environment.configOverride).toEqual({ setup: ['pnpm install'] })
+  })
+
+  it('rejects two environments of one project sharing a name', async () => {
+    const [project] = await db
+      .insert(projects)
+      .values({ repoFullName: 'acme/dupe-names', defaultBranch: 'main' })
+      .returning()
+
+    await db
+      .insert(environments)
+      .values({ projectId: project.id, name: 'Default', branchPattern: '**' })
+
+    await expect(
+      db
+        .insert(environments)
+        .values({ projectId: project.id, name: 'Default', branchPattern: '*' }),
+    ).rejects.toThrow()
+  })
+
+  it('keeps a session when its environment is deleted', async () => {
+    // Deleting an environment must not delete the history of what ran on it.
+    const [project] = await db
+      .insert(projects)
+      .values({ repoFullName: 'acme/orphan', defaultBranch: 'main' })
+      .returning()
+
+    const [environment] = await db
+      .insert(environments)
+      .values({ projectId: project.id, name: 'Default', branchPattern: '**' })
+      .returning()
+
+    const [session] = await db
+      .insert(sessions)
+      .values({
+        projectId: project.id,
+        environmentId: environment.id,
+        agentId: 'claude-code',
+        status: 'done',
+        branch: 'duke/x',
+        baseBranch: 'main',
+      })
+      .returning()
+
+    await db.delete(environments).where(eq(environments.id, environment.id))
+
+    const [after] = await db.select().from(sessions).where(eq(sessions.id, session.id))
+    expect(after).toBeDefined()
+    expect(after.environmentId).toBeNull()
   })
 })
 
