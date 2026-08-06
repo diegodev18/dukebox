@@ -142,9 +142,21 @@ So `refact/*` matches `refact/auth` but not `refact/auth/deep`; `refact/**`
 matches both. `*` alone matches `main` but not `refact/auth` — the real catch-all
 is `**`.
 
-**Regex** is the `re:` prefix. The remainder is compiled and implicitly anchored
-(`^…$`): an unanchored pattern matches substrings, so `re:main` would match
-`feat/maintenance`, which nobody expects.
+**Regex** is the `re:` prefix. The remainder is compiled with the user's own
+anchoring respected, and anchored only where they left it open:
+
+- A pattern that starts with `^` keeps its own start anchor; otherwise `^` is
+  added.
+- A pattern that ends with `$` keeps its own end anchor; otherwise `$` is added
+  **unless** the pattern already anchored its start, in which case the tail is
+  left free.
+
+The two halves of that rule answer two different mistakes. Anchoring an
+unanchored pattern is what stops `re:main` from matching `feat/maintenance` or
+`main-old` — substring matching on a branch filter surprises everyone. Leaving
+the tail free on a deliberately start-anchored pattern is what makes
+`re:^(feat|fix)/` match `feat/auth`, which is the obvious reading of a pattern
+someone wrote to mean "branches under feat/ or fix/".
 
 ### Guards
 
