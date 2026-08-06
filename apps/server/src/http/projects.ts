@@ -1,4 +1,4 @@
-import { projects, sessions, type Database } from '@dukebox/db'
+import { environments, projects, sessions, type Database } from '@dukebox/db'
 import {
   createProjectRequest,
   defaultProjectConfig,
@@ -19,10 +19,9 @@ import type { SecretStore } from '../secrets/store.js'
  * Projects: the repositories a user has connected.
  *
  * A project is a repository plus whatever Dukebox has learned about running it
- * — its default branch, its environment config, and eventually its setup
- * snapshot. Registering one is separate from listing what is on GitHub,
- * because most repositories a user owns are not ones they want an agent
- * working in.
+ * — its default branch, its secrets, and the environments it can run in.
+ * Registering one is separate from listing what is on GitHub, because most
+ * repositories a user owns are not ones they want an agent working in.
  */
 
 export interface ProjectRoutesDeps {
@@ -69,8 +68,6 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
         id: projects.id,
         repoFullName: projects.repoFullName,
         defaultBranch: projects.defaultBranch,
-        snapshotImage: projects.snapshotImage,
-        configOverride: projects.configOverride,
         createdAt: projects.createdAt,
         sessionCount: count(sessions.id),
       })
@@ -79,12 +76,22 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
       .groupBy(projects.id)
       .orderBy(desc(projects.createdAt))
 
+    // A separate grouped query rather than a second join: joining both would
+    // multiply the rows and inflate every count.
+    const environmentCounts = await deps.db
+      .select({ projectId: environments.projectId, total: count(environments.id) })
+      .from(environments)
+      .groupBy(environments.projectId)
+
+    const countByProject = new Map(
+      environmentCounts.map((row) => [row.projectId, Number(row.total)]),
+    )
+
     const summaries: ProjectSummary[] = rows.map((row) => ({
       id: row.id,
       repoFullName: row.repoFullName,
       defaultBranch: row.defaultBranch,
-      hasSnapshot: row.snapshotImage !== null,
-      hasEnvironment: row.configOverride !== null,
+      environmentCount: countByProject.get(row.id) ?? 0,
       createdAt: row.createdAt.getTime(),
       sessionCount: Number(row.sessionCount),
     }))
@@ -142,8 +149,7 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
         id: project!.id,
         repoFullName: project!.repoFullName,
         defaultBranch: project!.defaultBranch,
-        hasSnapshot: false,
-        hasEnvironment: false,
+        environmentCount: 0,
         createdAt: project!.createdAt.getTime(),
         sessionCount: 0,
       },
@@ -165,31 +171,50 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
   })
 
   /**
-   * The project's environment: saved config, pending draft, and secret names.
+   * The environment's saved config, pending draft, and the project's secrets.
+   *
+   * Which environment is named by `?environmentId`; secrets stay project
+   * scoped, because the same database URL serves every way of running a repo.
    */
   app.get('/projects/:id/environment', async (c) => {
-    const [project] = await deps.db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, c.req.param('id')))
+    const projectId = c.req.param('id')
+    const environmentId = c.req.query('environmentId')
 
-    if (!project) {
-      return c.json({ error: 'not_found', message: 'no such project' }, 404)
+    if (!environmentId) {
+      return c.json({ error: 'invalid_request', message: 'environmentId is required' }, 400)
     }
 
-    const draft = project.environmentDraft
-      ? environmentProposal.safeParse(project.environmentDraft)
+    const [environment] = await deps.db
+      .select()
+      .from(environments)
+      .where(eq(environments.id, environmentId))
+
+    if (!environment) {
+      return c.json({ error: 'not_found', message: 'no such environment' }, 404)
+    }
+
+    // 403 rather than 404: the row exists, and the caller is being refused
+    // it. This matches how session creation rejects a foreign environment.
+    if (environment.projectId !== projectId) {
+      return c.json(
+        { error: 'forbidden', message: 'environment does not belong to this project' },
+        403,
+      )
+    }
+
+    const draft = environment.environmentDraft
+      ? environmentProposal.safeParse(environment.environmentDraft)
       : null
 
-    const override = project.configOverride
-      ? projectConfig.partial().safeParse(project.configOverride)
+    const override = environment.configOverride
+      ? projectConfig.partial().safeParse(environment.configOverride)
       : null
 
     const effective = override?.success
       ? mergeProjectConfig(defaultProjectConfig(), override.data as Partial<ProjectConfig>)
       : null
 
-    const secretNames = deps.secrets ? await deps.secrets.names(project.id) : []
+    const secretNames = deps.secrets ? await deps.secrets.names(projectId) : []
 
     return c.json({
       config: effective
@@ -206,19 +231,37 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
   })
 
   /**
-   * Save the project's environment after the user reviews a proposal.
+   * Save an environment after the user reviews a proposal.
    *
-   * Writes `configOverride`, upserts secrets, and clears any pending draft.
+   * Writes `configOverride` on the environment named by `?environmentId` and
+   * clears its pending draft. Secrets are upserted on the project, not the
+   * environment: the credentials a repository needs do not change with the
+   * branch being worked on.
    */
   app.put('/projects/:id/environment', async (c) => {
     const projectId = c.req.param('id')
-    const [project] = await deps.db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(eq(projects.id, projectId))
+    const environmentId = c.req.query('environmentId')
 
-    if (!project) {
-      return c.json({ error: 'not_found', message: 'no such project' }, 404)
+    if (!environmentId) {
+      return c.json({ error: 'invalid_request', message: 'environmentId is required' }, 400)
+    }
+
+    const [environment] = await deps.db
+      .select({ id: environments.id, projectId: environments.projectId })
+      .from(environments)
+      .where(eq(environments.id, environmentId))
+
+    if (!environment) {
+      return c.json({ error: 'not_found', message: 'no such environment' }, 404)
+    }
+
+    // Checked before anything is written, secrets included: a refused request
+    // must leave no trace on either project.
+    if (environment.projectId !== projectId) {
+      return c.json(
+        { error: 'forbidden', message: 'environment does not belong to this project' },
+        403,
+      )
     }
 
     const body = await c.req.json().catch(() => null)
@@ -261,13 +304,13 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
     projectConfig.parse(merged)
 
     await deps.db
-      .update(projects)
+      .update(environments)
       .set({
         configOverride: override,
         environmentDraft: null,
         updatedAt: new Date(),
       })
-      .where(eq(projects.id, projectId))
+      .where(eq(environments.id, environment.id))
 
     const secretNames = deps.secrets ? await deps.secrets.names(projectId) : []
 
