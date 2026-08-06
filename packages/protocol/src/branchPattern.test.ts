@@ -47,9 +47,22 @@ describe('matchesBranch — regex', () => {
     expect(matchesBranch('re:^(feat|fix)/', 'chore/x')).toBe(false)
   })
 
-  it('anchors implicitly', () => {
+  it('anchors an unanchored pattern at both ends', () => {
     expect(matchesBranch('re:main', 'main')).toBe(true)
     expect(matchesBranch('re:main', 'feat/maintenance')).toBe(false)
+    expect(matchesBranch('re:main', 'main-old')).toBe(false)
+  })
+
+  it('leaves the tail free when the user anchored the start', () => {
+    // Someone writing `^(feat|fix)/` means "branches under feat/ or fix/".
+    // Forcing a `$` onto that would make it match nothing at all.
+    expect(matchesBranch('re:^(feat|fix)/', 'feat/auth')).toBe(true)
+    expect(matchesBranch('re:^feat/', 'feat/a/b')).toBe(true)
+  })
+
+  it('respects an explicit end anchor', () => {
+    expect(matchesBranch('re:^main$', 'main')).toBe(true)
+    expect(matchesBranch('re:^main$', 'main-old')).toBe(false)
   })
 
   it('returns false for an invalid regex instead of throwing', () => {
