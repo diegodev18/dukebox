@@ -194,6 +194,28 @@ describe('environments', () => {
     expect(environment.configOverride).toEqual({ setup: ['pnpm install'] })
   })
 
+  it('keeps an unconfirmed draft when a project has no saved override', async () => {
+    // The setup agent wrote a proposal nobody has reviewed. Migrating on
+    // config_override alone would drop it when the column goes.
+    const [project] = await db
+      .insert(projects)
+      .values({ repoFullName: 'acme/draft-only', defaultBranch: 'main' })
+      .returning()
+
+    const [environment] = await db
+      .insert(environments)
+      .values({
+        projectId: project.id,
+        name: 'Default',
+        branchPattern: '**',
+        environmentDraft: { setup: ['pnpm install'], env: {} },
+      })
+      .returning()
+
+    expect(environment.configOverride).toBeNull()
+    expect(environment.environmentDraft).toEqual({ setup: ['pnpm install'], env: {} })
+  })
+
   it('rejects two environments of one project sharing a name', async () => {
     const [project] = await db
       .insert(projects)
