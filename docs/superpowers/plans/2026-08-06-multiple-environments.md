@@ -557,10 +557,16 @@ CREATE UNIQUE INDEX "environments_project_id_name_idx" ON "environments" USING b
 -- Existing single environments become one row each. The pattern is `**` and
 -- not `*` because a single star stops at a slash, so `*` would silently stop
 -- matching branches like `refact/auth` that work today.
+-- The filter covers all three columns, not just config_override. A project can
+-- carry an unconfirmed environment_draft (a setup agent's proposal nobody has
+-- reviewed yet) or a snapshot with no override; filtering on config_override
+-- alone would drop those on the floor when the columns are dropped below.
 INSERT INTO "environments" ("project_id", "name", "branch_pattern", "position", "config_override", "snapshot_image", "environment_draft")
 SELECT "id", 'Default', '**', 0, "config_override", "snapshot_image", "environment_draft"
 FROM "projects"
-WHERE "config_override" IS NOT NULL;
+WHERE "config_override" IS NOT NULL
+   OR "environment_draft" IS NOT NULL
+   OR "snapshot_image" IS NOT NULL;
 --> statement-breakpoint
 ALTER TABLE "sessions" ADD COLUMN "environment_id" uuid;
 --> statement-breakpoint

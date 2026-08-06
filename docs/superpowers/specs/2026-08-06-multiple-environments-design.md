@@ -100,9 +100,10 @@ setup commands produce different images.
 One migration, `0005_environments.sql`, in a single step:
 
 1. Create `environments`.
-2. Insert one row per project where `config_override is not null`:
-   `name = 'Default'`, `branch_pattern = '**'`, `position = 0`, copying
-   `config_override`, `snapshot_image`, and `environment_draft`.
+2. Insert one row per project carrying anything worth keeping — a non-null
+   `config_override`, `environment_draft`, or `snapshot_image`:
+   `name = 'Default'`, `branch_pattern = '**'`, `position = 0`, copying all
+   three.
 3. Add `sessions.environment_id`.
 4. Drop the three columns from `projects`.
 
@@ -110,8 +111,12 @@ The migrated pattern is `**`, not `*`: under the glob semantics below `*` stops
 at `/`, so `*` would silently stop matching branches like `refact/auth` that
 work today.
 
-Projects with no `config_override` produce no row and fall through to the base
-image, which matches the intended no-match behaviour.
+Projects carrying none of the three produce no row and fall through to the base
+image, which matches the intended no-match behaviour. The filter deliberately
+covers all three columns rather than `config_override` alone: a project can hold
+an `environment_draft` — a setup agent's proposal nobody has reviewed yet — with
+no override saved, and filtering on the override would drop that proposal when
+the column is dropped.
 
 Dropping the columns in the same migration makes the deploy irreversible without
 restoring a backup. This is accepted: the copy happens in the same statement, and
