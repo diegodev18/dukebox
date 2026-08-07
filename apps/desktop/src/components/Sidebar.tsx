@@ -201,7 +201,7 @@ function ProjectGroup({
       <div className="flex items-center gap-2.5 px-4 py-1.5 text-[12.5px] text-muted-foreground">
         <BranchIcon />
         <span className="min-w-0 flex-1 truncate">{project.repoFullName}</span>
-        {!project.hasEnvironment && (
+        {project.environmentCount === 0 && (
           <button
             type="button"
             onClick={onConfigureEnvironment}

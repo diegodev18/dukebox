@@ -218,6 +218,18 @@ const fakeClient = {
     },
   ],
   listBranches: async () => ['main', 'develop'],
+  listEnvironments: async () => [
+    {
+      id: '00000000-0000-4000-8000-000000000030',
+      projectId: '00000000-0000-4000-8000-000000000010',
+      name: 'Default',
+      branchPattern: '**',
+      position: 0,
+      hasConfig: true,
+      hasSnapshot: false,
+      hasDraft: false,
+    },
+  ],
   createProject: async () => {
     throw new Error('the preview does not talk to a server')
   },
@@ -430,8 +442,7 @@ function Preview() {
               id: '00000000-0000-4000-8000-000000000010',
               repoFullName: 'diegodev18/dukebox',
               defaultBranch: 'main',
-              hasSnapshot: false,
-              hasEnvironment: true,
+              environmentCount: 1,
               createdAt: Date.now(),
               sessionCount: 1,
             },
