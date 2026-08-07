@@ -4,6 +4,7 @@ import { DukeboxClient } from '../lib/client.js'
 import type { Connection } from '../lib/connection.js'
 import { AgentIcon, hasAgentIcon } from '../components/AgentIcon.js'
 import { Composer } from '../components/Composer.js'
+import { EnvironmentsPanel } from '../components/EnvironmentsPanel.js'
 import { PullRequest } from '../components/PullRequest.js'
 import { SessionInfo } from '../components/SessionInfo.js'
 import { Sidebar } from '../components/Sidebar.js'
@@ -38,6 +39,7 @@ export function Session({ connection, onDisconnected }: Props) {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [setupProjectId, setSetupProjectId] = useState<string | null>(null)
+  const [managingProjectId, setManagingProjectId] = useState<string | null>(null)
 
   const refreshProjects = async () => {
     try {
@@ -89,7 +91,8 @@ export function Session({ connection, onDisconnected }: Props) {
   const current = sessions.find((session) => session.id === selected) ?? null
   // New session has no diffs to show — drop the workspace column so the
   // composer centres in the whole main pane rather than in a squeezed middle.
-  const composing = !loading && (creating || current === null)
+  // The environments panel is a form too, and wants the same width.
+  const composing = !loading && (creating || managingProjectId !== null || current === null)
 
   const onSessionCreated = (session: SessionSummary, project: ProjectSummary | null) => {
     // Added locally rather than refetched: the session exists but its
@@ -100,6 +103,7 @@ export function Session({ connection, onDisconnected }: Props) {
     setSelected(session.id)
     setCreating(false)
     setSetupProjectId(null)
+    setManagingProjectId(null)
   }
 
   return (
@@ -120,15 +124,23 @@ export function Session({ connection, onDisconnected }: Props) {
         onSelect={(sessionId) => {
           setCreating(false)
           setSetupProjectId(null)
+          setManagingProjectId(null)
           setSelected(sessionId)
         }}
         onNewSession={() => {
           setSetupProjectId(null)
+          setManagingProjectId(null)
           setCreating(true)
         }}
         onConfigureEnvironment={(projectId) => {
           setSetupProjectId(projectId)
+          setManagingProjectId(null)
           setCreating(true)
+        }}
+        onManageEnvironments={(projectId) => {
+          setCreating(false)
+          setSetupProjectId(null)
+          setManagingProjectId(projectId)
         }}
         onArchive={(sessionId) => {
           void (async () => {
@@ -155,6 +167,8 @@ export function Session({ connection, onDisconnected }: Props) {
 
       {loading ? (
         <div />
+      ) : managingProjectId ? (
+        <EnvironmentsPanel client={client} projectId={managingProjectId} />
       ) : composing ? (
         <NewSession
           client={client}

@@ -23,6 +23,7 @@ interface Props {
   onSelect: (sessionId: string) => void
   onNewSession: () => void
   onConfigureEnvironment: (projectId: string) => void
+  onManageEnvironments: (projectId: string) => void
   onArchive: (sessionId: string) => void
 }
 
@@ -33,6 +34,7 @@ export function Sidebar({
   onSelect,
   onNewSession,
   onConfigureEnvironment,
+  onManageEnvironments,
   onArchive,
 }: Props) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
@@ -96,6 +98,7 @@ export function Sidebar({
                   if (searching) closeSearch()
                 }}
                 onConfigureEnvironment={() => onConfigureEnvironment(project.id)}
+                onManageEnvironments={() => onManageEnvironments(project.id)}
                 onContextMenu={(sessionId, event) => {
                   event.preventDefault()
                   setMenu({ sessionId, x: event.clientX, y: event.clientY })
@@ -187,6 +190,7 @@ function ProjectGroup({
   selectedId,
   onSelect,
   onConfigureEnvironment,
+  onManageEnvironments,
   onContextMenu,
 }: {
   project: ProjectSummary
@@ -194,6 +198,7 @@ function ProjectGroup({
   selectedId: string | null
   onSelect: (sessionId: string) => void
   onConfigureEnvironment: () => void
+  onManageEnvironments: () => void
   onContextMenu: (sessionId: string, event: React.MouseEvent) => void
 }) {
   return (
@@ -201,13 +206,25 @@ function ProjectGroup({
       <div className="flex items-center gap-2.5 px-4 py-1.5 text-[12.5px] text-muted-foreground">
         <BranchIcon />
         <span className="min-w-0 flex-1 truncate">{project.repoFullName}</span>
-        {project.environmentCount === 0 && (
+        {/* One affordance, two jobs: with nothing configured the useful action
+            is to run setup, and once environments exist it is to manage the
+            list. Showing both would put two links in a 236px row. */}
+        {project.environmentCount === 0 ? (
           <button
             type="button"
             onClick={onConfigureEnvironment}
             className="shrink-0 text-[11px] text-foreground underline-offset-2 hover:underline"
           >
             Set up
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onManageEnvironments}
+            aria-label={`Environments for ${project.repoFullName}`}
+            className="shrink-0 text-[11px] text-foreground underline-offset-2 hover:underline"
+          >
+            Environments
           </button>
         )}
       </div>
