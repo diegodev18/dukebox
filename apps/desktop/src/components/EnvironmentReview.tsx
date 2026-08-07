@@ -13,6 +13,18 @@ interface Props {
   client: DukeboxClient
   projectId: string
   sessionId: string
+  /**
+   * Which environment this proposal belongs to.
+   *
+   * Null means the session resolved to no environment. For an
+   * environment_setup session that should never happen — the row is created
+   * before the session starts — so it is reported as a broken state rather
+   * than guessed at, because writing to the wrong environment would silently
+   * overwrite another branch family's setup.
+   */
+  environmentId: string | null
+  /** Shown in the header so it is clear which environment is being confirmed. */
+  environmentName: string | null
   onSaved: () => void
 }
 
@@ -23,7 +35,14 @@ type Status =
   | { kind: 'failed'; message: string }
   | { kind: 'saved' }
 
-export function EnvironmentReview({ client, projectId, sessionId, onSaved }: Props) {
+export function EnvironmentReview({
+  client,
+  projectId,
+  sessionId,
+  environmentId,
+  environmentName,
+  onSaved,
+}: Props) {
   const [setupText, setSetupText] = useState('')
   const [instructions, setInstructions] = useState('')
   const [envRows, setEnvRows] = useState<EnvRow[]>([])
@@ -32,11 +51,20 @@ export function EnvironmentReview({ client, projectId, sessionId, onSaved }: Pro
   useEffect(() => {
     let cancelled = false
 
+    if (!environmentId) {
+      setStatus({
+        kind: 'failed',
+        message:
+          'This session is not attached to an environment, so there is nothing to save a proposal to.',
+      })
+      return
+    }
+
     const load = async () => {
       try {
         const [proposal, environment] = await Promise.all([
           client.getEnvironmentProposal(sessionId),
-          client.getEnvironment(projectId),
+          client.getEnvironment(projectId, environmentId),
         ])
 
         if (cancelled) return
@@ -73,9 +101,13 @@ export function EnvironmentReview({ client, projectId, sessionId, onSaved }: Pro
     return () => {
       cancelled = true
     }
-  }, [client, projectId, sessionId])
+  }, [client, projectId, sessionId, environmentId])
 
   const save = async () => {
+    // Guarded again rather than trusted from the effect: without an id there
+    // is no route to write to, and the button is unreachable in that state.
+    if (!environmentId) return
+
     setStatus({ kind: 'saving' })
 
     try {
@@ -100,7 +132,7 @@ export function EnvironmentReview({ client, projectId, sessionId, onSaved }: Pro
         }
       }
 
-      await client.putEnvironment(projectId, {
+      await client.putEnvironment(projectId, environmentId, {
         setup,
         secretEnv,
         literalEnv,
@@ -126,11 +158,29 @@ export function EnvironmentReview({ client, projectId, sessionId, onSaved }: Pro
     )
   }
 
+  // No environment means no route to save to. Showing the form anyway would
+  // offer a Save button that cannot work.
+  if (!environmentId) {
+    return (
+      <p role="alert" className="px-3.5 py-4 text-[12.5px] text-destructive">
+        {status.kind === 'failed' ? status.message : 'This session has no environment to review.'}
+      </p>
+    )
+  }
+
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3">
       <div className="mb-3 flex flex-col gap-2">
         <div>
-          <h2 className="text-[13px] font-medium">Review environment</h2>
+          {/* Which environment, not just that there is one: with several per
+              project, "Review environment" alone does not say what is about to
+              be overwritten. */}
+          <h2 className="flex flex-wrap items-baseline gap-x-1.5 text-[13px] font-medium">
+            Review environment
+            {environmentName && (
+              <span className="font-normal text-muted-foreground">· {environmentName}</span>
+            )}
+          </h2>
           <p className="text-[12px] text-muted-foreground">
             Edit setup commands and fill in env values, then save. Secrets stay on the server.
           </p>

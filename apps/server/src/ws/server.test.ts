@@ -372,6 +372,7 @@ describe('session updates', () => {
       updatedAt: Date.now(),
       lastSeq: 5,
       pullRequestUrl: null,
+      environmentId: null,
     })
 
     await client.waitFor(() => client.sessionUpdates().length > 0)
@@ -403,6 +404,7 @@ describe('session updates', () => {
       updatedAt: Date.now(),
       lastSeq: 1,
       pullRequestUrl: null,
+      environmentId: null,
     })
 
     await client.waitFor(() => client.sessionUpdates().length > 0)

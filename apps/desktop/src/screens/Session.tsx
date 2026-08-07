@@ -40,6 +40,9 @@ export function Session({ connection, onDisconnected }: Props) {
   const [creating, setCreating] = useState(false)
   const [setupProjectId, setSetupProjectId] = useState<string | null>(null)
   const [managingProjectId, setManagingProjectId] = useState<string | null>(null)
+  // Only to name the environment a review session belongs to. The summary
+  // carries the id; the name lives on the environment row.
+  const [environmentNames, setEnvironmentNames] = useState<Record<string, string>>({})
 
   const refreshProjects = async () => {
     try {
@@ -89,6 +92,33 @@ export function Session({ connection, onDisconnected }: Props) {
   })
 
   const current = sessions.find((session) => session.id === selected) ?? null
+
+  // Names for the environment a review session belongs to. Fetched only when a
+  // review is on screen, and best-effort: failing to name an environment must
+  // not stop the proposal being reviewed.
+  const reviewProjectId =
+    current?.purpose === 'environment_setup' && current.environmentId ? current.projectId : null
+
+  useEffect(() => {
+    if (!reviewProjectId) return
+    let cancelled = false
+
+    client
+      .listEnvironments(reviewProjectId)
+      .then((found) => {
+        if (cancelled) return
+        setEnvironmentNames((names) => ({
+          ...names,
+          ...Object.fromEntries(found.map((one) => [one.id, one.name])),
+        }))
+      })
+      .catch(() => undefined)
+
+    return () => {
+      cancelled = true
+    }
+  }, [client, reviewProjectId])
+
   // New session has no diffs to show — drop the workspace column so the
   // composer centres in the whole main pane rather than in a squeezed middle.
   // The environments panel is a form too, and wants the same width.
@@ -210,6 +240,10 @@ export function Session({ connection, onDisconnected }: Props) {
                     client,
                     projectId: current.projectId,
                     sessionId: current.id,
+                    environmentId: current.environmentId,
+                    environmentName: current.environmentId
+                      ? (environmentNames[current.environmentId] ?? null)
+                      : null,
                     onSaved: () => {
                       void refreshProjects()
                     },

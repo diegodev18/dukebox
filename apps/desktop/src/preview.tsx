@@ -502,6 +502,8 @@ function Preview() {
                     client: fakeClient,
                     projectId: setupSession.projectId,
                     sessionId: setupSession.id,
+                    environmentId: '00000000-0000-4000-8000-0000000000e1',
+                    environmentName: 'Refactors',
                     onSaved: () => console.log('environment saved'),
                   }
                 : null
