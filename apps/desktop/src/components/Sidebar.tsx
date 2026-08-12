@@ -20,6 +20,7 @@ interface Props {
   projects: ProjectSummary[]
   sessions: SessionSummary[]
   selectedId: string | null
+  onCheckForUpdates: () => void
   onSelect: (sessionId: string) => void
   onNewSession: () => void
   onConfigureEnvironment: (projectId: string) => void
@@ -31,6 +32,7 @@ export function Sidebar({
   projects,
   sessions,
   selectedId,
+  onCheckForUpdates,
   onSelect,
   onNewSession,
   onConfigureEnvironment,
@@ -113,7 +115,7 @@ export function Sidebar({
           session header instead: that question is per session and only worth
           room when asked, not permanently at the foot of the sidebar. */}
       <div className="border-t border-border">
-        <UserMenu user={DEFAULT_COMMIT_IDENTITY} />
+        <UserMenu user={DEFAULT_COMMIT_IDENTITY} onCheckForUpdates={onCheckForUpdates} />
       </div>
 
       {menu && (

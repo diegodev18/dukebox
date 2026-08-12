@@ -17,6 +17,68 @@ Coding agents like Claude Code live in a terminal. Dukebox gives them a proper h
 
 Early development. Not usable yet.
 
+## Installing
+
+### The desktop app
+
+The app installs from a downloaded installer — no checkout, no build. Grab the
+newest one for your machine from the
+[latest release](https://github.com/diegodev18/dukebox/releases/latest):
+
+| Platform | Asset                                                                |
+| -------- | -------------------------------------------------------------------- |
+| macOS    | `Dukebox_0.1.0_aarch64.dmg` (Apple silicon) or `_x86_64.dmg` (Intel) |
+| Windows  | `Dukebox_0.1.0_x64-setup.exe`                                        |
+| Linux    | `dukebox_0.1.0_amd64.deb` (or the `.AppImage`)                       |
+
+The installers are not code-signed yet, so the OS may warn the first time;
+right-click → Open (macOS) or "More info → Run anyway" (Windows) gets past
+it. First run shows the pairing screen — paste the link a server installer
+prints (below) and the app finds its server.
+
+### The server
+
+Runs on a Debian or Ubuntu VPS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/diegodev18/dukebox/main/install/install.sh | bash
+```
+
+The installer prints a pairing link for the desktop app, and re-running it is
+how you update the server (see "Updating a server" below).
+
+## Updating
+
+The desktop app checks for new versions when it launches and whenever you pick
+"Check for updates…" from the account menu at the foot of the sidebar. When a
+newer version exists, a banner appears across the top of the window; **Update &
+restart** downloads, installs, and relaunches into the new build in one click,
+and "Later" defers it until the next check. Every bundle is signed, and the app
+refuses to install one whose signature does not verify against the public key
+compiled into it.
+
+### Releasing a new desktop version
+
+The `Release desktop app` workflow builds installers for all three platforms
+and uploads them to a GitHub Release — which is also the feed the app's update
+check reads. To publish:
+
+1. Bump the version to match in `apps/desktop/src-tauri/tauri.conf.json`,
+   `apps/desktop/src-tauri/Cargo.toml`, and `apps/desktop/package.json`.
+2. Commit, then tag and push:
+   ```bash
+   git tag desktop-v0.1.0
+   git push origin desktop-v0.1.0
+   ```
+3. Open the draft release the workflow created, check the assets, and publish it.
+
+The workflow signs update bundles with the `TAURI_SIGNING_PRIVATE_KEY` secret
+(the private half of the key whose public half lives in `tauri.conf.json`);
+without it the build fails. Generate a pair with
+`pnpm --filter @dukebox/desktop tauri signer generate -w ~/.tauri/dukebox.key`
+and store the private key somewhere safe — losing it means no future updates
+for anyone who already installed the app.
+
 ## Architecture
 
 ```

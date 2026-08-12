@@ -15,7 +15,13 @@ import { useEffect, useRef, useState } from 'react'
 
 export const AVAILABLE_USERS: CommitIdentity[] = [DEFAULT_COMMIT_IDENTITY]
 
-export function UserMenu({ user }: { user: CommitIdentity }) {
+export function UserMenu({
+  user,
+  onCheckForUpdates,
+}: {
+  user: CommitIdentity
+  onCheckForUpdates: () => void
+}) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
@@ -120,6 +126,21 @@ export function UserMenu({ user }: { user: CommitIdentity }) {
               Add account…
             </button>
           </div>
+
+          <div className="border-t border-border pt-1">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false)
+                onCheckForUpdates()
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted"
+            >
+              <RefreshIcon />
+              Check for updates…
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -170,6 +191,24 @@ function CheckIcon() {
       aria-hidden="true"
     >
       <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+    </svg>
+  )
+}
+
+function RefreshIcon() {
+  return (
+    <svg
+      className="size-3.5 flex-none text-muted-foreground"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9" />
+      <path d="M13.5 1.5v3h-3" />
     </svg>
   )
 }

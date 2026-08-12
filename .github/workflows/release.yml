@@ -1,0 +1,97 @@
+# Builds the desktop app as native installers for macOS, Windows, and Linux
+# and publishes them to a GitHub Release. The release is the update feed too:
+# every job uploads its updater bundle and signature, and tauri-action merges
+# them into a `latest.json` the app polls at launch.
+#
+# Trigger with:
+#   git tag desktop-v0.1.0 && git push origin desktop-v0.1.0
+#
+# The updater signing key is read from the TAURI_SIGNING_PRIVATE_KEY secret.
+# Generate a key with `pnpm tauri signer generate -w ~/.tauri/dukebox.key` and
+# add the private key as the secret, or the build fails at bundle time.
+#
+# macOS/Windows code signing is optional: set the APPLE_*/WINDOWS_* secrets to
+# sign, or leave them unset for unsigned builds (Gatekeeper will warn).
+name: Release desktop app
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'desktop-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: ${{ matrix.platform }} ${{ matrix.args }}
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS on Apple silicon and Intel are separate targets. The arm64
+          # runner builds both; each runs in its own job so the update feed
+          # carries a darwin-aarch64 and a darwin-x86_64 entry.
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin
+          - platform: macos-latest
+            args: --target x86_64-apple-darwin
+          - platform: ubuntu-22.04
+            args: --bundles appimage deb
+          - platform: windows-latest
+            args: ''
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils libfuse2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter '@dukebox/desktop...'
+
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Required: signs the updater bundles so the app can trust them.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Optional macOS code signing + notarization.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Optional Windows code signing.
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        with:
+          projectPath: apps/desktop
+          tagName: desktop-v__VERSION__
+          releaseName: 'Dukebox v__VERSION__'
+          releaseBody: 'See the assets to download this version and install.'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

@@ -23,9 +23,11 @@ import { NewSession } from './NewSession.js'
 interface Props {
   connection: Connection
   onDisconnected: () => void
+  /** Asks the app to re-check its own update feed (from the account menu). */
+  onCheckForUpdates: () => void
 }
 
-export function Session({ connection, onDisconnected }: Props) {
+export function Session({ connection, onDisconnected, onCheckForUpdates }: Props) {
   // Memoised because it is passed to effects: a new client every render would
   // re-run them forever.
   const client = useMemo(
@@ -151,6 +153,7 @@ export function Session({ connection, onDisconnected }: Props) {
         projects={projects}
         sessions={sessions}
         selectedId={creating ? null : selected}
+        onCheckForUpdates={onCheckForUpdates}
         onSelect={(sessionId) => {
           setCreating(false)
           setSetupProjectId(null)

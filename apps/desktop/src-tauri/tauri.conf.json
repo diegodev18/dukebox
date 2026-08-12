@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Dukebox",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "identifier": "dev.dukebox.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -29,12 +29,19 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": ["icons/icon.png"],
     "copyright": "MIT",
     "category": "DeveloperTool",
     "shortDescription": "Run coding agents on your own VPS",
     "macOS": {
       "infoPlist": "Info.plist"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJFQ0I3RTgzNTYwRTZENkQKUldSdGJRNVdnMzdMTHRBb3pZbCt1N1BLRTFtZWN4TjFIdjU4VTY1UTlOM3lkV1R3K0ZVRFY5Q3gK",
+      "endpoints": ["https://github.com/diegodev18/dukebox/releases/latest/download/latest.json"]
     }
   }
 }

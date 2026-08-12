@@ -1,6 +1,6 @@
 [package]
 name = "dukebox"
-version = "0.0.0"
+version = "0.1.0"
 description = "Dukebox desktop app"
 edition = "2021"
 rust-version = "1.77"
@@ -24,6 +24,12 @@ tauri-plugin-http = "2"
 # GitHub, and replacing the app's own window with a web page would be worse if
 # it did.
 tauri-plugin-opener = "2"
+# Downloads and installs new versions from a GitHub release, then restarts.
+# The update check and install run from the frontend through this plugin; the
+# shell below stays the thin wrapper it has always been.
+tauri-plugin-updater = "2"
+# Restarts the app into a freshly installed build.
+tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

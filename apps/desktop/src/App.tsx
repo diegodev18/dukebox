@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import { UpdateBanner } from './components/UpdateBanner.js'
 import { DukeboxClient } from './lib/client.js'
 import { activeConnection, removeConnection, type Connection } from './lib/connection.js'
+import { useUpdate } from './lib/useUpdate.js'
 import { Pairing } from './screens/Pairing.js'
 import { Session } from './screens/Session.js'
 
@@ -16,6 +18,11 @@ type State = { kind: 'checking' } | { kind: 'unpaired' } | { kind: 'ready'; conn
 
 export function App() {
   const [state, setState] = useState<State>({ kind: 'checking' })
+
+  // Self-updates are app-level: whether an update exists does not depend on
+  // which server this copy is paired to, so the check lives here rather than
+  // inside a screen.
+  const update = useUpdate()
 
   useEffect(() => {
     let cancelled = false
@@ -66,19 +73,38 @@ export function App() {
     }
   }, [])
 
+  // Which screen. `checking` is blank on purpose for the moment the check
+  // takes — a spinner that flashes for 200ms is noise rather than feedback.
+  let screen: React.ReactNode
   if (state.kind === 'checking') {
-    // Blank on purpose for the moment the check takes — a spinner that flashes
-    // for 200ms is noise rather than feedback. If it lasts, `Checking` says so
-    // instead of leaving a black window that looks like a crash.
-    return <Checking />
+    screen = <Checking />
+  } else if (state.kind === 'unpaired') {
+    screen = <Pairing onPaired={(connection) => setState({ kind: 'ready', connection })} />
+  } else {
+    screen = (
+      <Session
+        connection={state.connection}
+        onDisconnected={() => setState({ kind: 'unpaired' })}
+        onCheckForUpdates={() => update.check(true)}
+      />
+    )
   }
 
-  if (state.kind === 'unpaired') {
-    return <Pairing onPaired={(connection) => setState({ kind: 'ready', connection })} />
-  }
-
+  // The update strip pushes the app down rather than covering it, so nothing
+  // below has to know it exists. Each screen keeps its own full-height layout.
   return (
-    <Session connection={state.connection} onDisconnected={() => setState({ kind: 'unpaired' })} />
+    <div className="flex h-full flex-col">
+      <UpdateBanner
+        state={update.state}
+        checked={update.checked}
+        dismissed={update.dismissed}
+        announcing={update.announcing}
+        onInstall={update.install}
+        onRecheck={update.check}
+        onDismiss={update.dismiss}
+      />
+      <div className="min-h-0 flex-1">{screen}</div>
+    </div>
   )
 }
 
