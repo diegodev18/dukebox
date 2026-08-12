@@ -66,8 +66,10 @@ Runs on a Debian or Ubuntu VPS:
 curl -fsSL https://raw.githubusercontent.com/diegodev18/dukebox/main/install/install.sh | bash
 ```
 
-The installer prints a pairing link for the desktop app, and re-running it is
-how you update the server (see "Updating a server" below).
+The installer downloads the newest server release from GitHub, verifies its
+checksum, and prints a pairing link for the desktop app. Re-running it, or
+running `sudo duke update` on the machine, is how you update the server (see
+"Updating a server" below).
 
 ## Updating
 
@@ -100,6 +102,70 @@ without it the build fails. Generate a pair with
 `pnpm --filter @dukebox/desktop tauri signer generate -w ~/.tauri/dukebox.key`
 and store the private key somewhere safe — losing it means no future updates
 for anyone who already installed the app.
+
+### Updating a server
+
+The server is installed from a self-contained release bundle, so an update
+downloads the new bundle, verifies its checksum, applies any database
+migrations with the new code, and swaps it in — no build toolchain on the
+server. Run it over SSH:
+
+```bash
+sudo duke update            # download, verify, migrate, swap, restart
+sudo duke update --check    # only report whether an update exists
+sudo duke rollback          # restore the previous release if something is wrong
+```
+
+`duke update` restarts the service and rolls back automatically if the new
+release fails to start. Re-running `install.sh` does the same thing and also
+applies any unit-file changes.
+
+### Releasing a new server version
+
+The `Release server` workflow builds the control plane into a self-contained
+tarball and uploads it to a GitHub Release — the feed `duke update` reads.
+To publish:
+
+1. Commit, then tag and push:
+   ```bash
+   git tag server-v0.1.0
+   git push origin server-v0.1.0
+   ```
+2. Open the draft release the workflow created, check the assets, and publish
+   it. Until then `duke update` will not offer the version.
+
+Build a bundle locally to inspect it before tagging:
+
+```bash
+./scripts/package-server.sh 0.1.0 x64   # writes dist-release/
+```
+
+### The duke CLI
+
+Every server installs a `duke` command (a symlink into the release bundle).
+It is how an operator talks to a server over SSH. The admin commands — those
+that talk to systemd — need `sudo`:
+
+```bash
+duke version                          # installed release version
+duke status                           # version, service state, transport, devices
+duke update [--check]                 # update to the latest release
+duke rollback                         # restore the previous release
+duke restart                          # restart the control plane
+duke config show                      # effective configuration
+duke config get server.port           # one setting
+duke config set sandbox.memory_limit 6g   # change one setting and restart
+duke pair new                         # issue a pairing link
+duke device ls                        # list paired devices
+duke device rm <id>                   # revoke a device
+```
+
+`duke config set` validates the value against the server's schema, rewrites
+only the one line (comments and the rest of the file survive), and restarts
+the service. Pass `--no-restart` to change the file without restarting.
+`database.url` and `security.master_key_file` are protected and need
+`--force`: changing the first can orphan encrypted secrets, the second
+invalidates every paired device.
 
 ## Architecture
 
@@ -155,20 +221,17 @@ change, reports the diff, prints the container's hardening, and cleans up:
 
 ### Updating a server
 
-The server builds only the control plane and what it imports. Building
-everything would pull in the desktop app, whose dependencies a server has no
-reason to install:
+A release install updates itself — the bundle is built in CI and `duke update`
+swaps it in:
 
 ```bash
-cd /opt/dukebox
-sudo -u dukebox git pull
-sudo -u dukebox pnpm install --frozen-lockfile --filter '@dukebox/server...'
-sudo -u dukebox pnpm --filter '@dukebox/server...' build
-sudo systemctl restart dukebox
+sudo duke update
 ```
 
-Re-running the installer does the same thing and is the better habit — it also
-applies any new migrations and unit-file changes.
+That is also what re-running `install.sh` does. Re-running the installer is
+the better habit when a release also changes the systemd unit or the compose
+stack, since it reapplies those files. There is nothing left to build on the
+server: it installs the release bundle, not the source tree.
 
 ### The desktop app
 

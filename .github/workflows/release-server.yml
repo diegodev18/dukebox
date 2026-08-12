@@ -1,0 +1,76 @@
+# Builds the control plane into a self-contained tarball and publishes it to a
+# GitHub Release — the feed `duke update` reads. The desktop app is released
+# separately (`release.yml`, tag `desktop-v*`).
+#
+# Trigger with:
+#   git tag server-v0.1.0 && git push origin server-v0.1.0
+#
+# The release is created as a draft: review the assets, then publish it. Until
+# then `duke update` will not offer it.
+name: Release server
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'server-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Release server
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter '@dukebox/server...'
+
+      - name: Build the server bundle
+        run: ./scripts/package-server.sh "${GITHUB_REF_NAME#server-v}"
+
+      - name: Publish the release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#server-v}"
+
+          # The bundle is pure JavaScript, so one build serves every
+          # architecture. Publish both names so `duke update` can select the
+          # asset that matches the machine, and add the second checksum.
+          x64="dist-release/dukebox-server-$version-linux-x64.tar.gz"
+          arm64="dist-release/dukebox-server-$version-linux-arm64.tar.gz"
+          cp "$x64" "$arm64"
+          # Basename only, so `duke update` can look the asset up by its file name.
+          (cd dist-release && sha256sum "dukebox-server-$version-linux-arm64.tar.gz") >> dist-release/SHA256SUMS
+
+          gh release create "server-v$version" \
+            "$x64" "$arm64" dist-release/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Dukebox server v$version" \
+            --notes "Control plane release. Update an installed server with: sudo duke update" \
+            --draft
+
+          # The desktop app polls releases/latest/download/latest.json, which
+          # follows whichever release was published last. Publishing a server
+          # release would otherwise 404 that feed until the next desktop
+          # release, so carry the newest desktop manifest forward.
+          feed_tag="$(curl -fsSL "https://api.github.com/repos/$GITHUB_REPOSITORY/releases?per_page=30" \
+            | jq -r '[.[] | select(.draft == false and any(.assets[]; .name == "latest.json"))][0].tag_name')"
+          if [ -n "$feed_tag" ]; then
+            gh release download "$feed_tag" --pattern latest.json --repo "$GITHUB_REPOSITORY"
+            gh release upload "server-v$version" latest.json --repo "$GITHUB_REPOSITORY"
+          fi

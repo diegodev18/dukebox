@@ -35,7 +35,7 @@ Environment=NODE_ENV=production
 Environment=DUKEBOX_CONFIG=/etc/dukebox/config.toml
 EnvironmentFile=/etc/dukebox/env
 
-ExecStart=/usr/bin/node /opt/dukebox/apps/server/dist/main.js
+ExecStart=/usr/bin/node /opt/dukebox/dist/main.js
 
 Restart=on-failure
 RestartSec=5s

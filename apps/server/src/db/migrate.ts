@@ -17,15 +17,18 @@ import { fileURLToPath } from 'node:url'
 /**
  * Locate the migrations directory.
  *
- * Checked in order because the layout differs between running from source and
- * running the built output — the built server lives one level deeper.
+ * Checked in order because the layout differs between running from source,
+ * running the built output, and running a release bundle. The release bundle
+ * installs the workspace packages under `node_modules/@dukebox/*`, so the
+ * migrations live one level in from the deployed `dist/`.
  */
-export function findMigrationsFolder(): string {
+export function findMigrationsFolder(baseUrl: string = import.meta.url): string {
   const candidates = [
-    // Built: apps/server/dist/db/ -> packages/db/migrations
-    new URL('../../../../packages/db/migrations', import.meta.url),
-    // Source: apps/server/src/db/ -> packages/db/migrations
-    new URL('../../../../../packages/db/migrations', import.meta.url),
+    // Release bundle: <root>/dist/db/ -> node_modules/@dukebox/db/migrations
+    new URL('../../node_modules/@dukebox/db/migrations', baseUrl),
+    // Repo build and source (src/ and dist/ sit at the same depth):
+    // apps/server/{src,dist}/db/ -> packages/db/migrations
+    new URL('../../../../packages/db/migrations', baseUrl),
   ]
 
   for (const candidate of candidates) {
