@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { createWriteStream } from 'node:fs'
 import { chmod, mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { promisify } from 'node:util'
+import { createLiveLog } from './liveLog.js'
 import { checksumFor, sha256OfFile, type ReleaseAsset, type ReleaseInfo } from './update.js'
 
 const execFileAsync = promisify(execFile)
@@ -19,12 +20,30 @@ export interface CommandResult {
 export interface RunCommandOptions {
   env?: NodeJS.ProcessEnv
   cwd?: string
+  /** Pipe stdout/stderr into a 4-line in-place TTY viewport (pnpm, tsc). */
+  liveLog?: boolean
+  /** Give the child the operator's TTY so tools like `docker build` can draw their own progress UI. */
+  inheritStdio?: boolean
 }
 
 export async function runCommand(
   command: string,
   args: string[],
   options: RunCommandOptions = {},
+): Promise<CommandResult> {
+  if (options.inheritStdio && process.stdout.isTTY) {
+    return runInherited(command, args, options)
+  }
+  if (options.liveLog) {
+    return runWithLiveLog(command, args, options)
+  }
+  return runBuffered(command, args, options)
+}
+
+async function runBuffered(
+  command: string,
+  args: string[],
+  options: RunCommandOptions,
 ): Promise<CommandResult> {
   try {
     const { stdout, stderr } = await execFileAsync(command, args, {
@@ -37,6 +56,81 @@ export async function runCommand(
     const e = error as { code?: number; stdout?: string; stderr?: string }
     return { code: e.code ?? 1, stdout: e.stdout ?? '', stderr: e.stderr ?? '' }
   }
+}
+
+/** Attach the child to this process's stdio so Docker BuildKit can use its TTY progress. */
+function runInherited(
+  command: string,
+  args: string[],
+  options: RunCommandOptions,
+): Promise<CommandResult> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      env: options.env ?? process.env,
+      cwd: options.cwd,
+      stdio: 'inherit',
+    })
+    settleSpawn(child, resolve, { stdout: '', stderr: '' })
+  })
+}
+
+function runWithLiveLog(
+  command: string,
+  args: string[],
+  options: RunCommandOptions,
+): Promise<CommandResult> {
+  return new Promise((resolve) => {
+    const live = createLiveLog()
+    const child = spawn(command, args, {
+      env: options.env ?? process.env,
+      cwd: options.cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString()
+      live.write(chunk)
+    })
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString()
+      live.write(chunk)
+    })
+    settleSpawn(
+      child,
+      (result) => {
+        live.finish()
+        resolve(result)
+      },
+      () => ({ stdout, stderr }),
+    )
+  })
+}
+
+function settleSpawn(
+  child: ReturnType<typeof spawn>,
+  resolve: (result: CommandResult) => void,
+  buffers: { stdout: string; stderr: string } | (() => { stdout: string; stderr: string }),
+): void {
+  let settled = false
+  const done = (result: CommandResult) => {
+    if (settled) return
+    settled = true
+    resolve(result)
+  }
+  child.on('error', (error) => {
+    const { stdout, stderr } = typeof buffers === 'function' ? buffers() : buffers
+    done({ code: 1, stdout, stderr: stderr || error.message })
+  })
+  child.on('close', (code, signal) => {
+    const { stdout, stderr } = typeof buffers === 'function' ? buffers() : buffers
+    done({
+      code: code ?? 1,
+      stdout,
+      stderr: stderr || (signal ? `killed by ${signal}` : ''),
+    })
+  })
 }
 
 export interface PerformUpdateOptions {
@@ -110,7 +204,9 @@ export async function buildAgentImage(options: {
   const context = join(options.installRoot, AGENT_IMAGE_CONTEXT)
 
   options.log(`Building the agent image (${AGENT_IMAGE_TAG})`)
-  const build = await run('docker', ['build', '-t', AGENT_IMAGE_TAG, context])
+  const build = await run('docker', ['build', '-t', AGENT_IMAGE_TAG, context], {
+    inheritStdio: true,
+  })
   if (build.code !== 0) {
     return {
       ok: false,
