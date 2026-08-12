@@ -157,14 +157,21 @@ export class SessionContainer {
    * frames a TTY-less exec with an 8-byte header per chunk, and those bytes
    * arrive interleaved with the payload: a JSONL reader handed the raw stream
    * sees binary before every `{` and rejects every line the agent emits.
+   *
+   * Pass `stdin: false` when the process must not see an open stdin. OpenCode's
+   * `run` reads stdin to EOF before it starts (`Bun.stdin.text()` whenever
+   * stdin is not a TTY); a hijacked stream that never closes hangs the agent
+   * forever with no events.
    */
   async execStream(
     command: string[],
-    options: { cwd?: string; env?: Record<string, string> } = {},
+    options: { cwd?: string; env?: Record<string, string>; stdin?: boolean } = {},
   ): Promise<Duplex> {
+    const attachStdin = options.stdin !== false
+
     const exec = await this.container.exec({
       Cmd: command,
-      AttachStdin: true,
+      AttachStdin: attachStdin,
       AttachStdout: true,
       AttachStderr: true,
       Tty: false,
@@ -172,7 +179,7 @@ export class SessionContainer {
       ...(options.env ? { Env: toEnvArray(options.env) } : {}),
     })
 
-    const raw = await exec.start({ hijack: true, stdin: true })
+    const raw = await exec.start({ hijack: true, stdin: attachStdin })
 
     // Writes go straight to the process; reads come back demultiplexed. A
     // Duplex is what the caller wants — one object it writes prompts to and
