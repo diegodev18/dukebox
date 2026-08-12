@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { Composer } from './Composer.js'
+import { Composer } from '@/components/Composer'
 
 describe('Composer', () => {
   it('does not clear the draft while the agent is running', async () => {

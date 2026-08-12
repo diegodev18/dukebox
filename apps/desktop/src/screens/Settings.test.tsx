@@ -1,11 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { defaultSettings, type Settings } from '../lib/settings.js'
-import type { UseUpdate } from '../lib/useUpdate.js'
-import { Settings as SettingsScreen } from './Settings.js'
+import { defaultSettings, type Settings } from '@/lib/settings'
+import type { UseUpdate } from '@/lib/useUpdate'
+import { Settings as SettingsScreen } from '@/screens/Settings'
 
-vi.mock('../lib/connection.js', () => ({
+vi.mock('@/lib/connection', () => ({
   listConnections: vi.fn(),
   setActiveConnection: vi.fn(),
   removeConnection: vi.fn(),
@@ -15,7 +15,7 @@ vi.mock('../lib/connection.js', () => ({
   activeConnection: vi.fn(),
 }))
 
-import { listConnections, removeConnection, setActiveConnection } from '../lib/connection.js'
+import { listConnections, removeConnection, setActiveConnection } from '@/lib/connection'
 
 /**
  * The panel is exercised through its four categories. The server row is
@@ -44,6 +44,14 @@ function clientMock() {
     agentCredentialsConfigured: vi.fn().mockResolvedValue(false),
     setAgentCredentials: vi.fn().mockResolvedValue(undefined),
     clearAgentCredentials: vi.fn().mockResolvedValue(undefined),
+    listOpencodeProviders: vi.fn().mockResolvedValue([]),
+    upsertOpencodeProvider: vi.fn().mockResolvedValue({
+      id: 'anthropic',
+      kind: 'anthropic',
+      name: 'Anthropic',
+      models: [{ id: 'claude-sonnet-4-5', label: 'Sonnet 4.5' }],
+    }),
+    deleteOpencodeProvider: vi.fn().mockResolvedValue(undefined),
   }
 }
 
@@ -152,6 +160,42 @@ describe('Settings', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
     await waitFor(() => expect(client.clearAgentCredentials).toHaveBeenCalled())
+  })
+
+  it('saves an OpenCode provider from Account', async () => {
+    const client = clientMock()
+    renderSettings({ client })
+
+    await openCategory('Account')
+    await waitFor(() => expect(screen.getByText(/no providers configured/i)).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: /add provider/i }))
+    await userEvent.type(screen.getByPlaceholderText(/paste key/i), 'sk-ant-opencode')
+    await userEvent.click(screen.getByRole('button', { name: 'Save provider' }))
+
+    await waitFor(() =>
+      expect(client.upsertOpencodeProvider).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'anthropic', apiKey: 'sk-ant-opencode' }),
+      ),
+    )
+  })
+
+  it('opens Account when asked to land there', async () => {
+    render(
+      <SettingsScreen
+        settings={defaultSettings()}
+        connection={server as never}
+        client={clientMock() as never}
+        update={updateMock()}
+        onSaveSettings={vi.fn()}
+        onSwitchServer={vi.fn()}
+        onClose={vi.fn()}
+        onDisconnected={vi.fn()}
+        initialCategory="account"
+      />,
+    )
+
+    expect(await screen.findByRole('heading', { name: 'Account' })).toBeInTheDocument()
   })
 
   it('lists paired servers and switches to another one', async () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiFailure, baseUrl, DukeboxClient, reachable, socketUrl } from './client.js'
+import { ApiFailure, baseUrl, DukeboxClient, reachable, socketUrl } from '@/lib/client'
 
 /**
  * The client is the only place the app knows how to reach a server, so what
@@ -142,6 +142,49 @@ describe('DukeboxClient', () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toContain('/api/sessions/00000000-0000-4000-8000-000000000001/archive')
     expect(init.method).toBe('POST')
+  })
+
+  it('lists OpenCode providers', async () => {
+    const fetchMock = respondWith({
+      providers: [{ id: 'anthropic', kind: 'anthropic', name: 'Anthropic', models: [] }],
+    })
+    const providers = await client.listOpencodeProviders()
+
+    expect(providers).toHaveLength(1)
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toContain('/api/opencode/providers')
+  })
+
+  it('upserts an OpenCode provider', async () => {
+    const fetchMock = respondWith({
+      provider: { id: 'anthropic', kind: 'anthropic', name: 'Anthropic', models: [] },
+    })
+    await client.upsertOpencodeProvider({ kind: 'anthropic', apiKey: 'sk-ant' })
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toContain('/api/opencode/providers')
+    expect(init.method).toBe('PUT')
+    expect(JSON.parse(init.body as string)).toEqual({ kind: 'anthropic', apiKey: 'sk-ant' })
+  })
+
+  it('lists the OpenCode catalog', async () => {
+    const fetchMock = respondWith({
+      providers: [{ kind: 'anthropic', name: 'Anthropic', models: [] }],
+    })
+    const catalog = await client.listOpencodeCatalog()
+
+    expect(catalog).toHaveLength(1)
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toContain('/api/opencode/catalog')
+  })
+
+  it('deletes an OpenCode provider', async () => {
+    const fetchMock = respondWith({ deleted: true })
+    await client.deleteOpencodeProvider('anthropic')
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toContain('/api/opencode/providers/anthropic')
+    expect(init.method).toBe('DELETE')
   })
 
   /**

@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { Diff } from './Diff.js'
+import { Diff } from '@/components/Diff'
 
 describe('Diff', () => {
   it('lets a collapsed hunk be expanded', async () => {

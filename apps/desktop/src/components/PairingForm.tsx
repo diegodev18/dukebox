@@ -1,7 +1,7 @@
 import { parsePairingUrl } from '@dukebox/protocol'
 import { useState } from 'react'
-import { ApiFailure, reachable, redeemPairingCode, type Reachability } from '../lib/client.js'
-import { addConnection, deviceName, detectPlatform, type Connection } from '../lib/connection.js'
+import { ApiFailure, reachable, redeemPairingCode, type Reachability } from '@/lib/client'
+import { addConnection, deviceName, detectPlatform, type Connection } from '@/lib/connection'
 
 /**
  * The pairing form: a link in, a device out.

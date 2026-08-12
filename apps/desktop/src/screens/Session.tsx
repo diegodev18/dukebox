@@ -4,21 +4,21 @@ import {
   type SessionSummary,
 } from '@dukebox/protocol'
 import { useEffect, useMemo, useState } from 'react'
-import { DukeboxClient } from '../lib/client.js'
-import type { Connection } from '../lib/connection.js'
-import type { Settings } from '../lib/settings.js'
-import type { UseUpdate } from '../lib/useUpdate.js'
-import { AgentIcon, hasAgentIcon } from '../components/AgentIcon.js'
-import { Composer } from '../components/Composer.js'
-import { EnvironmentsPanel } from '../components/EnvironmentsPanel.js'
-import { PullRequest } from '../components/PullRequest.js'
-import { SessionInfo } from '../components/SessionInfo.js'
-import { Sidebar } from '../components/Sidebar.js'
-import { Transcript } from '../components/Transcript.js'
-import { Workspace } from '../components/Workspace.js'
-import { useSession, type LiveSession } from '../lib/useSession.js'
-import { NewSession } from './NewSession.js'
-import { Settings as SettingsScreen } from './Settings.js'
+import { DukeboxClient } from '@/lib/client'
+import type { Connection } from '@/lib/connection'
+import type { Settings } from '@/lib/settings'
+import type { UseUpdate } from '@/lib/useUpdate'
+import { AgentIcon, hasAgentIcon } from '@/components/AgentIcon'
+import { Composer } from '@/components/Composer'
+import { EnvironmentsPanel } from '@/components/EnvironmentsPanel'
+import { PullRequest } from '@/components/PullRequest'
+import { SessionInfo } from '@/components/SessionInfo'
+import { Sidebar } from '@/components/Sidebar'
+import { Transcript } from '@/components/Transcript'
+import { Workspace } from '@/components/Workspace'
+import { useSession, type LiveSession } from '@/lib/useSession'
+import { NewSession } from '@/screens/NewSession'
+import { Settings as SettingsScreen } from '@/screens/Settings'
 
 /**
  * The session view.
@@ -57,6 +57,7 @@ export function Session({
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsCategory, setSettingsCategory] = useState<'appearance' | 'account'>('appearance')
   const [setupProjectId, setSetupProjectId] = useState<string | null>(null)
   const [managingProjectId, setManagingProjectId] = useState<string | null>(null)
   // Only to name the environment a review session belongs to. The summary
@@ -178,6 +179,14 @@ export function Session({
           setCreating(false)
           setSetupProjectId(null)
           setManagingProjectId(null)
+          setSettingsCategory('appearance')
+          setSettingsOpen(true)
+        }}
+        onOpenOpencodeProviders={() => {
+          setCreating(false)
+          setSetupProjectId(null)
+          setManagingProjectId(null)
+          setSettingsCategory('account')
           setSettingsOpen(true)
         }}
         onSelect={(sessionId) => {
@@ -247,6 +256,7 @@ export function Session({
           onSwitchServer={onSwitchServer}
           onClose={() => setSettingsOpen(false)}
           onDisconnected={onDisconnected}
+          initialCategory={settingsCategory}
         />
       ) : managingProjectId ? (
         <EnvironmentsPanel client={client} projectId={managingProjectId} />

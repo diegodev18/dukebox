@@ -1,17 +1,17 @@
 import type { FileChange, SessionSummary } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
-import type { DukeboxClient } from '../lib/client.js'
-import type { TerminalState } from '../lib/useTerminals.js'
-import { Diff, changeCounts } from './Diff.js'
-import { EnvironmentReview } from './EnvironmentReview.js'
+import type { DukeboxClient } from '@/lib/client'
+import type { TerminalState } from '@/lib/useTerminals'
+import { Diff, changeCounts } from '@/components/Diff'
+import { EnvironmentReview } from '@/components/EnvironmentReview'
 import {
   CommitIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   FileIcon,
-} from './icons.js'
-import { Terminal } from './Terminal.js'
+} from '@/components/icons'
+import { Terminal } from '@/components/Terminal'
 
 /**
  * What the session is changing: files, diffs, a terminal, a preview.

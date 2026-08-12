@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { NewSession } from './NewSession.js'
+import { NewSession } from '@/screens/NewSession'
 
 /**
  * The pickers are popover menus, not `<select>`s, so every assertion about the
@@ -38,6 +38,13 @@ function makeClient(overrides = {}) {
     listRepositories: vi.fn().mockResolvedValue([]),
     listBranches: vi.fn().mockResolvedValue(['main', 'refact/auth']),
     listEnvironments: vi.fn().mockResolvedValue(environments),
+    listOpencodeProviders: vi.fn().mockResolvedValue([]),
+    upsertOpencodeProvider: vi.fn().mockResolvedValue({
+      id: 'anthropic',
+      kind: 'anthropic',
+      name: 'Anthropic',
+      models: [{ id: 'claude-sonnet-4-5', label: 'Sonnet 4.5' }],
+    }),
     startSession: vi.fn().mockResolvedValue({ id: 's1' }),
     createProject: vi.fn(),
     ...overrides,
@@ -191,5 +198,87 @@ describe('NewSession environment picker', () => {
 
     // `refact/auth` suggests the family, not the single branch.
     await waitFor(() => expect(screen.getByLabelText(/branches/i)).toHaveValue('refact/*'))
+  })
+})
+
+describe('NewSession OpenCode', () => {
+  it('offers OpenCode in the agent picker', async () => {
+    renderScreen(makeClient())
+
+    const agents = await openPicker('Agent')
+    expect(within(agents).getByRole('option', { name: /OpenCode/ })).toBeInTheDocument()
+  })
+
+  it('lists OpenCode models from configured providers', async () => {
+    const client = makeClient({
+      listOpencodeProviders: vi.fn().mockResolvedValue([
+        {
+          id: 'anthropic',
+          kind: 'anthropic',
+          name: 'Anthropic',
+          models: [{ id: 'claude-sonnet-4-5', label: 'Sonnet 4.5' }],
+        },
+      ]),
+    })
+    renderScreen(client)
+
+    const agents = await openPicker('Agent')
+    await userEvent.click(within(agents).getByRole('option', { name: /OpenCode/ }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Model' })).toHaveTextContent('Sonnet 4.5'),
+    )
+
+    const models = await openPicker('Model')
+    expect(within(models).getByRole('option', { name: /Sonnet 4.5/ })).toBeInTheDocument()
+  })
+
+  it('sends the provider/model id when starting an OpenCode session', async () => {
+    const client = makeClient({
+      listOpencodeProviders: vi.fn().mockResolvedValue([
+        {
+          id: 'openai',
+          kind: 'openai',
+          name: 'OpenAI',
+          models: [{ id: 'gpt-5.2', label: 'GPT-5.2' }],
+        },
+      ]),
+    })
+    renderScreen(client)
+
+    const agents = await openPicker('Agent')
+    await userEvent.click(within(agents).getByRole('option', { name: /OpenCode/ }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Model' })).toHaveTextContent('GPT-5.2'),
+    )
+    await userEvent.type(screen.getByLabelText(/what should it do/i), 'do a thing')
+    await userEvent.click(screen.getByRole('button', { name: /start session/i }))
+
+    await waitFor(() =>
+      expect(client.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: 'opencode',
+          model: 'openai/gpt-5.2',
+        }),
+      ),
+    )
+  })
+
+  it('hides the model picker until a provider exists and blocks starting', async () => {
+    const client = makeClient()
+    renderScreen(client)
+
+    const agents = await openPicker('Agent')
+    await userEvent.click(within(agents).getByRole('option', { name: /OpenCode/ }))
+
+    await waitFor(() =>
+      expect(screen.getByText(/add a provider to choose an OpenCode model/i)).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: 'Model' })).not.toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText(/what should it do/i), 'do a thing')
+    expect(screen.getByRole('button', { name: /start session/i })).toBeDisabled()
+    expect(client.startSession).not.toHaveBeenCalled()
   })
 })

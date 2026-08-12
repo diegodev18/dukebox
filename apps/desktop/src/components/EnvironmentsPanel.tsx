@@ -1,6 +1,6 @@
 import { matchesBranch, validateBranchPattern, type EnvironmentSummary } from '@dukebox/protocol'
 import { useEffect, useState } from 'react'
-import type { DukeboxClient } from '../lib/client.js'
+import type { DukeboxClient } from '@/lib/client'
 
 /**
  * Managing a project's environments.

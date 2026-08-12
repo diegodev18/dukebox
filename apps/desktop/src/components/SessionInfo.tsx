@@ -1,7 +1,7 @@
 import type { SessionSummary } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
-import type { Connection } from '../lib/connection.js'
-import { CloseIcon, ServerIcon } from './icons.js'
+import type { Connection } from '@/lib/connection'
+import { CloseIcon, ServerIcon } from '@/components/icons'
 
 /**
  * Where this session actually runs, on demand.

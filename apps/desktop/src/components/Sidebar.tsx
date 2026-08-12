@@ -1,9 +1,9 @@
 import { type CommitIdentity, type ProjectSummary, type SessionSummary } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
-import { filterProjects, filterSessions } from '../lib/searchSessions.js'
-import { StatusDot } from '../screens/Session.js'
-import { BranchIcon, PlusIcon, SearchIcon, SettingsIcon } from './icons.js'
-import { UserMenu } from './UserMenu.js'
+import { filterProjects, filterSessions } from '@/lib/searchSessions'
+import { StatusDot } from '@/screens/Session'
+import { BranchIcon, PlusIcon, SearchIcon, SettingsIcon } from '@/components/icons'
+import { UserMenu } from '@/components/UserMenu'
 
 /**
  * Sessions, grouped by the repository they run against.
@@ -21,6 +21,7 @@ interface Props {
   identity: CommitIdentity
   onCheckForUpdates: () => void
   onOpenSettings: () => void
+  onOpenOpencodeProviders: () => void
   onSelect: (sessionId: string) => void
   onNewSession: () => void
   onConfigureEnvironment: (projectId: string) => void
@@ -37,6 +38,7 @@ export function Sidebar({
   identity,
   onCheckForUpdates,
   onOpenSettings,
+  onOpenOpencodeProviders,
   onSelect,
   onNewSession,
   onConfigureEnvironment,
@@ -131,6 +133,7 @@ export function Sidebar({
             user={identity}
             onCheckForUpdates={onCheckForUpdates}
             onOpenSettings={onOpenSettings}
+            onOpenOpencodeProviders={onOpenOpencodeProviders}
           />
         </div>
         <button

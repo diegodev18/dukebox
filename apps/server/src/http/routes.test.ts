@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { AGENT_CREDENTIAL_SECRET, SecretStore } from '../secrets/store.js'
+import { OPENCODE_PROVIDERS_SECRET } from '../opencode/providers.js'
 import { issuePairingCode, redeemPairingCode } from '../auth/pairing.js'
 import { EventBus } from '../events/bus.js'
 import type { GitHubClient } from '../github/client.js'
@@ -129,6 +130,8 @@ describe('authentication', () => {
       '/api/projects',
       '/api/sessions',
       '/api/sessions/00000000-0000-4000-8000-000000000000',
+      '/api/opencode/providers',
+      '/api/opencode/catalog',
     ]
 
     for (const path of paths) {
@@ -735,6 +738,112 @@ describe('agent credentials', () => {
 
   it('requires a device token like every other route', async () => {
     expect((await app.request('/api/agent-credentials')).status).toBe(401)
+  })
+})
+
+describe('OpenCode providers', () => {
+  it('lists an empty set on a fresh server', async () => {
+    expect(await (await request('/api/opencode/providers')).json()).toEqual({ providers: [] })
+  })
+
+  it('returns the catalog of well-known providers', async () => {
+    const body = (await (await request('/api/opencode/catalog')).json()) as {
+      providers: { kind: string; name: string }[]
+    }
+
+    expect(body.providers.map((provider) => provider.kind)).toContain('anthropic')
+    expect(body.providers.map((provider) => provider.kind)).not.toContain('openai-compatible')
+  })
+
+  it('stores a catalog provider and never returns the key', async () => {
+    const response = await request('/api/opencode/providers', {
+      method: 'PUT',
+      body: JSON.stringify({ kind: 'anthropic', apiKey: 'sk-ant-secret' }),
+    })
+
+    expect(response.status).toBe(200)
+    const body = await response.text()
+    expect(body).not.toContain('sk-ant-secret')
+
+    const listed = (await (await request('/api/opencode/providers')).json()) as {
+      providers: { id: string; kind: string; apiKey?: string }[]
+    }
+    expect(listed.providers).toEqual([
+      expect.objectContaining({ id: 'anthropic', kind: 'anthropic' }),
+    ])
+    expect(listed.providers[0]).not.toHaveProperty('apiKey')
+  })
+
+  it('replaces an existing catalog provider', async () => {
+    await request('/api/opencode/providers', {
+      method: 'PUT',
+      body: JSON.stringify({ kind: 'openai', apiKey: 'first' }),
+    })
+    await request('/api/opencode/providers', {
+      method: 'PUT',
+      body: JSON.stringify({ kind: 'openai', apiKey: 'second' }),
+    })
+
+    const stored = JSON.parse((await secretStore.get(OPENCODE_PROVIDERS_SECRET)) ?? '[]') as {
+      apiKey: string
+    }[]
+    expect(stored).toHaveLength(1)
+    expect(stored[0]?.apiKey).toBe('second')
+  })
+
+  it('rejects a custom provider without a base URL', async () => {
+    const response = await request('/api/opencode/providers', {
+      method: 'PUT',
+      body: JSON.stringify({
+        kind: 'openai-compatible',
+        id: 'my-proxy',
+        apiKey: 'sk-test',
+        models: [{ id: 'gpt-4', label: 'GPT-4' }],
+      }),
+    })
+
+    expect(response.status).toBe(400)
+  })
+
+  it('stores a custom OpenAI-compatible provider', async () => {
+    const response = await request('/api/opencode/providers', {
+      method: 'PUT',
+      body: JSON.stringify({
+        kind: 'openai-compatible',
+        id: 'my-proxy',
+        name: 'My Proxy',
+        apiKey: 'sk-proxy',
+        baseUrl: 'https://api.example.com/v1',
+        models: [{ id: 'gpt-4', label: 'GPT-4' }],
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { provider: { id: string; baseUrl: string } }
+    expect(body.provider).toMatchObject({
+      id: 'my-proxy',
+      baseUrl: 'https://api.example.com/v1',
+    })
+  })
+
+  it('deletes a provider', async () => {
+    await request('/api/opencode/providers', {
+      method: 'PUT',
+      body: JSON.stringify({ kind: 'groq', apiKey: 'gsk-test' }),
+    })
+
+    expect((await request('/api/opencode/providers/groq', { method: 'DELETE' })).status).toBe(200)
+    expect(await (await request('/api/opencode/providers')).json()).toEqual({ providers: [] })
+  })
+
+  it('returns 404 when deleting one that was never set', async () => {
+    expect((await request('/api/opencode/providers/anthropic', { method: 'DELETE' })).status).toBe(
+      404,
+    )
+  })
+
+  it('requires a device token like every other route', async () => {
+    expect((await app.request('/api/opencode/providers')).status).toBe(401)
   })
 })
 

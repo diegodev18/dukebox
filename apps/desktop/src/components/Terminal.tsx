@@ -1,7 +1,7 @@
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { useEffect, useRef } from 'react'
-import type { TerminalTab } from '../lib/useTerminals.js'
+import type { TerminalTab } from '@/lib/useTerminals'
 
 /**
  * One shell, rendered.

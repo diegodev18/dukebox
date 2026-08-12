@@ -6,16 +6,16 @@ import {
   type Transcript,
 } from '@dukebox/protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { DukeboxClient } from './client.js'
-import type { Connection } from './connection.js'
-import { SessionStream, type StreamStatus } from './stream.js'
+import type { DukeboxClient } from '@/lib/client'
+import type { Connection } from '@/lib/connection'
+import { SessionStream, type StreamStatus } from '@/lib/stream'
 import {
   applyTerminalMessage,
   drainTab,
   emptyTerminalState,
   removeTab,
   type TerminalState,
-} from './useTerminals.js'
+} from '@/lib/useTerminals'
 
 /**
  * One session, live.

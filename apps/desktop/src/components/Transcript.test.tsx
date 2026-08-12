@@ -2,7 +2,7 @@ import { emptyTranscript, type Transcript as TranscriptData } from '@dukebox/pro
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { Transcript } from './Transcript.js'
+import { Transcript } from '@/components/Transcript'
 
 vi.mock('thinking-orbs', () => ({
   ThinkingOrb: () => null,

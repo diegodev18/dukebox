@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { EnvironmentReview } from './EnvironmentReview.js'
+import { EnvironmentReview } from '@/components/EnvironmentReview'
 
 function makeClient(overrides = {}) {
   return {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { changeCounts, diffLines, isSimplifiedDiff, skipLabel } from './Diff.js'
+import { changeCounts, diffLines, isSimplifiedDiff, skipLabel } from '@/components/Diff'
 
 const kinds = (before: string, after: string) => diffLines(before, after).map((line) => line.kind)
 const texts = (before: string, after: string) =>

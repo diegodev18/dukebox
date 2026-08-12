@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ProjectSummary, SessionSummary } from '@dukebox/protocol'
-import { filterProjects, filterSessions, matchSession } from './searchSessions.js'
+import { filterProjects, filterSessions, matchSession } from '@/lib/searchSessions'
 
 const project = (
   overrides: Partial<ProjectSummary> & Pick<ProjectSummary, 'id' | 'repoFullName'>,

@@ -14,7 +14,10 @@ const LABELS: Record<string, string> = {
 }
 
 /** Agents the New Session picker can offer. More arrive as adapters land. */
-export const AVAILABLE_AGENTS = [{ id: 'claude-code', label: 'Claude Code' }] as const
+export const AVAILABLE_AGENTS = [
+  { id: 'claude-code', label: 'Claude Code' },
+  { id: 'opencode', label: 'OpenCode' },
+] as const
 
 export type AvailableAgentId = (typeof AVAILABLE_AGENTS)[number]['id']
 

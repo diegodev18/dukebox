@@ -5,7 +5,7 @@ import {
   loadSettings,
   saveSettings,
   type Settings,
-} from './settings.js'
+} from '@/lib/settings'
 
 /**
  * App preferences, loaded once and edited from the settings panel.

@@ -1,6 +1,6 @@
 import type { EnvironmentProposal } from '@dukebox/protocol'
 import { useEffect, useState } from 'react'
-import type { DukeboxClient } from '../lib/client.js'
+import type { DukeboxClient } from '@/lib/client'
 
 /**
  * Review form for an environment_setup session's proposal.
