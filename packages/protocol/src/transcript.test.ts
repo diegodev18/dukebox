@@ -193,6 +193,43 @@ describe('running state', () => {
     expect(transcript.running).toBe(false)
   })
 
+  it('closes tools that never got a result when the turn ends', () => {
+    // After a restart the last event is often a tool_call with no result.
+    // Leaving it open is what kept the UI spinning on a turn that cannot finish.
+    const transcript = fold(
+      at(1, { type: 'tool_call', id: 'a', name: 'Bash', input: { command: 'ls' } }),
+      at(2, { type: 'done', reason: 'interrupted' }),
+    )
+
+    expect(transcript.running).toBe(false)
+    expect(transcript.blocks[0]).toMatchObject({
+      kind: 'tool',
+      result: { output: 'Interrupted.', isError: true },
+    })
+  })
+
+  it('settles an unanswered permission when the turn ends', () => {
+    const transcript = fold(
+      at(1, { type: 'permission_request', id: 'perm', action: 'write', detail: {} }),
+      at(2, { type: 'done', reason: 'interrupted' }),
+    )
+
+    expect(transcript.blocks[0]).toMatchObject({ kind: 'permission', answered: true })
+  })
+
+  it('leaves a resolved tool alone when the turn ends', () => {
+    const transcript = fold(
+      at(1, { type: 'tool_call', id: 'a', name: 'Read', input: {} }),
+      at(2, { type: 'tool_result', id: 'a', output: 'ok', isError: false }),
+      at(3, { type: 'done', reason: 'completed' }),
+    )
+
+    expect(transcript.blocks[0]).toMatchObject({
+      kind: 'tool',
+      result: { output: 'ok', isError: false },
+    })
+  })
+
   it('clears on a fatal error but not a recoverable one', () => {
     const fatal = fold(
       at(1, { type: 'assistant_text', delta: 'x' }),
@@ -205,6 +242,17 @@ describe('running state', () => {
 
     expect(fatal.running).toBe(false)
     expect(recoverable.running).toBe(true)
+  })
+
+  it('closes open tools on a fatal error', () => {
+    const transcript = fold(
+      at(1, { type: 'tool_call', id: 'a', name: 'Bash', input: {} }),
+      at(2, { type: 'error', message: 'gone', fatal: true }),
+    )
+
+    expect(transcript.blocks.find((block) => block.kind === 'tool')).toMatchObject({
+      result: { output: 'Interrupted.', isError: true },
+    })
   })
 })
 

@@ -27,7 +27,7 @@ import {
   type SessionContainer,
   type TerminalHandle,
 } from '@dukebox/sandbox'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { connect } from 'node:net'
 import { join } from 'node:path'
 import type { EventBus } from '../events/bus.js'
@@ -162,8 +162,17 @@ function permissionModeContext(
   return {}
 }
 
+/** Statuses that mean a turn was in flight when this process started. */
+const IN_PROGRESS_STATUSES: SessionStatus[] = ['provisioning', 'running', 'waiting_input']
+
 export class SessionManager {
   private readonly running = new Map<string, RunningSession>()
+
+  /**
+   * Resumes in flight, keyed by session, so two callers (a prompt and a
+   * terminal open, say) share one restart rather than starting two agents.
+   */
+  private readonly resuming = new Map<string, Promise<RunningSession>>()
 
   constructor(private readonly deps: SessionManagerDeps) {}
 
@@ -657,7 +666,7 @@ export class SessionManager {
     // Resumed if the control plane has forgotten it. Asking for a pull request
     // is exactly what someone does after coming back to finished work, which
     // is the case most likely to have outlived a restart.
-    const running = this.running.get(sessionId) ?? (await this.resume(sessionId))
+    const running = await this.ensureRunning(sessionId)
 
     const github = this.deps.github
     if (!github) throw new SessionError('GitHub is not configured on this server')
@@ -857,7 +866,7 @@ export class SessionManager {
 
   /** Send a follow-up prompt to a running session. */
   async prompt(sessionId: string, text: string, images?: string[]): Promise<void> {
-    const running = this.running.get(sessionId) ?? (await this.resume(sessionId))
+    const running = await this.ensureRunning(sessionId)
 
     await this.setStatus(sessionId, 'running')
 
@@ -904,6 +913,11 @@ export class SessionManager {
     // the proxy — running as the service user — then cannot bind inside it.
     const credentials = await this.startCredentialProxy(sessionId, project.repoFullName)
 
+    // A container still running here is leftover from before this process
+    // started. The agent inside it is not ours, and starting a second one
+    // beside it is how a follow-up hangs waiting for a turn that never ends.
+    if (await container.isRunning()) await container.stop()
+
     await container.start()
 
     const workspace = new Workspace(container)
@@ -939,38 +953,79 @@ export class SessionManager {
   }
 
   /**
+   * The running session, starting it again if this process has forgotten it.
+   *
+   * `running` is empty after every restart. Prompt, terminal, and pull request
+   * all need the container, and asking the user to send a dummy message first
+   * is how "the session is not running" used to read.
+   */
+  private async ensureRunning(sessionId: string): Promise<RunningSession> {
+    const existing = this.running.get(sessionId)
+    if (existing) return existing
+
+    const inFlight = this.resuming.get(sessionId)
+    if (inFlight) return inFlight
+
+    const attempt = this.resume(sessionId).finally(() => {
+      this.resuming.delete(sessionId)
+    })
+    this.resuming.set(sessionId, attempt)
+    return attempt
+  }
+
+  /**
    * Open an interactive shell in a session's container.
    *
    * Deliberately not tracked here: the terminal registry owns the lifetime, and
    * a second owner would mean two places deciding when a PTY dies.
+   *
+   * Resumes the session when the control plane has forgotten it — the same
+   * path a follow-up prompt takes — so opening a terminal after a restart
+   * brings the workspace back rather than reporting it not running.
    */
   async openTerminal(
     sessionId: string,
     size: { cols: number; rows: number },
   ): Promise<TerminalHandle> {
-    const running = this.running.get(sessionId)
-    if (!running) throw new SessionError('that session is not running')
+    const running = await this.ensureRunning(sessionId)
+
+    // A session marked stopped was interrupted by a restart. Opening a shell
+    // means someone is using it again; `done` is the idle state a warm
+    // container already has after a normal turn.
+    const [session] = await this.deps.db
+      .select({ status: sessions.status })
+      .from(sessions)
+      .where(eq(sessions.id, sessionId))
+
+    if (session?.status === 'stopped') await this.setStatus(sessionId, 'done')
 
     return running.container.openTerminal({ ...size, cwd: '/workspace/repo' })
   }
 
   async interrupt(sessionId: string): Promise<void> {
     const running = this.running.get(sessionId)
-    if (!running) throw new SessionError('that session is not running')
+    if (!running) {
+      throw new SessionError(
+        'that session is not running. The server may have restarted — send a message or open a terminal to continue.',
+      )
+    }
 
     await running.adapter.interrupt()
   }
 
   async respondToPermission(sessionId: string, id: string, allow: boolean): Promise<void> {
     const running = this.running.get(sessionId)
-    if (!running) throw new SessionError('that session is not running')
+    if (!running) {
+      throw new SessionError(
+        'that session is not running. The server may have restarted — send a message or open a terminal to continue.',
+      )
+    }
 
     await running.adapter.respondToPermission(id, allow)
   }
 
   async setPermissionMode(sessionId: string, mode: PermissionMode): Promise<void> {
-    const running = this.running.get(sessionId)
-    if (!running) throw new SessionError('that session is not running')
+    const running = await this.ensureRunning(sessionId)
 
     await running.adapter.setPermissionMode(mode)
   }
@@ -1005,6 +1060,12 @@ export class SessionManager {
       .where(eq(sessions.id, sessionId))
 
     if (session && !isTerminal(session.status as SessionStatus)) {
+      // Recorded so a client replaying after a restart does not keep showing
+      // a turn that can never finish: tools without results, the Working
+      // spinner, a Stop button that cannot interrupt an agent that is gone.
+      await this.deps.bus
+        .append(sessionId, { type: 'done', reason: 'interrupted' })
+        .catch(() => undefined)
       await this.setStatus(sessionId, 'stopped', { endedAt: new Date() })
     }
   }
@@ -1035,6 +1096,36 @@ export class SessionManager {
   /** Stop every running session. Called on shutdown. */
   async stopAll(): Promise<void> {
     await Promise.all([...this.running.keys()].map((sessionId) => this.stop(sessionId)))
+  }
+
+  /**
+   * Repair sessions left in-flight by a previous process.
+   *
+   * `running` starts empty. Rows still marked provisioning/running/waiting_input
+   * belong to a turn whose agent died with the last process. Without this, the
+   * app shows that turn as still working, and a terminal open fails with
+   * "not running" until someone sends a dummy prompt.
+   */
+  async reclaimAfterRestart(): Promise<void> {
+    const live = await this.deps.db
+      .select({ id: sessions.id })
+      .from(sessions)
+      .where(inArray(sessions.status, IN_PROGRESS_STATUSES))
+
+    for (const session of live) {
+      try {
+        const container = await this.deps.sandbox.get(session.id)
+        await container?.stop().catch(() => undefined)
+      } catch {
+        // Docker unreachable. The status rewrite still tells clients the truth.
+      }
+
+      await this.deps.bus
+        .append(session.id, { type: 'done', reason: 'interrupted' })
+        .catch(() => undefined)
+
+      await this.setStatus(session.id, 'stopped', { endedAt: new Date() })
+    }
   }
 
   isRunning(sessionId: string): boolean {

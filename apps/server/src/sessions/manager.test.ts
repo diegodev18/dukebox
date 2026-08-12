@@ -550,6 +550,18 @@ describe('prompt, interrupt, and stop', () => {
     expect(row?.status).toBe('stopped')
   })
 
+  it('records an interrupted turn when a running session is stopped', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+
+    await manager.stop(session.id)
+
+    const events = (await bus.replay(session.id)).map((event) => event.event)
+    expect(events.filter((event) => event.type === 'done')).toEqual([
+      { type: 'done', reason: 'interrupted' },
+    ])
+  })
+
   it('leaves a finished session marked done rather than stopped', async () => {
     const session = await startSession()
     await waitForStatus(session.id, 'running')
@@ -593,7 +605,7 @@ describe('terminals', () => {
     await terminal.close()
   })
 
-  it('refuses when the session is not running', async () => {
+  it('refuses when the session does not exist', async () => {
     await expect(
       manager.openTerminal('00000000-0000-4000-8000-000000000000', { cols: 80, rows: 24 }),
     ).rejects.toThrow(SessionError)
@@ -732,6 +744,20 @@ describe('pull requests', () => {
     await afterRestart.stopAll()
   })
 
+  it('opens a terminal on a session it had to resume', async () => {
+    // The path that failed in practice: restart, then open a terminal, which
+    // used to fail with "not running" until someone sent a dummy prompt.
+    const { manager: first } = managerWithGitHub()
+    const session = await startOn(first)
+
+    const { manager: afterRestart } = managerWithGitHub()
+    const terminal = await afterRestart.openTerminal(session.id, { cols: 80, rows: 24 })
+
+    expect(terminal.stream).toBeDefined()
+    await terminal.close()
+    await afterRestart.stopAll()
+  })
+
   it('opens a pull request on a session it had to resume', async () => {
     // The path that failed in practice: restart, then ask for a pull request
     // on work the agent did before it.
@@ -833,6 +859,38 @@ describe('pull requests', () => {
       .returning()
 
     await expect(afterRestart.prompt(orphan!.id, 'hello')).rejects.toThrow(/no longer exists/)
+  })
+
+  it('marks in-progress sessions stopped after a restart', async () => {
+    // A crash leaves rows as `running` with no process holding them. The next
+    // start has to say so, or the app keeps showing a turn that can never finish.
+    const { manager: afterRestart } = managerWithGitHub()
+    const project = await createTestProject()
+
+    const [orphan] = await db
+      .insert(sessions)
+      .values({
+        projectId: project.id,
+        agentId: 'fake',
+        title: 'Orphan',
+        baseBranch: 'main',
+        branch: 'duke/orphan',
+        status: 'running',
+      })
+      .returning()
+
+    await afterRestart.reclaimAfterRestart()
+
+    const [updated] = await db
+      .select({ status: sessions.status })
+      .from(sessions)
+      .where(eq(sessions.id, orphan!.id))
+
+    expect(updated?.status).toBe('stopped')
+    expect((await bus.replay(orphan!.id)).map((event) => event.event)).toContainEqual({
+      type: 'done',
+      reason: 'interrupted',
+    })
   })
 
   it('opens one for work the agent committed itself', async () => {
