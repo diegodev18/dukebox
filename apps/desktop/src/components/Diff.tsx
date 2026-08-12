@@ -80,7 +80,7 @@ function SkipHunk({
   const label = skipLabel(line.count, range)
 
   return (
-    <div>
+    <div className="min-w-full">
       <button
         type="button"
         onClick={onToggle}
