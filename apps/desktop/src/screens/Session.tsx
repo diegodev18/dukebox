@@ -18,7 +18,7 @@ import { Transcript } from '@/components/Transcript'
 import { Workspace } from '@/components/Workspace'
 import { useSession, type LiveSession } from '@/lib/useSession'
 import { NewSession } from '@/screens/NewSession'
-import { Settings as SettingsScreen } from '@/screens/Settings'
+import { Settings as SettingsScreen, SettingsNav, type SettingsCategory } from '@/screens/Settings'
 
 /**
  * The session view.
@@ -57,7 +57,7 @@ export function Session({
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [settingsCategory, setSettingsCategory] = useState<'appearance' | 'account'>('appearance')
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>('account')
   const [setupProjectId, setSetupProjectId] = useState<string | null>(null)
   const [managingProjectId, setManagingProjectId] = useState<string | null>(null)
   // Only to name the environment a review session belongs to. The summary
@@ -169,78 +169,86 @@ export function Session({
           : 'grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)] has-[[data-collapsed]]:grid-cols-[236px_minmax(0,1fr)_244px]'
       }`}
     >
-      <Sidebar
-        projects={projects}
-        sessions={sessions}
-        selectedId={creating ? null : selected}
-        identity={settings.commitIdentity ?? DEFAULT_COMMIT_IDENTITY}
-        onCheckForUpdates={() => update.check(true)}
-        onOpenSettings={() => {
-          setCreating(false)
-          setSetupProjectId(null)
-          setManagingProjectId(null)
-          setSettingsCategory('appearance')
-          setSettingsOpen(true)
-        }}
-        onOpenOpencodeProviders={() => {
-          setCreating(false)
-          setSetupProjectId(null)
-          setManagingProjectId(null)
-          setSettingsCategory('account')
-          setSettingsOpen(true)
-        }}
-        onSelect={(sessionId) => {
-          setCreating(false)
-          setSettingsOpen(false)
-          setSetupProjectId(null)
-          setManagingProjectId(null)
-          setSelected(sessionId)
-        }}
-        onNewSession={() => {
-          setSetupProjectId(null)
-          setManagingProjectId(null)
-          setSettingsOpen(false)
-          setCreating(true)
-        }}
-        onConfigureEnvironment={(projectId) => {
-          setSetupProjectId(projectId)
-          setManagingProjectId(null)
-          setSettingsOpen(false)
-          setCreating(true)
-        }}
-        onManageEnvironments={(projectId) => {
-          setCreating(false)
-          setSettingsOpen(false)
-          setSetupProjectId(null)
-          setManagingProjectId(projectId)
-        }}
-        archiveError={archiveError}
-        onArchive={(sessionId) => {
-          void (async () => {
-            try {
-              await client.archiveSession(sessionId)
-              setArchiveError(null)
-            } catch (error) {
-              // Leave the row where it is: a failed archive that vanishes
-              // from the list looks like the session was deleted.
-              setArchiveError(
-                error instanceof Error ? error.message : 'Could not archive the session.',
-              )
-              return
-            }
+      {settingsOpen ? (
+        <SettingsNav
+          category={settingsCategory}
+          onCategoryChange={setSettingsCategory}
+          onBack={() => setSettingsOpen(false)}
+        />
+      ) : (
+        <Sidebar
+          projects={projects}
+          sessions={sessions}
+          selectedId={creating ? null : selected}
+          identity={settings.commitIdentity ?? DEFAULT_COMMIT_IDENTITY}
+          onCheckForUpdates={() => update.check(true)}
+          onOpenSettings={() => {
+            setCreating(false)
+            setSetupProjectId(null)
+            setManagingProjectId(null)
+            setSettingsCategory('account')
+            setSettingsOpen(true)
+          }}
+          onOpenOpencodeProviders={() => {
+            setCreating(false)
+            setSetupProjectId(null)
+            setManagingProjectId(null)
+            setSettingsCategory('account')
+            setSettingsOpen(true)
+          }}
+          onSelect={(sessionId) => {
+            setCreating(false)
+            setSettingsOpen(false)
+            setSetupProjectId(null)
+            setManagingProjectId(null)
+            setSelected(sessionId)
+          }}
+          onNewSession={() => {
+            setSetupProjectId(null)
+            setManagingProjectId(null)
+            setSettingsOpen(false)
+            setCreating(true)
+          }}
+          onConfigureEnvironment={(projectId) => {
+            setSetupProjectId(projectId)
+            setManagingProjectId(null)
+            setSettingsOpen(false)
+            setCreating(true)
+          }}
+          onManageEnvironments={(projectId) => {
+            setCreating(false)
+            setSettingsOpen(false)
+            setSetupProjectId(null)
+            setManagingProjectId(projectId)
+          }}
+          archiveError={archiveError}
+          onArchive={(sessionId) => {
+            void (async () => {
+              try {
+                await client.archiveSession(sessionId)
+                setArchiveError(null)
+              } catch (error) {
+                // Leave the row where it is: a failed archive that vanishes
+                // from the list looks like the session was deleted.
+                setArchiveError(
+                  error instanceof Error ? error.message : 'Could not archive the session.',
+                )
+                return
+              }
 
-            let fallback: string | null = null
-            setSessions((current) => {
-              const next = current.filter((session) => session.id !== sessionId)
-              fallback = next[0]?.id ?? null
-              return next
-            })
-            setSelected((currentSelected) =>
-              currentSelected === sessionId ? fallback : currentSelected,
-            )
-          })()
-        }}
-      />
+              let fallback: string | null = null
+              setSessions((current) => {
+                const next = current.filter((session) => session.id !== sessionId)
+                fallback = next[0]?.id ?? null
+                return next
+              })
+              setSelected((currentSelected) =>
+                currentSelected === sessionId ? fallback : currentSelected,
+              )
+            })()
+          }}
+        />
+      )}
 
       {loading ? (
         <p className="grid place-items-center text-[13px] text-muted-foreground">
@@ -252,11 +260,11 @@ export function Session({
           connection={connection}
           settings={settings}
           update={update}
+          category={settingsCategory}
           onSaveSettings={onSaveSettings}
           onSwitchServer={onSwitchServer}
           onClose={() => setSettingsOpen(false)}
           onDisconnected={onDisconnected}
-          initialCategory={settingsCategory}
         />
       ) : managingProjectId ? (
         <EnvironmentsPanel client={client} projectId={managingProjectId} />

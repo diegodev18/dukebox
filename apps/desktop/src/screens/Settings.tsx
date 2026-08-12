@@ -1,5 +1,6 @@
 import { DEFAULT_COMMIT_IDENTITY } from '@dukebox/protocol'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { ChevronLeftIcon } from '@/components/icons'
 import { OpenCodeProviders } from '@/components/OpenCodeProviders'
 import { PairingForm } from '@/components/PairingForm'
 import type { DukeboxClient } from '@/lib/client'
@@ -15,34 +16,71 @@ import type { UseUpdate } from '@/lib/useUpdate'
 /**
  * The settings panel.
  *
- * Two panes: a rail of categories, and the section they select. The rail is
- * what makes settings browsable without hunting — each category is one row,
- * and the panel never nests deeper than that.
- *
- * Opened from the sidebar; it replaces the session column, so it gets the same
- * height budget and owns its own scroll.
+ * When open, its category rail replaces the sessions sidebar as the primary
+ * nav. The content column shows one section at a time — never nested deeper.
  */
 
-type Category = 'appearance' | 'account' | 'servers' | 'updates'
+export type SettingsCategory = 'account' | 'servers' | 'appearance' | 'updates'
 
-const CATEGORIES: { id: Category; label: string }[] = [
-  { id: 'appearance', label: 'Appearance' },
+const CATEGORIES: { id: SettingsCategory; label: string }[] = [
   { id: 'account', label: 'Account' },
   { id: 'servers', label: 'Servers' },
+  { id: 'appearance', label: 'Appearance' },
   { id: 'updates', label: 'Updates' },
 ]
+
+interface SettingsNavProps {
+  category: SettingsCategory
+  onCategoryChange: (category: SettingsCategory) => void
+  onBack: () => void
+}
+
+/** Left-column nav while settings is open — same slot as the sessions sidebar. */
+export function SettingsNav({ category, onCategoryChange, onBack }: SettingsNavProps) {
+  return (
+    <nav
+      aria-label="Settings"
+      className="flex min-h-0 flex-col overflow-hidden border-r border-border bg-surface"
+    >
+      <div className="px-2 pt-2.5 pb-1">
+        <button
+          type="button"
+          aria-label="Back"
+          onClick={onBack}
+          className="flex w-full items-center gap-2 rounded-[calc(var(--radius)*0.7)] px-2.5 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <ChevronLeftIcon size={16} className="flex-none" />
+          Settings
+        </button>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-1.5">
+        {CATEGORIES.map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            aria-current={category === id}
+            onClick={() => onCategoryChange(id)}
+            className="rounded-[calc(var(--radius)*0.6)] px-2.5 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </nav>
+  )
+}
 
 interface Props {
   client: DukeboxClient
   connection: Connection
   settings: Settings
   update: UseUpdate
+  category: SettingsCategory
   onSaveSettings: (patch: Partial<Settings>) => void
   onSwitchServer: (connection: Connection) => void
   onClose: () => void
   onDisconnected: () => void
-  /** Land on this category instead of Appearance. Used from the account menu. */
-  initialCategory?: Category
 }
 
 export function Settings({
@@ -50,14 +88,12 @@ export function Settings({
   connection,
   settings,
   update,
+  category,
   onSaveSettings,
   onSwitchServer,
   onClose,
   onDisconnected,
-  initialCategory = 'appearance',
 }: Props) {
-  const [category, setCategory] = useState<Category>(initialCategory)
-
   // Esc closes from anywhere in the panel, the same way it closes a popover.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -68,65 +104,32 @@ export function Settings({
   }, [onClose])
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col">
-      <header className="flex items-center gap-3 border-b border-border px-4.5 py-2.5">
-        <h1 className="text-[14px] font-medium">Settings</h1>
-        <span className="flex-1" />
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-[calc(var(--radius)*0.6)] px-3 py-1.5 text-[12.5px] font-medium hover:bg-muted"
-        >
-          Done
-        </button>
-      </header>
-
-      <div className="flex min-h-0 flex-1">
-        <nav
-          aria-label="Settings"
-          className="flex w-44 flex-none flex-col gap-0.5 border-r border-border px-2 py-2.5"
-        >
-          {CATEGORIES.map(({ id, label }) => (
-            <button
-              key={id}
-              type="button"
-              aria-current={category === id}
-              onClick={() => setCategory(id)}
-              className="rounded-[calc(var(--radius)*0.6)] px-2.5 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          <div className="mx-auto max-w-xl">
-            {category === 'appearance' && (
-              <AppearanceSection theme={settings.theme} onSave={onSaveSettings} />
-            )}
-            {category === 'account' && (
-              <AccountSection
-                client={client}
-                identity={settings.commitIdentity}
-                onSaveIdentity={(commitIdentity) => onSaveSettings({ commitIdentity })}
-              />
-            )}
-            {category === 'servers' && (
-              <ServersSection
-                activeConnection={connection}
-                onSwitchServer={onSwitchServer}
-                onDisconnected={onDisconnected}
-              />
-            )}
-            {category === 'updates' && (
-              <UpdatesSection
-                update={update}
-                checkOnLaunch={settings.checkForUpdatesOnLaunch}
-                onSave={onSaveSettings}
-              />
-            )}
-          </div>
-        </div>
+    <div className="h-full min-h-0 overflow-y-auto px-6 py-5">
+      <div className="mx-auto max-w-xl">
+        {category === 'appearance' && (
+          <AppearanceSection theme={settings.theme} onSave={onSaveSettings} />
+        )}
+        {category === 'account' && (
+          <AccountSection
+            client={client}
+            identity={settings.commitIdentity}
+            onSaveIdentity={(commitIdentity) => onSaveSettings({ commitIdentity })}
+          />
+        )}
+        {category === 'servers' && (
+          <ServersSection
+            activeConnection={connection}
+            onSwitchServer={onSwitchServer}
+            onDisconnected={onDisconnected}
+          />
+        )}
+        {category === 'updates' && (
+          <UpdatesSection
+            update={update}
+            checkOnLaunch={settings.checkForUpdatesOnLaunch}
+            onSave={onSaveSettings}
+          />
+        )}
       </div>
     </div>
   )
