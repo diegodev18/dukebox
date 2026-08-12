@@ -60,6 +60,19 @@ describe('Transcript', () => {
     expect(screen.queryByRole('button', { name: 'Allow' })).not.toBeInTheDocument()
   })
 
+  it('focuses Allow when a permission prompt appears', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [{ kind: 'permission', id: 'p1', action: 'run a command', detail: null }],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Allow' })).toHaveFocus()
+  })
+
   it('offers to implement a plan rather than allow a generic tool', async () => {
     const onRespond = vi.fn()
     render(

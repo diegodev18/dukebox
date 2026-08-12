@@ -70,6 +70,7 @@ export function PullRequest({ client, session, changedFiles, onOpened }: Props) 
       )}
 
       <button
+        type="button"
         onClick={() => void open()}
         disabled={state.kind === 'opening'}
         className="flex items-center gap-1.5 rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12.5px] font-medium hover:bg-muted disabled:opacity-50"
@@ -84,6 +85,7 @@ export function PullRequest({ client, session, changedFiles, onOpened }: Props) 
 function Link({ url }: { url: string }) {
   return (
     <button
+      type="button"
       onClick={() => void openUrl(url).catch(() => undefined)}
       className="flex items-center gap-1.5 rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12.5px] font-medium hover:bg-muted"
     >

@@ -30,6 +30,7 @@ describe('Composer', () => {
     rerender(<Composer onSend={onSend} onInterrupt={vi.fn()} running={false} error="rejected" />)
 
     expect(screen.getByLabelText('Message')).toHaveValue('do a thing')
+    expect(screen.getByRole('alert')).toHaveTextContent('rejected')
   })
 
   it('hints how to send', () => {

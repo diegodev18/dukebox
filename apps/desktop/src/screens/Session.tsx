@@ -253,7 +253,7 @@ export function Session({
       )}
 
       {loading ? (
-        <p className="grid place-items-center text-[13px] text-muted-foreground">
+        <p role="status" className="grid place-items-center text-[13px] text-muted-foreground">
           Loading sessions…
         </p>
       ) : settingsOpen ? (
@@ -270,7 +270,7 @@ export function Session({
         />
       ) : managingProjectId ? (
         <EnvironmentsPanel client={client} projectId={managingProjectId} />
-      ) : composing ? (
+      ) : creating ? (
         <NewSession
           client={client}
           connection={connection}
@@ -331,7 +331,7 @@ export function Session({
           />
         </>
       ) : (
-        <div />
+        <EmptySession onNewSession={() => setCreating(true)} />
       )}
     </div>
   )
@@ -382,13 +382,19 @@ function SessionColumn({
       </header>
 
       {live.status === 'offline' && (
-        <p className="border-b border-border bg-surface px-4.5 py-2 text-[12.5px] text-muted-foreground">
+        <p
+          role="status"
+          className="border-b border-border bg-surface px-4.5 py-2 text-[12.5px] text-muted-foreground"
+        >
           Reconnecting… the session keeps running on your server.
         </p>
       )}
 
       {live.error && (
-        <p className="border-b border-border bg-destructive/10 px-4.5 py-2 text-[12.5px] text-destructive">
+        <p
+          role="alert"
+          className="border-b border-border bg-destructive/10 px-4.5 py-2 text-[12.5px] text-destructive"
+        >
           {live.error}
         </p>
       )}
@@ -418,6 +424,26 @@ function SessionColumn({
           ? { placeholder: 'Add context for the setup agent…' }
           : {})}
       />
+    </div>
+  )
+}
+
+function EmptySession({ onNewSession }: { onNewSession: () => void }) {
+  return (
+    <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
+      <div className="max-w-sm text-center">
+        <p className="text-[14px] font-medium">No session selected</p>
+        <p className="mt-1 text-[13px] text-muted-foreground">
+          Pick one from the sidebar, or start a new one.
+        </p>
+        <button
+          type="button"
+          onClick={onNewSession}
+          className="mt-4 rounded-[calc(var(--radius)*0.6)] bg-foreground px-3.5 py-1.5 text-[12.5px] font-medium text-background"
+        >
+          New session
+        </button>
+      </div>
     </div>
   )
 }

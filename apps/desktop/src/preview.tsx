@@ -427,18 +427,21 @@ function Preview() {
     >
       <div className="border-r border-border bg-surface p-2">
         <button
+          type="button"
           onClick={() => setView('new')}
           className="w-full rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left font-medium hover:bg-muted"
         >
           New session
         </button>
         <button
+          type="button"
           onClick={() => setView('coding')}
           className="mt-1 w-full rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           Fix the demux bug
         </button>
         <button
+          type="button"
           onClick={() => setView('setup')}
           className="mt-1 w-full rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
         >

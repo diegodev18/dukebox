@@ -440,7 +440,12 @@ export function NewSession({
 
   return (
     <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
-      <div className="w-full max-w-xl">
+      <div className="w-full max-w-xl" aria-busy={busy}>
+        {status.kind === 'loading' && (
+          <p role="status" className="mb-3 text-[13px] text-muted-foreground">
+            Loading repositories…
+          </p>
+        )}
         <div className="mb-3 flex flex-wrap items-center gap-1">
           <RepoPicker options={options} value={target} onChange={selectRepo} disabled={busy} />
           <BranchPicker

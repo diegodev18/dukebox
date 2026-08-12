@@ -154,7 +154,11 @@ function Checking() {
 
   return (
     <div className="grid h-full place-items-center">
-      {slow && <p className="text-muted-foreground">Checking your connection…</p>}
+      {slow && (
+        <p role="status" className="text-muted-foreground">
+          Checking your connection…
+        </p>
+      )}
     </div>
   )
 }

@@ -127,7 +127,7 @@ export function Terminal({ tab, active, onInput, onResize, onDrain }: TerminalPr
 
   return (
     <div className={`min-h-0 flex-1 ${active ? 'flex' : 'hidden'} flex-col`}>
-      <div ref={host} className="min-h-0 flex-1 px-2 py-1.5" />
+      <div ref={host} role="region" aria-label={tab.title} className="min-h-0 flex-1 px-2 py-1.5" />
       {tab.exited && (
         <p className="border-t border-border px-3 py-1.5 text-[12px] text-muted-foreground">
           This shell exited.

@@ -68,8 +68,39 @@ function SessionInfoDialog({
     // left with focus stranded on a button behind the backdrop.
     panel.current?.focus()
 
+    const focusable = () => {
+      const nodes = panel.current?.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )
+      return nodes ? Array.from(nodes) : []
+    }
+
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') dismiss.current()
+      if (event.key === 'Escape') {
+        dismiss.current()
+        return
+      }
+
+      if (event.key !== 'Tab') return
+
+      const items = focusable()
+      if (items.length === 0) {
+        event.preventDefault()
+        panel.current?.focus()
+        return
+      }
+
+      const first = items[0]!
+      const last = items[items.length - 1]!
+      const active = document.activeElement
+
+      if (event.shiftKey && (active === first || active === panel.current)) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (active === last || active === panel.current)) {
+        event.preventDefault()
+        first.focus()
+      }
     }
 
     document.addEventListener('keydown', onKeyDown)
@@ -117,7 +148,7 @@ function SessionInfoDialog({
           </div>
         </div>
 
-        <dl className="px-4 py-3 text-[12.5px]">
+        <dl className="px-4 py-3 text-[12.5px]" data-selectable>
           <Row label="Session">
             <span className="font-mono text-[11.5px] break-all">{session.id}</span>
           </Row>

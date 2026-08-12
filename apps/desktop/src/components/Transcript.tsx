@@ -126,6 +126,7 @@ export function Transcript({
         <button
           type="button"
           onClick={jumpToBottom}
+          aria-label="Jump to new activity"
           className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-background px-3 py-1.5 text-[12.5px] font-medium shadow-sm hover:bg-muted"
         >
           ↓ New activity
@@ -259,6 +260,7 @@ function Thinking({ text }: { text: string }) {
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
+        aria-label={open ? 'Hide thinking' : 'Show thinking'}
         className="flex items-center gap-1.5 hover:text-foreground"
       >
         {open ? (
@@ -295,6 +297,7 @@ function Tool({ block }: { block: ToolBlock }) {
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
+        aria-label={open ? `Hide ${block.name}` : `Show ${block.name}`}
         className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left"
       >
         {open ? (
@@ -353,9 +356,15 @@ function Permission({
   onRespond: Props['onRespond']
 }) {
   const [decision, setDecision] = useState<'allow' | 'deny' | null>(null)
+  const allow = useRef<HTMLButtonElement>(null)
   const answered = block.answered || decision !== null
 
   const isPlanExit = block.action === EXIT_PLAN_MODE_ACTION
+
+  useEffect(() => {
+    if (answered) return
+    allow.current?.focus()
+  }, [answered])
 
   if (answered) {
     if (decision === 'allow') {
@@ -394,6 +403,7 @@ function Permission({
 
       <div className="mt-2.5 flex gap-2">
         <button
+          ref={allow}
           type="button"
           onClick={() => respond(true)}
           className="rounded-[calc(var(--radius)*0.6)] bg-foreground px-3 py-1.5 text-[12.5px] font-medium text-background"

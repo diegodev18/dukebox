@@ -128,18 +128,39 @@ export function Workspace({ session, files, environmentReview, ...terminalProps 
         <>
           <TabBar tabs={tabs} active={tab} onSelect={setTab} />
           {tab === 'files' ? (
-            <Panels session={session} files={files} />
+            <div
+              role="tabpanel"
+              id="workspace-panel-files"
+              aria-labelledby="workspace-tab-files"
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <Panels session={session} files={files} />
+            </div>
           ) : tab === 'terminal' ? (
-            <TerminalPanel session={session} {...terminalProps} />
+            <div
+              role="tabpanel"
+              id="workspace-panel-terminal"
+              aria-labelledby="workspace-tab-terminal"
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <TerminalPanel session={session} {...terminalProps} />
+            </div>
           ) : environmentReview ? (
-            <EnvironmentReview
-              client={environmentReview.client}
-              projectId={environmentReview.projectId}
-              sessionId={environmentReview.sessionId}
-              environmentId={environmentReview.environmentId}
-              environmentName={environmentReview.environmentName}
-              onSaved={environmentReview.onSaved}
-            />
+            <div
+              role="tabpanel"
+              id="workspace-panel-environment"
+              aria-labelledby="workspace-tab-environment"
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            >
+              <EnvironmentReview
+                client={environmentReview.client}
+                projectId={environmentReview.projectId}
+                sessionId={environmentReview.sessionId}
+                environmentId={environmentReview.environmentId}
+                environmentName={environmentReview.environmentName}
+                onSaved={environmentReview.onSaved}
+              />
+            </div>
           ) : null}
         </>
       )}
@@ -163,17 +184,65 @@ function TabBar({
   active: WorkspaceTab
   onSelect: (tab: WorkspaceTab) => void
 }) {
+  const list = useRef<HTMLDivElement>(null)
+
+  const move = (delta: number) => {
+    const index = tabs.indexOf(active)
+    const next = tabs[(index + delta + tabs.length) % tabs.length]
+    if (!next) return
+    onSelect(next)
+    requestAnimationFrame(() => {
+      list.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus()
+    })
+  }
+
   return (
     <div
+      ref={list}
       role="tablist"
       aria-label="Workspace panels"
       className="flex gap-1 border-b border-border px-2 py-1.5"
+      onKeyDown={(event) => {
+        if (event.key === 'ArrowRight') {
+          event.preventDefault()
+          move(1)
+        } else if (event.key === 'ArrowLeft') {
+          event.preventDefault()
+          move(-1)
+        } else if (event.key === 'Home') {
+          event.preventDefault()
+          const first = tabs[0]
+          if (first) {
+            onSelect(first)
+            requestAnimationFrame(() => {
+              list.current
+                ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+                ?.focus()
+            })
+          }
+        } else if (event.key === 'End') {
+          event.preventDefault()
+          const last = tabs[tabs.length - 1]
+          if (last) {
+            onSelect(last)
+            requestAnimationFrame(() => {
+              list.current
+                ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+                ?.focus()
+            })
+          }
+        }
+      }}
     >
       {tabs.map((tab) => (
         <button
           key={tab}
+          type="button"
+          id={`workspace-tab-${tab}`}
           role="tab"
           aria-selected={active === tab}
+          aria-controls={`workspace-panel-${tab}`}
+          tabIndex={active === tab ? 0 : -1}
           onClick={() => onSelect(tab)}
           className={`rounded-[calc(var(--radius)*0.6)] px-2.5 py-1 text-[12.5px] capitalize ${
             active === tab
@@ -322,8 +391,10 @@ function Panels({ session, files }: { session: SessionSummary | null; files: Fil
         return (
           <div key={file.path} className="border-b border-border last:border-b-0">
             <button
+              type="button"
               onClick={() => setOpen(expanded ? null : file.path)}
               aria-expanded={expanded}
+              aria-label={basename(file.path)}
               className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-[12.5px] hover:bg-muted"
             >
               {expanded ? (
@@ -414,6 +485,7 @@ function TerminalPanel({
           No terminal is open. A shell here runs inside this session’s container.
         </p>
         <button
+          type="button"
           onClick={() => onOpenTerminal(80, 24)}
           className="rounded-[calc(var(--radius)*0.6)] bg-muted px-2.5 py-1.5 text-[12.5px] font-medium hover:bg-border"
         >
@@ -434,12 +506,14 @@ function TerminalPanel({
             }`}
           >
             <button
+              type="button"
               onClick={() => setSelected(tab.terminalId)}
               className={tab.exited ? 'py-1 text-muted-foreground line-through' : 'py-1'}
             >
               {tab.title}
             </button>
             <button
+              type="button"
               onClick={() => onCloseTerminal(tab.terminalId)}
               aria-label={`Close terminal ${tab.title}`}
               className="grid size-5 place-items-center rounded-[calc(var(--radius)*0.5)] text-muted-foreground hover:bg-border hover:text-foreground"
@@ -451,6 +525,7 @@ function TerminalPanel({
 
         {tabs.length < MAX_TERMINALS && (
           <button
+            type="button"
             onClick={() => onOpenTerminal(80, 24)}
             aria-label="New terminal"
             className="grid size-6 place-items-center rounded-[calc(var(--radius)*0.6)] text-muted-foreground hover:bg-muted hover:text-foreground"

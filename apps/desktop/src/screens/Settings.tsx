@@ -367,6 +367,7 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
           spellCheck={false}
           autoComplete="off"
           disabled={working}
+          aria-label="Agent API token"
           className="min-w-0 flex-1 rounded-[calc(var(--radius)*0.6)] border border-border-strong bg-background px-2.5 py-1.5 font-mono text-[13px] outline-none placeholder:text-muted-foreground disabled:opacity-60"
         />
         <button

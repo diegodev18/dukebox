@@ -222,6 +222,12 @@ describe('Settings', () => {
     expect(await screen.findByRole('heading', { name: 'Appearance' })).toBeInTheDocument()
   })
 
+  it('labels the agent API token field', async () => {
+    renderSettings({ category: 'agents' })
+
+    expect(await screen.findByLabelText('Agent API token')).toBeInTheDocument()
+  })
+
   it('lists paired servers and switches to another one', async () => {
     vi.mocked(listConnections).mockResolvedValue([
       server,

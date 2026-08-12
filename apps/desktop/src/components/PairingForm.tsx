@@ -107,7 +107,7 @@ export function PairingForm({ onPaired, onCancel }: Props) {
         <button
           type="submit"
           disabled={working || link.trim() === ''}
-          className="flex-1 rounded-[var(--radius)] bg-primary px-4 py-2.5 font-medium text-primary-foreground disabled:opacity-50"
+          className="flex-1 rounded-[var(--radius)] bg-foreground px-4 py-2.5 font-medium text-background disabled:opacity-50"
         >
           {status.kind === 'working'
             ? status.step === 'reaching'
