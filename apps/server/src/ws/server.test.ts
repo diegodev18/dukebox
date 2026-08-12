@@ -630,7 +630,7 @@ describe('terminals', () => {
 
     const opened = await client.waitForMessage('terminal_opened')
     expect(opened.terminalId).toBeTruthy()
-    expect(opened.title).toBe('1')
+    expect(opened.title).toMatch(/^\d{3}$/)
 
     client.close()
   })
@@ -826,6 +826,25 @@ describe('terminals', () => {
     await client.waitFor(() => terminals.list(sessionId).length === 0)
 
     expect(fakeTerminals[0]!.close).toHaveBeenCalled()
+
+    client.close()
+  })
+
+  it('renames a terminal so a later list shows the new title', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({ type: 'terminal_open', sessionId, cols: 80, rows: 24 })
+    const opened = await client.waitForMessage('terminal_opened')
+
+    client.send({
+      type: 'terminal_rename',
+      sessionId,
+      terminalId: opened.terminalId,
+      title: 'build',
+    })
+
+    await client.waitFor(() => terminals.list(sessionId)[0]?.title === 'build')
 
     client.close()
   })

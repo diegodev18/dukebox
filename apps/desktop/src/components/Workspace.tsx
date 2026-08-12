@@ -61,6 +61,7 @@ interface TerminalProps {
   onTerminalInput: (terminalId: string, data: string) => void
   onTerminalResize: (terminalId: string, cols: number, rows: number) => void
   onCloseTerminal: (terminalId: string) => void
+  onRenameTerminal: (terminalId: string, title: string) => void
   onDrainTerminal: (terminalId: string, count: number) => void
   /** Set when opening a terminal was rejected, so the waiting state can clear. */
   error?: string | null
@@ -492,6 +493,7 @@ function TerminalPanel({
   onTerminalInput,
   onTerminalResize,
   onCloseTerminal,
+  onRenameTerminal,
   onDrainTerminal,
   error,
 }: TerminalProps & { session: SessionSummary | null }) {
@@ -572,13 +574,13 @@ function TerminalPanel({
               tab.terminalId === active?.terminalId ? 'bg-muted' : 'hover:bg-muted'
             }`}
           >
-            <button
-              type="button"
-              onClick={() => setSelected(tab.terminalId)}
-              className={tab.exited ? 'py-1 text-muted-foreground line-through' : 'py-1'}
-            >
-              {tab.title}
-            </button>
+            <TerminalTabName
+              title={tab.title}
+              selected={tab.terminalId === active?.terminalId}
+              exited={tab.exited}
+              onSelect={() => setSelected(tab.terminalId)}
+              onRename={(title) => onRenameTerminal(tab.terminalId, title)}
+            />
             <button
               type="button"
               onClick={() => onCloseTerminal(tab.terminalId)}
@@ -614,6 +616,97 @@ function TerminalPanel({
         />
       ))}
     </div>
+  )
+}
+
+/**
+ * A terminal tab's label, which becomes an input when clicked.
+ *
+ * Clicking selects the tab and turns the name into a field, so renaming does
+ * not need a separate control.
+ */
+function TerminalTabName({
+  title,
+  selected,
+  exited,
+  onSelect,
+  onRename,
+}: {
+  title: string
+  selected: boolean
+  exited: boolean
+  onSelect: () => void
+  onRename: (title: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(title)
+  const input = useRef<HTMLInputElement>(null)
+  const finishing = useRef(false)
+
+  useEffect(() => {
+    if (!selected) setEditing(false)
+  }, [selected])
+
+  useEffect(() => {
+    if (!editing) setDraft(title)
+  }, [editing, title])
+
+  useEffect(() => {
+    if (!editing) return
+
+    finishing.current = false
+    input.current?.focus()
+    input.current?.select()
+  }, [editing])
+
+  const commit = () => {
+    if (finishing.current) return
+    finishing.current = true
+
+    const next = draft.trim()
+    setEditing(false)
+    if (next && next !== title) onRename(next)
+    else setDraft(title)
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={input}
+        value={draft}
+        maxLength={32}
+        aria-label="Terminal name"
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            commit()
+          } else if (event.key === 'Escape') {
+            event.preventDefault()
+            finishing.current = true
+            setDraft(title)
+            setEditing(false)
+          }
+        }}
+        style={{ width: `${Math.max(3, draft.length + 1)}ch` }}
+        className="bg-transparent py-1 text-[12.5px] outline-none"
+      />
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        onSelect()
+        setDraft(title)
+        setEditing(true)
+      }}
+      className={exited ? 'py-1 text-muted-foreground line-through' : 'py-1'}
+    >
+      {title}
+    </button>
   )
 }
 

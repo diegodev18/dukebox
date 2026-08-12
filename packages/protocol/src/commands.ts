@@ -126,6 +126,19 @@ export const terminalCloseCommand = z.object({
   terminalId: z.string().min(1),
 })
 
+/**
+ * Change a terminal tab's label.
+ *
+ * Titles are how tabs are told apart. The server assigns a random three-digit
+ * name on open; this is how someone replaces it with one that means something.
+ */
+export const terminalRenameCommand = z.object({
+  type: z.literal('terminal_rename'),
+  sessionId: z.string().uuid(),
+  terminalId: z.string().min(1),
+  title: z.string().trim().min(1).max(32),
+})
+
 export const clientCommand = z.discriminatedUnion('type', [
   subscribeCommand,
   unsubscribeCommand,
@@ -139,6 +152,7 @@ export const clientCommand = z.discriminatedUnion('type', [
   terminalInputCommand,
   terminalResizeCommand,
   terminalCloseCommand,
+  terminalRenameCommand,
 ])
 
 export type ClientCommand = z.infer<typeof clientCommand>

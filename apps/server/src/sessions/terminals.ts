@@ -1,5 +1,5 @@
 import type { TerminalHandle } from '@dukebox/sandbox'
-import { randomUUID } from 'node:crypto'
+import { randomInt, randomUUID } from 'node:crypto'
 import { RingBuffer } from './ringBuffer.js'
 
 /**
@@ -62,9 +62,10 @@ export class TerminalRegistry {
 
     const terminal: LiveTerminal = {
       terminalId: randomUUID(),
-      // Numbered by how many are already open. Titles are for telling tabs
-      // apart, and a uuid on a tab tells nobody anything.
-      title: String(existing.size + 1),
+      // A random three-digit label rather than 1, 2, 3: sequential numbers
+      // collide visually across sessions, and a uuid on a tab tells nobody
+      // anything. The client can rename it.
+      title: randomTerminalTitle([...existing.values()].map((open) => open.title)),
       handle,
       scrollback: new RingBuffer(SCROLLBACK_BYTES),
       listeners: new Set(),
@@ -127,6 +128,13 @@ export class TerminalRegistry {
     await this.require(sessionId, terminalId).handle.resize(cols, rows)
   }
 
+  rename(sessionId: string, terminalId: string, title: string): TerminalInfo {
+    const terminal = this.require(sessionId, terminalId)
+    terminal.title = title
+
+    return { terminalId: terminal.terminalId, title: terminal.title }
+  }
+
   async close(sessionId: string, terminalId: string): Promise<void> {
     const terminal = this.sessions.get(sessionId)?.get(terminalId)
     if (!terminal) return
@@ -177,4 +185,29 @@ export class TerminalRegistry {
     terminal.listeners.clear()
     terminal.exitListeners.clear()
   }
+}
+
+const TITLE_DIGITS = 3
+const TITLE_RANGE = 10 ** TITLE_DIGITS
+
+/**
+ * A three-digit tab label that is not already in use in this session.
+ *
+ * Padded so every name is the same width — `7` next to `42` looks like a
+ * sequence, `007` next to `042` looks like a name.
+ */
+export function randomTerminalTitle(taken: Iterable<string>): string {
+  const used = new Set(taken)
+  const available: string[] = []
+
+  for (let n = 0; n < TITLE_RANGE; n += 1) {
+    const title = String(n).padStart(TITLE_DIGITS, '0')
+    if (!used.has(title)) available.push(title)
+  }
+
+  if (available.length === 0) {
+    return String(randomInt(0, TITLE_RANGE)).padStart(TITLE_DIGITS, '0')
+  }
+
+  return available[randomInt(0, available.length)]!
 }

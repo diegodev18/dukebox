@@ -15,6 +15,7 @@ import {
   drainTab,
   emptyTerminalState,
   removeTab,
+  renameTab,
   type TerminalState,
 } from '@/lib/useTerminals'
 
@@ -46,6 +47,7 @@ export interface LiveSession {
   sendTerminalInput: (terminalId: string, data: string) => void
   resizeTerminal: (terminalId: string, cols: number, rows: number) => void
   closeTerminal: (terminalId: string) => void
+  renameTerminal: (terminalId: string, title: string) => void
   /** Forget output already written to xterm, so it is not replayed. */
   drainTerminal: (terminalId: string, count: number) => void
 }
@@ -229,6 +231,18 @@ export function useSession(
     [sessionId],
   )
 
+  const renameTerminal = useCallback(
+    (terminalId: string, title: string) => {
+      if (!sessionId) return
+
+      // Applied locally first: a tab that waits for the round trip to change
+      // its label feels like the input did nothing.
+      setTerminals((current) => renameTab(current, terminalId, title))
+      streamRef.current?.renameTerminal(sessionId, terminalId, title)
+    },
+    [sessionId],
+  )
+
   const drainTerminal = useCallback((terminalId: string, count: number) => {
     setTerminals((current) => drainTab(current, terminalId, count))
   }, [])
@@ -248,6 +262,7 @@ export function useSession(
     sendTerminalInput,
     resizeTerminal,
     closeTerminal,
+    renameTerminal,
     drainTerminal,
   }
 }

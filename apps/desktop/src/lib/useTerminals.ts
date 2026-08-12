@@ -91,6 +91,14 @@ export function removeTab(state: TerminalState, terminalId: string): TerminalSta
   return tabs.length === state.tabs.length ? state : { tabs }
 }
 
+/** Change a tab's label. Empty titles are ignored so a tab never goes blank. */
+export function renameTab(state: TerminalState, terminalId: string, title: string): TerminalState {
+  const next = title.trim()
+  if (!next) return state
+
+  return mapTab(state, terminalId, (tab) => (tab.title === next ? tab : { ...tab, title: next }))
+}
+
 /**
  * Replace one tab, returning the same state object when nothing changed.
  *

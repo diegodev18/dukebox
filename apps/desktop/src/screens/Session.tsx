@@ -348,6 +348,7 @@ export function Session({
             onTerminalInput={live.sendTerminalInput}
             onTerminalResize={live.resizeTerminal}
             onCloseTerminal={live.closeTerminal}
+            onRenameTerminal={live.renameTerminal}
             onDrainTerminal={live.drainTerminal}
             error={live.error}
             pullRequest={

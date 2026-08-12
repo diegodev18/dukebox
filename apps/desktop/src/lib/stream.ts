@@ -175,6 +175,10 @@ export class SessionStream {
     this.send({ type: 'terminal_close', sessionId, terminalId })
   }
 
+  renameTerminal(sessionId: string, terminalId: string, title: string): void {
+    this.send({ type: 'terminal_rename', sessionId, terminalId, title })
+  }
+
   /** Stop for good. A stream closed this way does not reconnect. */
   close(): void {
     this.closed = true

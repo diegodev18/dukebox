@@ -134,6 +134,10 @@ class Connection {
         )
       case 'terminal_close':
         return this.closeTerminal(command.sessionId, command.terminalId)
+      case 'terminal_rename':
+        return this.withTerminals(command.sessionId, (terminals) => {
+          terminals.rename(command.sessionId, command.terminalId, command.title)
+        })
     }
   }
 

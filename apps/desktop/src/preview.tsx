@@ -15,6 +15,7 @@ import {
   drainTab,
   emptyTerminalState,
   removeTab,
+  renameTab,
   type TerminalState,
 } from '@/lib/useTerminals'
 import { NewSession } from '@/screens/NewSession'
@@ -325,7 +326,7 @@ function usePreviewTerminals() {
         type: 'terminal_opened',
         sessionId: SESSION,
         terminalId: 'preview-terminal',
-        title: '1',
+        title: '047',
         cols: 80,
         rows: 24,
       }),
@@ -358,7 +359,7 @@ function usePreviewTerminals() {
           type: 'terminal_opened',
           sessionId: SESSION,
           terminalId,
-          title: String(current.tabs.length + 1),
+          title: randomPreviewTitle(current.tabs.map((tab) => tab.title)),
           cols: 80,
           rows: 24,
         }),
@@ -376,9 +377,23 @@ function usePreviewTerminals() {
     },
     onTerminalResize: () => {},
     onCloseTerminal: (terminalId: string) => setState((current) => removeTab(current, terminalId)),
+    onRenameTerminal: (terminalId: string, title: string) =>
+      setState((current) => renameTab(current, terminalId, title)),
     onDrainTerminal: (terminalId: string, count: number) =>
       setState((current) => drainTab(current, terminalId, count)),
   }
+}
+
+/** A three-digit tab label, matching what the server assigns. */
+function randomPreviewTitle(taken: string[]): string {
+  const used = new Set(taken)
+
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
+    const title = String(Math.floor(Math.random() * 1000)).padStart(3, '0')
+    if (!used.has(title)) return title
+  }
+
+  return String(Math.floor(Math.random() * 1000)).padStart(3, '0')
 }
 
 /**
