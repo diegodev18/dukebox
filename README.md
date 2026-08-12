@@ -120,6 +120,19 @@ sudo duke rollback          # restore the previous release if something is wrong
 release fails to start. Re-running `install.sh` does the same thing and also
 applies any unit-file changes.
 
+> **Already had a server before this release?** A server installed the old way
+> is a git checkout that builds in place; it has no `duke` command and no
+> release version. Migrate it by re-running the installer once:
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/diegodev18/dukebox/main/install/install.sh | sudo bash
+> ```
+>
+> It replaces `/opt/dukebox` with the release bundle, updates the systemd unit
+> to the new layout, and installs the `duke` symlink. The config in
+> `/etc/dukebox` and the Postgres/Redis data (Docker volumes) are untouched.
+> After that, updates are `sudo duke update`.
+
 ### Releasing a new server version
 
 The `Release server` workflow builds the control plane into a self-contained
