@@ -28,7 +28,7 @@
   export DUKEBOX_DATABASE_URL='postgres://dukebox:dukebox@127.0.0.1:5433/dukebox'
   export DUKEBOX_REDIS_URL='redis://127.0.0.1:6380'
   ```
-- Container-creating tests cannot pass in the Cursor VM (cgroups limitation in `AGENTS.md`). Do not treat their failure as caused by this work.
+- Container-creating tests cannot pass in the nested Firecracker VM (cgroups limitation in `AGENTS.md`). Do not treat their failure as caused by this work.
 - Run `pnpm exec prettier --write <files>` before every commit; CI checks formatting.
 
 ---
@@ -1145,7 +1145,7 @@ export DUKEBOX_REDIS_URL='redis://127.0.0.1:6380'
 pnpm --filter @dukebox/server exec vitest run src/sessions/manager.test.ts
 ```
 
-Expected: the four new tests PASS. Container-lifecycle tests in this file fail in the Cursor VM for the cgroups reason in `AGENTS.md` — that is pre-existing and not caused by this change. Confirm by checking the failure message mentions `domain controllers`.
+Expected: the four new tests PASS. Container-lifecycle tests in this file fail in the nested Firecracker VM for the cgroups reason in `AGENTS.md` — that is pre-existing and not caused by this change. Confirm by checking the failure message mentions `domain controllers`.
 
 - [ ] **Step 8: Commit**
 
@@ -2565,7 +2565,7 @@ pnpm exec turbo run typecheck
 pnpm exec turbo run test
 ```
 
-Expected: everything passes except the container-lifecycle tests listed in `AGENTS.md`, which cannot run in the Cursor VM. Confirm each failure message mentions `domain controllers` — anything else is a real regression from this work.
+Expected: everything passes except the container-lifecycle tests listed in `AGENTS.md`, which cannot run in the nested Firecracker VM. Confirm each failure message mentions `domain controllers` — anything else is a real regression from this work.
 
 - [ ] **Step 8: Commit**
 

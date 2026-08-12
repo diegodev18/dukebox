@@ -51,7 +51,7 @@ export function Transcript({ transcript, onRespond, purpose, running, status }: 
   }
 
   // The server seeds environment_setup with a long fixed prompt. Collapse that
-  // first prompt into a Cursor-style summary; later user prompts stay full text.
+  // first prompt into a short labelled summary; later user prompts stay full text.
   const setupPromptId =
     purpose === 'environment_setup'
       ? transcript.blocks.find((block) => block.kind === 'prompt')?.id
@@ -140,8 +140,8 @@ function BlockView({
 }
 
 /**
- * Seeded environment-setup prompt, shown like Cursor's task chip: a short
- * labelled pill instead of the full system instructions.
+ * Seeded environment-setup prompt: a short labelled pill instead of the full
+ * system instructions.
  */
 function SetupPrompt({
   text,
@@ -187,7 +187,7 @@ function formatSetupDuration(
   status: SessionStatus | undefined,
 ): string | null {
   // No endedAt on the session summary, so a wall-clock delta would lie for
-  // old sessions. Show live progress only; Cursor's "Worked for Ns" needs a
+  // old sessions. Show live progress only; a "Worked for Ns" label needs a
   // real elapsed interval we do not have yet.
   if (running || status === 'running' || status === 'provisioning') {
     return 'Working…'

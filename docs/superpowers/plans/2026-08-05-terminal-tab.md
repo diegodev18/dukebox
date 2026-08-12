@@ -17,7 +17,7 @@
 - Server and sandbox tests need these env vars exported (see `AGENTS.md`):
   `DUKEBOX_DATABASE_URL='postgres://dukebox:dukebox@127.0.0.1:5433/dukebox'` and
   `DUKEBOX_REDIS_URL='redis://127.0.0.1:6380'`.
-- Container-lifecycle tests cannot pass in the Cursor Cloud VM (threaded cgroups). Tests that create a real container are expected to fail there and must be validated on the Linux VPS via `./docker/verify.sh`.
+- Container-lifecycle tests cannot pass in the nested Firecracker VM (threaded cgroups). Tests that create a real container are expected to fail there and must be validated on the Linux VPS via `./docker/verify.sh`.
 - Formatting is Prettier: `pnpm exec prettier --write <files>` before every commit. No semicolons, single quotes, 100 char width — the existing files show the style.
 - Code, comments, and commit messages are written in **English**. This matches every existing file in the repo.
 - Comments explain _why_, not _what_. The codebase's existing comments are the model: they justify a decision or warn about a trap. Do not add comments that restate the code.
@@ -502,7 +502,7 @@ If `TEST_IMAGE` or an equivalent constant does not exist in that file, use `'duk
 Run: `pnpm --filter @dukebox/sandbox test -- container`
 Expected: FAIL with "container.openTerminal is not a function".
 
-**In the Cursor Cloud VM this test fails for a different reason** — `cannot enter cgroupv2 ... domain controllers`. That is the documented cgroup limitation, not your bug. Confirm the failure message says `openTerminal is not a function` where containers work; where they do not, write the code and verify it on the VPS with `./docker/verify.sh`.
+**In the nested Firecracker VM this test fails for a different reason** — `cannot enter cgroupv2 ... domain controllers`. That is the documented cgroup limitation, not your bug. Confirm the failure message says `openTerminal is not a function` where containers work; where they do not, write the code and verify it on the VPS with `./docker/verify.sh`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -569,7 +569,7 @@ Export `TerminalHandle` from `packages/sandbox/src/index.ts` alongside the exist
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `pnpm --filter @dukebox/sandbox test -- container`
-Expected: PASS where containers work. In the Cursor Cloud VM, expect the cgroup failure and defer verification to `./docker/verify.sh` on the VPS.
+Expected: PASS where containers work. In the nested Firecracker VM, expect the cgroup failure and defer verification to `./docker/verify.sh` on the VPS.
 
 - [ ] **Step 5: Commit**
 
@@ -1241,7 +1241,7 @@ describe('stop', () => {
 Run: `pnpm --filter @dukebox/server test -- manager`
 Expected: FAIL — `manager.openTerminal is not a function`, and `onSessionStopped` is not a recognized dep.
 
-In the Cursor Cloud VM this suite cannot pass at all (it creates real containers; see the cgroup limitation in `AGENTS.md`). Where that is the case, write the code, confirm it typechecks, and verify on the VPS with `./docker/verify.sh`.
+In the nested Firecracker VM this suite cannot pass at all (it creates real containers; see the cgroup limitation in `AGENTS.md`). Where that is the case, write the code, confirm it typechecks, and verify on the VPS with `./docker/verify.sh`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -2616,11 +2616,11 @@ export DUKEBOX_REDIS_URL='redis://127.0.0.1:6380'
 pnpm exec turbo run test
 ```
 
-Expected: PASS, except the container-lifecycle suites documented in `AGENTS.md` as unable to run in the Cursor Cloud VM (`packages/sandbox`: `container.test.ts`, `credentials.integration.test.ts`, `workspace.test.ts`; `apps/server`: `sessions/manager.test.ts`). Report exactly which suites failed and why — do not claim a green run that did not happen.
+Expected: PASS, except the container-lifecycle suites documented in `AGENTS.md` as unable to run in the nested Firecracker VM (`packages/sandbox`: `container.test.ts`, `credentials.integration.test.ts`, `workspace.test.ts`; `apps/server`: `sessions/manager.test.ts`). Report exactly which suites failed and why — do not claim a green run that did not happen.
 
 - [ ] **Step 4: Container verification on a real host**
 
-On the Linux VPS (not the Cursor Cloud VM): `./docker/verify.sh`
+On the Linux VPS (not the nested Firecracker VM): `./docker/verify.sh`
 Expected: PASS, including `openTerminal` from Task 3 and the manager tests from Task 6.
 
 If a VPS is not available in this session, say so explicitly rather than marking this step done.
@@ -2633,4 +2633,4 @@ If a VPS is not available in this session, say so explicitly rather than marking
 
 **Order matters.** Tasks 1–2 (protocol) unblock everything. Tasks 3–7 are the server, in order. Tasks 8–12 are the desktop, in order. Task 3 can run in parallel with Tasks 1–2 if you want, but nothing else can be reordered.
 
-**Tests you cannot run here.** The Cursor Cloud VM cannot create containers with resource limits. Tasks 3, 6, and 13 all hit this. Write the code, confirm typecheck, and be honest in the report about what was verified and what was deferred.
+**Tests you cannot run here.** The nested Firecracker VM cannot create containers with resource limits. Tasks 3, 6, and 13 all hit this. Write the code, confirm typecheck, and be honest in the report about what was verified and what was deferred.

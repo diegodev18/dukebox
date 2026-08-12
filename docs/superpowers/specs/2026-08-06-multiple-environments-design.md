@@ -338,7 +338,7 @@ when none match; `null` for an empty list.
 **Migration**: a project with `configOverride` produces exactly one `Default` /
 `**` environment with the config copied; a project without one produces none.
 
-Container-creating tests do not run in the Cursor VM because of the cgroups
+Container-creating tests do not run in the nested Firecracker VM because of the cgroups
 limitation documented in `AGENTS.md`; they are validated on the VPS with
 `./docker/verify.sh`. Environment resolution itself needs no container, which is
 what makes the new logic testable there.

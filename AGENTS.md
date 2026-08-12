@@ -1,6 +1,6 @@
 # AGENTS.md
 
-## Cursor Cloud specific instructions
+## Cloud VM specific instructions
 
 This section captures non-obvious, durable setup/run notes for future cloud agents.
 Standard commands live in `README.md`; only the caveats specific to this VM are here.
