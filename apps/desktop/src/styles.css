@@ -23,6 +23,15 @@
   --color-border-strong: oklch(0 0 0 / 15%);
   --color-destructive: oklch(0.577 0.245 27.325);
 
+  /* shadcn registry aliases — same values as nearby tokens so pulled
+     components (Select, …) resolve without a second palette. */
+  --color-input: oklch(0 0 0 / 15%);
+  --color-ring: oklch(0.488 0.243 264.376);
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.141 0.005 285.823);
+  --color-accent: oklch(0.967 0.001 286.375);
+  --color-accent-foreground: oklch(0.141 0.005 285.823);
+
   /* Session states. The preset carries no semantics for these, so they are
      named for what they mean rather than for the colour they happen to be. */
   --color-running: oklch(0.7 0.16 70);
@@ -54,6 +63,12 @@
     --color-border: oklch(1 0 0 / 9%);
     --color-border-strong: oklch(1 0 0 / 16%);
     --color-destructive: oklch(0.704 0.191 22.216);
+    --color-input: oklch(1 0 0 / 16%);
+    --color-ring: oklch(0.546 0.245 262.881);
+    --color-popover: oklch(0.141 0.005 285.823);
+    --color-popover-foreground: oklch(0.985 0 0);
+    --color-accent: oklch(0.274 0.006 286.033);
+    --color-accent-foreground: oklch(0.985 0 0);
     --color-running: oklch(0.78 0.15 70);
     --color-waiting: oklch(0.546 0.245 262.881);
     --color-done: oklch(0.68 0.13 155);
@@ -73,6 +88,12 @@
   --color-border: oklch(1 0 0 / 9%);
   --color-border-strong: oklch(1 0 0 / 16%);
   --color-destructive: oklch(0.704 0.191 22.216);
+  --color-input: oklch(1 0 0 / 16%);
+  --color-ring: oklch(0.546 0.245 262.881);
+  --color-popover: oklch(0.141 0.005 285.823);
+  --color-popover-foreground: oklch(0.985 0 0);
+  --color-accent: oklch(0.274 0.006 286.033);
+  --color-accent-foreground: oklch(0.985 0 0);
   --color-running: oklch(0.78 0.15 70);
   --color-waiting: oklch(0.546 0.245 262.881);
   --color-done: oklch(0.68 0.13 155);
