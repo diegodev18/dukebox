@@ -62,7 +62,11 @@ const project = {
 
 const connection = { deviceId: 'd1', serverName: 'server', address: { host: 'localhost' } }
 
-function renderScreen(client: ReturnType<typeof makeClient>, projectOverrides = {}) {
+function renderScreen(
+  client: ReturnType<typeof makeClient>,
+  projectOverrides = {},
+  extra: { onConfigureProviders?: () => void; preferAgentId?: string | null } = {},
+) {
   return render(
     <NewSession
       client={client as never}
@@ -70,6 +74,8 @@ function renderScreen(client: ReturnType<typeof makeClient>, projectOverrides = 
       projects={[{ ...project, ...projectOverrides } as never]}
       identity={null}
       onCreated={vi.fn()}
+      onConfigureProviders={extra.onConfigureProviders ?? vi.fn()}
+      preferAgentId={extra.preferAgentId}
     />,
   )
 }
@@ -209,7 +215,7 @@ describe('NewSession OpenCode', () => {
     expect(within(agents).getByRole('option', { name: /OpenCode/ })).toBeInTheDocument()
   })
 
-  it('lists OpenCode models from configured providers', async () => {
+  it('lists OpenCode models from the selected provider', async () => {
     const client = makeClient({
       listOpencodeProviders: vi.fn().mockResolvedValue([
         {
@@ -225,6 +231,9 @@ describe('NewSession OpenCode', () => {
     const agents = await openPicker('Agent')
     await userEvent.click(within(agents).getByRole('option', { name: /OpenCode/ }))
 
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Provider' })).toHaveTextContent('Anthropic'),
+    )
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Model' })).toHaveTextContent('Sonnet 4.5'),
     )
@@ -266,21 +275,70 @@ describe('NewSession OpenCode', () => {
     expect(client.startSession.mock.calls[0][0]).not.toHaveProperty('permissionMode')
   })
 
-  it('hides the model picker until a provider exists and blocks starting', async () => {
-    const client = makeClient()
-    renderScreen(client)
+  it('opens provider settings when OpenCode is selected with no providers', async () => {
+    const onConfigureProviders = vi.fn()
+    renderScreen(makeClient(), {}, { onConfigureProviders })
+
+    const agents = await openPicker('Agent')
+    await userEvent.click(within(agents).getByRole('option', { name: /OpenCode/ }))
+
+    await waitFor(() => expect(onConfigureProviders).toHaveBeenCalled())
+  })
+
+  it('offers a provider picker and Add provider opens settings', async () => {
+    const onConfigureProviders = vi.fn()
+    const client = makeClient({
+      listOpencodeProviders: vi.fn().mockResolvedValue([
+        {
+          id: 'anthropic',
+          kind: 'anthropic',
+          name: 'Anthropic',
+          models: [{ id: 'claude-sonnet-4-5', label: 'Sonnet 4.5' }],
+        },
+        {
+          id: 'openai',
+          kind: 'openai',
+          name: 'OpenAI',
+          models: [{ id: 'gpt-5.2', label: 'GPT-5.2' }],
+        },
+      ]),
+    })
+    renderScreen(client, {}, { onConfigureProviders })
 
     const agents = await openPicker('Agent')
     await userEvent.click(within(agents).getByRole('option', { name: /OpenCode/ }))
 
     await waitFor(() =>
-      expect(screen.getByText(/add a provider to choose an OpenCode model/i)).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: 'Provider' })).toHaveTextContent('Anthropic'),
     )
-    expect(screen.queryByRole('button', { name: 'Model' })).not.toBeInTheDocument()
 
-    await userEvent.type(screen.getByLabelText(/what should it do/i), 'do a thing')
-    expect(screen.getByRole('button', { name: /start session/i })).toBeDisabled()
-    expect(client.startSession).not.toHaveBeenCalled()
+    const providers = await openPicker('Provider')
+    expect(within(providers).getByRole('option', { name: /Anthropic/ })).toBeInTheDocument()
+    expect(within(providers).getByRole('option', { name: /OpenAI/ })).toBeInTheDocument()
+
+    await userEvent.click(within(providers).getByRole('option', { name: /OpenAI/ }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Model' })).toHaveTextContent('GPT-5.2'),
+    )
+
+    const again = await openPicker('Provider')
+    await userEvent.click(within(again).getByRole('button', { name: /add provider/i }))
+    expect(onConfigureProviders).toHaveBeenCalled()
+  })
+
+  it('does not bounce to settings when returning with OpenCode and no providers', async () => {
+    const onConfigureProviders = vi.fn()
+    const client = makeClient()
+    renderScreen(client, {}, { onConfigureProviders, preferAgentId: 'opencode' })
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Agent' })).toHaveTextContent('OpenCode'),
+    )
+    await waitFor(() => expect(client.listOpencodeProviders).toHaveBeenCalled())
+    expect(onConfigureProviders).not.toHaveBeenCalled()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Provider' })).toBeInTheDocument(),
+    )
   })
 })
 

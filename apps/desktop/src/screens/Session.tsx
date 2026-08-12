@@ -59,6 +59,9 @@ export function Session({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>('account')
   const [setupProjectId, setSetupProjectId] = useState<string | null>(null)
+  // Remember OpenCode when new session opens provider settings, so Back
+  // restores the form with that agent still selected.
+  const [preferAgentId, setPreferAgentId] = useState<string | null>(null)
   const [managingProjectId, setManagingProjectId] = useState<string | null>(null)
   // Only to name the environment a review session belongs to. The summary
   // carries the id; the name lives on the environment row.
@@ -156,6 +159,7 @@ export function Session({
     setCreating(false)
     setSetupProjectId(null)
     setManagingProjectId(null)
+    setPreferAgentId(null)
   }
 
   return (
@@ -185,6 +189,7 @@ export function Session({
             setCreating(false)
             setSetupProjectId(null)
             setManagingProjectId(null)
+            setPreferAgentId(null)
             setSettingsCategory(category)
             setSettingsOpen(true)
             if (category === 'updates') update.check(true)
@@ -194,17 +199,20 @@ export function Session({
             setSettingsOpen(false)
             setSetupProjectId(null)
             setManagingProjectId(null)
+            setPreferAgentId(null)
             setSelected(sessionId)
           }}
           onNewSession={() => {
             setSetupProjectId(null)
             setManagingProjectId(null)
+            setPreferAgentId(null)
             setSettingsOpen(false)
             setCreating(true)
           }}
           onConfigureEnvironment={(projectId) => {
             setSetupProjectId(projectId)
             setManagingProjectId(null)
+            setPreferAgentId(null)
             setSettingsOpen(false)
             setCreating(true)
           }}
@@ -212,6 +220,7 @@ export function Session({
             setCreating(false)
             setSettingsOpen(false)
             setSetupProjectId(null)
+            setPreferAgentId(null)
             setManagingProjectId(projectId)
           }}
           archiveError={archiveError}
@@ -269,6 +278,12 @@ export function Session({
           identity={settings.commitIdentity}
           onCreated={onSessionCreated}
           preferSetupProjectId={setupProjectId}
+          preferAgentId={preferAgentId}
+          onConfigureProviders={() => {
+            setPreferAgentId('opencode')
+            setSettingsCategory('agents')
+            setSettingsOpen(true)
+          }}
         />
       ) : current ? (
         <>

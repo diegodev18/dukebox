@@ -237,6 +237,14 @@ const fakeClient = {
       hasDraft: false,
     },
   ],
+  listOpencodeProviders: async () => [
+    {
+      id: 'anthropic',
+      kind: 'anthropic',
+      name: 'Anthropic',
+      models: [{ id: 'claude-sonnet-4-5', label: 'Sonnet 4.5' }],
+    },
+  ],
   createProject: async () => {
     throw new Error('the preview does not talk to a server')
   },
@@ -460,6 +468,7 @@ function Preview() {
             },
           ]}
           onCreated={() => setView('coding')}
+          onConfigureProviders={() => undefined}
         />
       ) : (
         <>

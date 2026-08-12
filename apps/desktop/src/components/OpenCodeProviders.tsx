@@ -18,31 +18,23 @@ import type { DukeboxClient } from '@/lib/client'
  * OpenCode's providers: API keys for Anthropic, OpenAI, and the rest, plus
  * custom OpenAI-compatible endpoints.
  *
- * Used from Settings (full list) and from New Session (add one so a model
- * can be picked). The key is written and never read back.
+ * Used from Settings. The key is written and never read back.
  */
+
+export function modelsForProvider(provider: OpencodeProvider): { id: string; label: string }[] {
+  return provider.models.map((model) => ({
+    id: `${provider.id}/${model.id}`,
+    label: model.label,
+  }))
+}
 
 export function opencodeModelOptions(
   providers: OpencodeProvider[],
 ): { id: string; label: string }[] {
-  return providers.flatMap((provider) =>
-    provider.models.map((model) => ({
-      id: `${provider.id}/${model.id}`,
-      label: `${provider.name} · ${model.label}`,
-    })),
-  )
+  return providers.flatMap(modelsForProvider)
 }
 
-export function OpenCodeProviders({
-  client,
-  compact,
-  onChange,
-}: {
-  client: DukeboxClient
-  /** Hide the heading and show a shorter empty state, for New Session. */
-  compact?: boolean
-  onChange?: (providers: OpencodeProvider[]) => void
-}) {
+export function OpenCodeProviders({ client }: { client: DukeboxClient }) {
   const [providers, setProviders] = useState<OpencodeProvider[] | null>(null)
   const [adding, setAdding] = useState(false)
   const [working, setWorking] = useState(false)
@@ -51,7 +43,6 @@ export function OpenCodeProviders({
   const reload = async () => {
     const found = await client.listOpencodeProviders()
     setProviders(found)
-    onChange?.(found)
     return found
   }
 
@@ -62,7 +53,6 @@ export function OpenCodeProviders({
       .then((found) => {
         if (cancelled) return
         setProviders(found)
-        onChange?.(found)
       })
       .catch(() => {
         if (!cancelled) setProviders([])
@@ -108,24 +98,18 @@ export function OpenCodeProviders({
   }
 
   return (
-    <div className={compact ? '' : 'mt-5 border-t border-border pt-4'}>
-      {!compact && (
-        <>
-          <h3 className="text-[12px] font-semibold tracking-wide text-muted-foreground uppercase">
-            OpenCode providers
-          </h3>
-          <p className="mt-1 text-[12.5px] text-muted-foreground">
-            API keys OpenCode uses to reach each model provider. Stored on the server.
-          </p>
-        </>
-      )}
+    <div className="mt-5 border-t border-border pt-4">
+      <h3 className="text-[12px] font-semibold tracking-wide text-muted-foreground uppercase">
+        OpenCode providers
+      </h3>
+      <p className="mt-1 text-[12.5px] text-muted-foreground">
+        API keys OpenCode uses to reach each model provider. Stored on the server.
+      </p>
 
       {providers === null ? (
         <p className="mt-3 text-[12.5px] text-muted-foreground">Loading providers…</p>
       ) : providers.length === 0 && !adding ? (
-        <p className="mt-3 text-[12.5px] text-muted-foreground">
-          {compact ? 'Add a provider to choose an OpenCode model.' : 'No providers configured yet.'}
-        </p>
+        <p className="mt-3 text-[12.5px] text-muted-foreground">No providers configured yet.</p>
       ) : (
         <ul className="mt-3 flex flex-col gap-2">
           {providers.map((provider) => (
@@ -139,16 +123,14 @@ export function OpenCodeProviders({
                   {provider.models.map((model) => model.label).join(', ') || provider.id}
                 </div>
               </div>
-              {!compact && (
-                <button
-                  type="button"
-                  disabled={working}
-                  onClick={() => void remove(provider.id)}
-                  className="flex-none rounded-[calc(var(--radius)*0.6)] px-2 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-destructive disabled:opacity-40"
-                >
-                  Remove
-                </button>
-              )}
+              <button
+                type="button"
+                disabled={working}
+                onClick={() => void remove(provider.id)}
+                className="flex-none rounded-[calc(var(--radius)*0.6)] px-2 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-destructive disabled:opacity-40"
+              >
+                Remove
+              </button>
             </li>
           ))}
         </ul>
