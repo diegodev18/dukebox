@@ -1,5 +1,15 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_GIT_REF, defaultRepoUrl, gitVersionLabel, parseUpdateArgs } from './gitUpdate.js'
+import {
+  DEFAULT_GIT_REF,
+  defaultRepoUrl,
+  gitVersionLabel,
+  parseUpdateArgs,
+  performGitUpdate,
+} from './gitUpdate.js'
+import type { CommandResult } from './updater.js'
 
 describe('gitVersionLabel', () => {
   it('builds a semver prerelease from the ref and short sha', () => {
@@ -80,5 +90,71 @@ describe('parseUpdateArgs', () => {
       checkOnly: true,
       force: true,
     })
+  })
+})
+
+describe('performGitUpdate', () => {
+  it('clones a ref, builds a bundle, and hands it to installStaging', async () => {
+    const installRoot = await mkdtemp(join(tmpdir(), 'dukebox-root-'))
+    const calls: string[] = []
+    const logs: string[] = []
+
+    const ok = (stdout = ''): CommandResult => ({ code: 0, stdout, stderr: '' })
+    const run = async (command: string, args: string[]): Promise<CommandResult> => {
+      calls.push([command, ...args].join(' '))
+      if (command === 'git' && args.includes('rev-parse')) return ok('abc1234def56\n')
+      if (command === 'pnpm' && args[0] === '--version') return ok('10.24.0\n')
+      return ok()
+    }
+
+    try {
+      const result = await performGitUpdate({
+        installRoot,
+        ref: 'main',
+        repoUrl: 'https://github.com/diegodev18/dukebox.git',
+        configPath: '/etc/dukebox/config.toml',
+        service: 'dukebox',
+        serviceUser: 'dukebox',
+        log: (line) => logs.push(line),
+        run,
+        install: async (options) => {
+          expect(options.installRoot).toBe(installRoot)
+          expect(options.successMessage).toContain('abc1234def56')
+          return { ok: true, message: options.successMessage }
+        },
+      })
+
+      expect(result.ok).toBe(true)
+      expect(calls.some((call) => call.includes('fetch') && call.includes('main'))).toBe(true)
+      expect(calls.some((call) => call.includes('package-server.sh'))).toBe(true)
+      expect(calls.some((call) => call.startsWith('pnpm install'))).toBe(true)
+      expect(logs.some((line) => line.includes('Cloning'))).toBe(true)
+    } finally {
+      await rm(installRoot, { recursive: true, force: true })
+      await rm(`${installRoot}.new`, { recursive: true, force: true })
+    }
+  })
+
+  it('fails early when git is missing', async () => {
+    const installRoot = await mkdtemp(join(tmpdir(), 'dukebox-root-'))
+    try {
+      const result = await performGitUpdate({
+        installRoot,
+        ref: 'main',
+        repoUrl: 'https://github.com/diegodev18/dukebox.git',
+        configPath: '/etc/dukebox/config.toml',
+        service: 'dukebox',
+        serviceUser: 'dukebox',
+        log: () => {},
+        run: async () => ({ code: 127, stdout: '', stderr: 'git: not found' }),
+        install: async () => {
+          throw new Error('should not install')
+        },
+      })
+      expect(result.ok).toBe(false)
+      expect(result.message).toMatch(/git is not installed/)
+    } finally {
+      await rm(installRoot, { recursive: true, force: true })
+    }
   })
 })
