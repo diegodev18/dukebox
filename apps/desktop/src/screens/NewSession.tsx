@@ -1,6 +1,7 @@
 import {
   matchesBranch,
   resolveEnvironment,
+  type CommitIdentity,
   type EnvironmentSummary,
   type ProjectSummary,
   type RepositorySummary,
@@ -8,6 +9,7 @@ import {
 } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { AVAILABLE_AGENTS, DEFAULT_MODEL } from '../components/AgentIcon.js'
+import { SendIcon } from '../components/icons.js'
 import {
   AgentPicker,
   BASE_IMAGE_VALUE,
@@ -35,6 +37,8 @@ interface Props {
   client: DukeboxClient
   connection: Connection
   projects: ProjectSummary[]
+  /** Who commits are authored as; null means the server's default. */
+  identity: CommitIdentity | null
   onCreated: (session: SessionSummary, project: ProjectSummary | null) => void
   /** Prefer starting environment setup for this project (e.g. from sidebar). */
   preferSetupProjectId?: string | null
@@ -54,6 +58,7 @@ export function NewSession({
   client,
   connection,
   projects,
+  identity,
   onCreated,
   preferSetupProjectId,
 }: Props) {
@@ -266,6 +271,7 @@ export function NewSession({
             baseBranch,
             purpose: 'environment_setup',
             environmentId: environment.id,
+            ...(identity ? { commitIdentity: identity } : {}),
           })
         } catch (error) {
           await client.deleteEnvironment(environment.id).catch(() => {
@@ -286,6 +292,7 @@ export function NewSession({
         baseBranch,
         purpose: 'coding',
         ...(environmentId ? { environmentId } : {}),
+        ...(identity ? { commitIdentity: identity } : {}),
       })
 
       onCreated(session, created)
@@ -415,7 +422,7 @@ export function NewSession({
                 {status.kind === 'starting' ? (
                   <span className="text-[11px] font-medium">…</span>
                 ) : (
-                  <SendIcon />
+                  <SendIcon size={16} />
                 )}
               </button>
             </div>
@@ -473,21 +480,4 @@ function mergeOptions(
     }))
 
   return [...registered, ...rest]
-}
-
-function SendIcon() {
-  return (
-    <svg
-      className="size-4"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M8 12.5V3.5M4.5 7 8 3.5 11.5 7" />
-    </svg>
-  )
 }

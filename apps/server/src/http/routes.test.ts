@@ -412,6 +412,36 @@ describe('POST /api/sessions', () => {
     expect(sessionManager.start).toHaveBeenCalledWith(expect.objectContaining({ model: 'opus' }))
   })
 
+  it('passes the commit identity through when given', async () => {
+    const project = await createProject()
+    vi.mocked(sessionManager.start).mockResolvedValueOnce(await createSession(project.id))
+
+    await post('/api/sessions', {
+      projectId: project.id,
+      agentId: 'claude-code',
+      prompt: 'x',
+      commitIdentity: { name: 'Diego', email: 'diego@example.com' },
+    })
+
+    expect(sessionManager.start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        commitIdentity: { name: 'Diego', email: 'diego@example.com' },
+      }),
+    )
+  })
+
+  it('omits the commit identity entirely when not given', async () => {
+    const project = await createProject()
+    vi.mocked(sessionManager.start).mockResolvedValueOnce(await createSession(project.id))
+
+    await post('/api/sessions', { projectId: project.id, agentId: 'claude-code', prompt: 'x' })
+
+    // Absent, not undefined: the manager falls back to the default identity
+    // only when the client did not configure one.
+    const options = vi.mocked(sessionManager.start).mock.calls[0]?.[0]
+    expect(options && 'commitIdentity' in options).toBe(false)
+  })
+
   it('reports an unknown project as a bad request', async () => {
     vi.mocked(sessionManager.start).mockRejectedValueOnce(new SessionError('no such project'))
 

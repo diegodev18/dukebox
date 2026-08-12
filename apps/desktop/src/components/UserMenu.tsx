@@ -1,5 +1,6 @@
 import { DEFAULT_COMMIT_IDENTITY, type CommitIdentity } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
+import { CheckIcon, ChevronDownIcon, RefreshIcon, SettingsIcon } from './icons.js'
 
 /**
  * Who Dukebox is acting as, at the foot of the sidebar.
@@ -8,9 +9,9 @@ import { useEffect, useRef, useState } from 'react'
  * this is not decoration: it answers "whose work will this look like?" without
  * opening a repository to check.
  *
- * Switching accounts is drawn but inert. The list is a placeholder until the
- * settings panel exists — the shape of the interaction is worth settling now,
- * the storage behind it is not.
+ * The identity is a setting, so the menu's real jobs are showing who that is
+ * and getting to the places that matter — settings and updates. The account
+ * list is a single row until account switching exists.
  */
 
 export const AVAILABLE_USERS: CommitIdentity[] = [DEFAULT_COMMIT_IDENTITY]
@@ -18,9 +19,11 @@ export const AVAILABLE_USERS: CommitIdentity[] = [DEFAULT_COMMIT_IDENTITY]
 export function UserMenu({
   user,
   onCheckForUpdates,
+  onOpenSettings,
 }: {
   user: CommitIdentity
   onCheckForUpdates: () => void
+  onOpenSettings: () => void
 }) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
@@ -79,7 +82,7 @@ export function UserMenu({
           <div className="truncate font-medium">{user.name}</div>
           <div className="truncate text-[11px] text-muted-foreground">{user.email}</div>
         </div>
-        <ChevronIcon />
+        <ChevronDownIcon size={14} className="flex-none opacity-70" />
       </button>
 
       {open && (
@@ -112,7 +115,7 @@ export function UserMenu({
                   {candidate.email}
                 </span>
               </span>
-              {candidate.email === user.email && <CheckIcon />}
+              {candidate.email === user.email && <CheckIcon size={14} className="flex-none" />}
             </button>
           ))}
 
@@ -120,10 +123,14 @@ export function UserMenu({
             <button
               type="button"
               role="menuitem"
-              disabled
-              className="w-full px-3 py-1.5 text-left text-[13px] opacity-40"
+              onClick={() => {
+                setOpen(false)
+                onOpenSettings()
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted"
             >
-              Add account…
+              <SettingsIcon size={14} className="flex-none text-muted-foreground" />
+              Settings…
             </button>
           </div>
 
@@ -137,7 +144,7 @@ export function UserMenu({
               }}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted"
             >
-              <RefreshIcon />
+              <RefreshIcon size={14} className="flex-none text-muted-foreground" />
               Check for updates…
             </button>
           </div>
@@ -160,55 +167,5 @@ function Avatar({ name }: { name: string }) {
     <span className="grid size-6 flex-none place-items-center rounded-full bg-muted text-[10.5px] font-semibold text-muted-foreground">
       {initials}
     </span>
-  )
-}
-
-function ChevronIcon() {
-  return (
-    <svg
-      className="size-3.5 flex-none opacity-70"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M4.5 9.5 8 6l3.5 3.5" />
-    </svg>
-  )
-}
-
-function CheckIcon() {
-  return (
-    <svg
-      className="size-3.5 flex-none"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
-    </svg>
-  )
-}
-
-function RefreshIcon() {
-  return (
-    <svg
-      className="size-3.5 flex-none text-muted-foreground"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9" />
-      <path d="M13.5 1.5v3h-3" />
-    </svg>
   )
 }

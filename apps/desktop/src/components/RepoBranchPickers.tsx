@@ -7,6 +7,7 @@ import {
   agentLabel,
   modelLabel,
 } from './AgentIcon.js'
+import { CheckIcon, ChevronDownIcon, FolderIcon, ServerIcon } from './icons.js'
 
 /**
  * Chip + searchable popover menus for picking a repository, branch, agent, or
@@ -74,7 +75,7 @@ export function RepoPicker({
                 setOpen(false)
                 setQuery('')
               }}
-              icon={<FolderIcon />}
+              icon={<FolderIcon size={14} />}
             >
               <span className="truncate">{option.fullName}</span>
               {!option.isRegistered && (
@@ -245,7 +246,7 @@ export function InstancePicker({
       disabled={disabled || instances.length === 0}
       label={
         <span className="inline-flex items-center gap-1.5">
-          <ServerIcon />
+          <ServerIcon size={14} className="flex-none" />
           <span className="truncate">{selected?.name ?? 'Instance'}</span>
         </span>
       }
@@ -259,7 +260,7 @@ export function InstancePicker({
             // Inert: there is nothing else to switch to yet, and closing the
             // menu is the honest response to picking what is already in use.
             onSelect={() => setOpen(false)}
-            icon={<ServerIcon />}
+            icon={<ServerIcon size={14} className="flex-none" />}
           >
             <span className="min-w-0 flex-1">
               <span className="block truncate">{instance.name}</span>
@@ -418,7 +419,7 @@ function PickerShell({
         className="inline-flex max-w-48 items-center gap-1 rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
       >
         <span className="truncate font-medium text-foreground">{label}</span>
-        <ChevronIcon />
+        <ChevronDownIcon size={14} className="shrink-0 opacity-70" />
       </button>
 
       {open && (
@@ -489,77 +490,9 @@ function PickerRow({
       <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>
       {selected && (
         <span className="shrink-0 text-foreground">
-          <CheckIcon />
+          <CheckIcon size={14} />
         </span>
       )}
     </button>
-  )
-}
-
-function ChevronIcon() {
-  return (
-    <svg
-      className="size-3.5 shrink-0 opacity-70"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M4.5 6.5 8 10l3.5-3.5" />
-    </svg>
-  )
-}
-
-function CheckIcon() {
-  return (
-    <svg
-      className="size-3.5"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
-    </svg>
-  )
-}
-
-function ServerIcon() {
-  return (
-    <svg
-      className="size-3.5 flex-none"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="2.5" y="3" width="11" height="4.5" rx="1" />
-      <rect x="2.5" y="8.5" width="11" height="4.5" rx="1" />
-      <path d="M5 5.25h.01M5 10.75h.01" />
-    </svg>
-  )
-}
-
-function FolderIcon() {
-  return (
-    <svg
-      className="size-3.5"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M2.5 4.5h4l1.2 1.2H13.5v7.3a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1Z" />
-    </svg>
   )
 }

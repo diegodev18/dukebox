@@ -61,6 +61,7 @@ function renderScreen(client: ReturnType<typeof makeClient>, projectOverrides = 
       client={client as never}
       connection={connection as never}
       projects={[{ ...project, ...projectOverrides } as never]}
+      identity={null}
       onCreated={vi.fn()}
     />,
   )

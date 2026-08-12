@@ -45,7 +45,7 @@ export interface UseUpdate {
   dismiss: () => void
 }
 
-export function useUpdate(): UseUpdate {
+export function useUpdate(autoCheck = true): UseUpdate {
   const [state, setState] = useState<UpdateState>({ status: 'checking' })
   const [checked, setChecked] = useState(false)
   const [dismissed, setDismissed] = useState(false)
@@ -75,8 +75,11 @@ export function useUpdate(): UseUpdate {
   }, [])
 
   useEffect(() => {
+    // The launch check is a preference: someone who wants control over when
+    // the app phones home can turn it off without losing the manual check.
+    if (!autoCheck) return
     check()
-  }, [check])
+  }, [check, autoCheck])
 
   const install = useCallback((update: Update) => {
     setState({
