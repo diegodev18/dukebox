@@ -24,10 +24,10 @@ describe('line changes', () => {
     const result = diffLines('a\nb\nc', 'a\nB\nc')
 
     expect(result).toEqual([
-      { kind: 'same', text: 'a' },
-      { kind: 'removed', text: 'b' },
-      { kind: 'added', text: 'B' },
-      { kind: 'same', text: 'c' },
+      { kind: 'same', text: 'a', oldLine: 1, newLine: 1 },
+      { kind: 'removed', text: 'b', oldLine: 2, newLine: null },
+      { kind: 'added', text: 'B', oldLine: null, newLine: 2 },
+      { kind: 'same', text: 'c', oldLine: 3, newLine: 3 },
     ])
   })
 
@@ -35,6 +35,14 @@ describe('line changes', () => {
     // A naive line-by-line comparison marks everything after an insertion as
     // changed. That is the difference between a readable diff and a useless one.
     expect(kinds('a\nb', 'a\nnew\nb')).toEqual(['same', 'added', 'same'])
+  })
+
+  it('numbers an insertion against the new file only', () => {
+    expect(diffLines('a\nb', 'a\nnew\nb')).toEqual([
+      { kind: 'same', text: 'a', oldLine: 1, newLine: 1 },
+      { kind: 'added', text: 'new', oldLine: null, newLine: 2 },
+      { kind: 'same', text: 'b', oldLine: 2, newLine: 3 },
+    ])
   })
 
   it('reports a deletion in the middle', () => {
@@ -45,7 +53,15 @@ describe('line changes', () => {
     // With nothing changed there is no context to anchor, so the whole file
     // becomes one line saying so rather than a copy of itself.
     expect(diffLines('a\nb\nc', 'a\nb\nc')).toEqual([
-      { kind: 'skip', count: 3, hidden: ['a', 'b', 'c'] },
+      {
+        kind: 'skip',
+        count: 3,
+        hidden: [
+          { kind: 'same', text: 'a', oldLine: 1, newLine: 1 },
+          { kind: 'same', text: 'b', oldLine: 2, newLine: 2 },
+          { kind: 'same', text: 'c', oldLine: 3, newLine: 3 },
+        ],
+      },
     ])
   })
 })
@@ -103,8 +119,9 @@ describe('collapsing context', () => {
 
     expect(skip?.kind).toBe('skip')
     if (skip?.kind !== 'skip') return
-    expect(skip.hidden).toContain('line 0')
+    expect(skip.hidden.map((line) => line.text)).toContain('line 0')
     expect(skip.count).toBe(skip.hidden.length)
+    expect(skip.hidden[0]).toMatchObject({ kind: 'same', oldLine: 1, newLine: 1 })
   })
 })
 
@@ -117,8 +134,8 @@ describe('large files', () => {
     const result = diffLines(before, after)
 
     expect(result).toHaveLength(3200)
-    expect(result[0]).toEqual({ kind: 'removed', text: 'a 0' })
-    expect(result.at(-1)).toEqual({ kind: 'added', text: 'b 1599' })
+    expect(result[0]).toEqual({ kind: 'removed', text: 'a 0', oldLine: 1, newLine: null })
+    expect(result.at(-1)).toEqual({ kind: 'added', text: 'b 1599', oldLine: null, newLine: 1600 })
     expect(isSimplifiedDiff(before, after)).toBe(true)
   })
 
@@ -138,5 +155,15 @@ describe('changeCounts', () => {
 
   it('counts only the lines that changed in an edit', () => {
     expect(changeCounts('a\nb\nc', 'a\nB\nc')).toEqual({ added: 1, removed: 1 })
+  })
+})
+
+describe('skipLabel', () => {
+  it('names a range so a collapsed hunk can be placed without opening it', () => {
+    expect(skipLabel(19, { start: 1, end: 19 })).toBe('⋯ 19 unchanged lines · 1–19')
+  })
+
+  it('uses a single number when the hidden run is one line', () => {
+    expect(skipLabel(1, { start: 5, end: 5 })).toBe('⋯ 1 unchanged line · 5')
   })
 })
