@@ -32,12 +32,31 @@ newest one for your machine from the
 | Linux    | `dukebox_0.1.0_amd64.deb` (or the `.AppImage`)                       |
 
 The installers are not signed by Apple or Microsoft yet, so the OS will warn
-the first time: on macOS, right-click the app → Open (or
-`xattr -cr /Applications/Dukebox.app`); on Windows, "More info → Run anyway".
-The app bundle is ad-hoc signed, so once you accept it, it keeps opening —
-the warning is about the developer's identity, not the app's integrity. First
-run shows the pairing screen — paste the link a server installer prints
+once per installation. The warning is about the developer's identity, not the
+app's integrity (the macOS bundle is ad-hoc signed; verify with
+`codesign --verify --deep --strict /Applications/Dukebox.app`).
+
+**macOS** — the first launch shows _"Apple could not verify that Dukebox does
+not contain malware"_ (or _"is from an unidentified developer"_). It appears
+because the download carries a quarantine tag, which any browser sets. Either
+bypass works, once:
+
+```bash
+# Right-click the app in Applications → Open → Open, or:
+xattr -dr com.apple.quarantine /Applications/Dukebox.app
+```
+
+**Windows** — "More info → Run anyway".
+
+First run shows the pairing screen — paste the link a server installer prints
 (below) and the app finds its server.
+
+To drop the macOS warning for everyone, sign the release with an Apple
+Developer ID and notarize it: generate a Developer ID Application certificate
+and set the `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
+`APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID`
+secrets. The release workflow then signs and notarizes instead of ad-hoc
+signing.
 
 ### The server
 
