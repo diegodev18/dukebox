@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildPairingUrl, parsePairingUrl, type PairingPayload } from './pairing.js'
+import {
+  buildPairingUrl,
+  capabilitiesFor,
+  parsePairingUrl,
+  type PairingPayload,
+} from './pairing.js'
 
 const validPayload: PairingPayload = {
   host: 'dukebox-vps',
@@ -50,5 +55,20 @@ describe('parsePairingUrl', () => {
     ['ambiguous characters excluded from the alphabet', 'AIBO-CLD4'],
   ])('rejects a code with %s', (_label, code) => {
     expect(parsePairingUrl(`dukebox://pair?host=h&port=7777&code=${code}`)).toBeNull()
+  })
+})
+
+describe('capabilitiesFor', () => {
+  it('gives the owner every capability and a member none of them', () => {
+    expect(capabilitiesFor('owner')).toEqual({
+      manageDevices: true,
+      manageAgents: true,
+      deleteProjects: true,
+    })
+    expect(capabilitiesFor('member')).toEqual({
+      manageDevices: false,
+      manageAgents: false,
+      deleteProjects: false,
+    })
   })
 })

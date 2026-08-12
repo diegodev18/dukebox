@@ -115,6 +115,8 @@ export interface StartSessionOptions {
    * Absent means the server's default identity.
    */
   commitIdentity?: CommitIdentity
+  /** The paired device that asked to start this session. */
+  createdByDeviceId?: string
 }
 
 /** What a running session holds while it is alive. */
@@ -256,6 +258,7 @@ export class SessionManager {
         environmentId,
         title: purpose === 'environment_setup' ? 'Configure environment' : prompt.slice(0, 80),
         permissionMode: storedPermissionMode(options.agentId, options.permissionMode),
+        createdByDeviceId: options.createdByDeviceId,
       })
       .returning()
 

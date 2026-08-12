@@ -74,6 +74,28 @@ export function parsePairingUrl(raw: string): PairingPayload | null {
 }
 
 // ---------------------------------------------------------------------------
+// Roles
+// ---------------------------------------------------------------------------
+
+/** `owner` controls the server; `member` can run sessions. */
+export const deviceRole = z.enum(['owner', 'member'])
+
+export type DeviceRole = z.infer<typeof deviceRole>
+
+export const deviceCapabilities = z.object({
+  manageDevices: z.boolean(),
+  manageAgents: z.boolean(),
+  deleteProjects: z.boolean(),
+})
+
+export type DeviceCapabilities = z.infer<typeof deviceCapabilities>
+
+export function capabilitiesFor(role: DeviceRole): DeviceCapabilities {
+  const owner = role === 'owner'
+  return { manageDevices: owner, manageAgents: owner, deleteProjects: owner }
+}
+
+// ---------------------------------------------------------------------------
 // Redemption
 // ---------------------------------------------------------------------------
 
@@ -91,17 +113,58 @@ export const pairRedeemResponse = z.object({
   /** Bearer token for all later requests and the WebSocket handshake. */
   deviceToken: z.string().min(1),
   serverName: z.string(),
+  /** Copied from the pairing code. The URL itself never carries a role. */
+  role: deviceRole,
 })
 
 export type PairRedeemResponse = z.infer<typeof pairRedeemResponse>
+
+export const meResponse = z.object({
+  deviceId: z.string().uuid(),
+  deviceName: z.string(),
+  role: deviceRole,
+  capabilities: deviceCapabilities,
+})
+
+export type MeResponse = z.infer<typeof meResponse>
 
 /** A paired device, as listed in the app and by `duke device ls`. */
 export const deviceSummary = z.object({
   id: z.string().uuid(),
   name: z.string(),
   platform: z.enum(['macos', 'windows', 'linux']),
+  role: deviceRole,
   createdAt: z.number().int().positive(),
   lastSeenAt: z.number().int().positive().nullable(),
 })
 
 export type DeviceSummary = z.infer<typeof deviceSummary>
+
+export const listDevicesResponse = z.object({
+  devices: z.array(deviceSummary),
+})
+
+export type ListDevicesResponse = z.infer<typeof listDevicesResponse>
+
+/** An unused invite, listed without the code — that is shown once at issue. */
+export const pairingInvite = z.object({
+  id: z.string().uuid(),
+  expiresAt: z.number().int().positive(),
+  createdAt: z.number().int().positive(),
+})
+
+export type PairingInvite = z.infer<typeof pairingInvite>
+
+export const createInviteResponse = z.object({
+  id: z.string().uuid(),
+  url: z.string(),
+  expiresAt: z.number().int().positive(),
+})
+
+export type CreateInviteResponse = z.infer<typeof createInviteResponse>
+
+export const listInvitesResponse = z.object({
+  invites: z.array(pairingInvite),
+})
+
+export type ListInvitesResponse = z.infer<typeof listInvitesResponse>

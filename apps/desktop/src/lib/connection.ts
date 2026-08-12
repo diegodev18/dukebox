@@ -76,11 +76,11 @@ export async function setActiveConnection(deviceId: string): Promise<void> {
 }
 
 /**
- * Forget a pairing.
+ * Forget a pairing locally.
  *
- * Local only: the device stays registered on the server until it is revoked
- * there, which is deliberate — a laptop that was lost should be cut off from
- * the server, not just from its own copy of the token.
+ * The Settings UI also revokes the device on the server when this device is a
+ * member. The owner slot cannot be freed from the app — that is
+ * `duke pair replace-owner` on the VPS.
  */
 export async function removeConnection(deviceId: string): Promise<void> {
   const saved = await open()

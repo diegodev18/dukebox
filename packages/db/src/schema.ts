@@ -50,6 +50,14 @@ export const devices = pgTable(
      */
     tokenHash: text('token_hash').notNull(),
 
+    /**
+     * `owner` or `member`.
+     *
+     * Exactly one active owner per install: that device controls pairing,
+     * credentials, and the rest of the server. Everyone else is a member.
+     */
+    role: text('role').notNull().default('member'),
+
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     createdAt,
@@ -57,6 +65,12 @@ export const devices = pgTable(
   (table) => [
     // Every authenticated request looks a device up by token hash.
     uniqueIndex('devices_token_hash_idx').on(table.tokenHash),
+
+    // One live owner. Revoking it (from the VPS) frees the slot for the next
+    // pairing; a second owner insert must fail rather than silently coexist.
+    uniqueIndex('devices_one_active_owner_idx')
+      .on(table.role)
+      .where(sql`${table.role} = 'owner' and ${table.revokedAt} is null`),
   ],
 )
 
@@ -74,6 +88,12 @@ export const pairingCodes = pgTable(
 
     /** SHA-256 of the code. Same reasoning as device tokens. */
     codeHash: text('code_hash').notNull(),
+
+    /**
+     * Copied onto the device at redemption. Stored on the code, not in the
+     * pairing URL, so a forwarded link cannot be upgraded to owner.
+     */
+    role: text('role').notNull().default('member'),
 
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     redeemedAt: timestamp('redeemed_at', { withTimezone: true }),
@@ -262,6 +282,16 @@ export const sessions = pgTable(
       onDelete: 'set null',
     }),
 
+    /**
+     * The device that started this session, if it is still on record.
+     *
+     * Null for sessions that predate roles, and after that device is deleted.
+     * Attribution only — it does not gate who can open the session.
+     */
+    createdByDeviceId: uuid('created_by_device_id').references(() => devices.id, {
+      onDelete: 'set null',
+    }),
+
     /** Null until the container is created; cleared when it is removed. */
     containerId: text('container_id'),
 
@@ -315,6 +345,7 @@ export const sessions = pgTable(
     // The sidebar lists sessions newest first, filtered by status.
     index('sessions_status_updated_at_idx').on(table.status, table.updatedAt),
     index('sessions_environment_id_idx').on(table.environmentId),
+    index('sessions_created_by_device_id_idx').on(table.createdByDeviceId),
   ],
 )
 

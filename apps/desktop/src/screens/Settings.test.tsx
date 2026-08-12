@@ -52,6 +52,30 @@ function clientMock() {
       models: [{ id: 'claude-sonnet-4-5', label: 'Sonnet 4.5' }],
     }),
     deleteOpencodeProvider: vi.fn().mockResolvedValue(undefined),
+    whoami: vi.fn().mockResolvedValue({
+      deviceId: 'device-1',
+      deviceName: 'Mac',
+      role: 'owner',
+      capabilities: { manageDevices: true, manageAgents: true, deleteProjects: true },
+    }),
+    listDevices: vi.fn().mockResolvedValue([
+      {
+        id: 'device-1',
+        name: 'Dukebox on Mac',
+        platform: 'macos',
+        role: 'owner',
+        createdAt: Date.now(),
+        lastSeenAt: Date.now(),
+      },
+    ]),
+    listInvites: vi.fn().mockResolvedValue([]),
+    createInvite: vi.fn().mockResolvedValue({
+      id: 'invite-1',
+      url: 'dukebox://pair?host=h&port=7777&code=A1B2-C3D4',
+      expiresAt: Date.now() + 900_000,
+    }),
+    revokeInvite: vi.fn().mockResolvedValue(undefined),
+    revokeDevice: vi.fn().mockResolvedValue(undefined),
   }
 }
 
@@ -76,6 +100,7 @@ function SettingsHarness({
   client?: ReturnType<typeof clientMock>
   update?: UseUpdate
   category?: SettingsCategory
+  role?: 'owner' | 'member'
   onSaveSettings?: ReturnType<typeof vi.fn>
   onSwitchServer?: ReturnType<typeof vi.fn>
   onClose?: ReturnType<typeof vi.fn>
@@ -87,6 +112,7 @@ function SettingsHarness({
     connection: server,
     client: clientMock(),
     update: updateMock(),
+    role: 'owner' as const,
     onSaveSettings: vi.fn(),
     onSwitchServer: vi.fn(),
     onClose: vi.fn(),
@@ -96,13 +122,19 @@ function SettingsHarness({
 
   return (
     <div className="flex h-full">
-      <SettingsNav category={category} onCategoryChange={setCategory} onBack={props.onClose} />
+      <SettingsNav
+        category={category}
+        role={props.role}
+        onCategoryChange={setCategory}
+        onBack={props.onClose}
+      />
       <SettingsScreen
         client={props.client as never}
         connection={props.connection as never}
         settings={props.settings}
         update={props.update}
         category={category}
+        role={props.role}
         onSaveSettings={props.onSaveSettings}
         onSwitchServer={props.onSwitchServer}
         onClose={props.onClose}
@@ -119,6 +151,7 @@ function renderSettings(
     client?: ReturnType<typeof clientMock>
     update?: UseUpdate
     category?: SettingsCategory
+    role?: 'owner' | 'member'
   } = {},
 ) {
   const props = {
@@ -148,7 +181,15 @@ describe('Settings', () => {
     expect(screen.getByRole('heading', { name: 'Account' })).toBeInTheDocument()
     const nav = screen.getByRole('navigation', { name: 'Settings' })
     const buttons = [...nav.querySelectorAll('button')].map((button) => button.textContent?.trim())
-    expect(buttons).toEqual(['Settings', 'Account', 'Agents', 'Servers', 'Appearance', 'Updates'])
+    expect(buttons).toEqual([
+      'Settings',
+      'Account',
+      'Agents',
+      'Devices',
+      'Servers',
+      'Appearance',
+      'Updates',
+    ])
   })
 
   it('applies and persists a theme change', async () => {
@@ -292,5 +333,25 @@ describe('Settings', () => {
     const { onClose } = renderSettings()
     await userEvent.click(screen.getByRole('button', { name: 'Back' }))
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('hides owner categories from a member', () => {
+    renderSettings({ role: 'member' })
+
+    const nav = screen.getByRole('navigation', { name: 'Settings' })
+    const buttons = [...nav.querySelectorAll('button')].map((button) => button.textContent?.trim())
+    expect(buttons).toEqual(['Settings', 'Account', 'Servers', 'Appearance', 'Updates'])
+  })
+
+  it('lists devices and issues an invite', async () => {
+    const client = clientMock()
+    renderSettings({ client, category: 'devices' })
+
+    await waitFor(() => expect(screen.getByText('Dukebox on Mac')).toBeInTheDocument())
+    expect(screen.getByText('owner')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Invite a device…' }))
+    await waitFor(() => expect(client.createInvite).toHaveBeenCalled())
+    expect(screen.getByText(/dukebox:\/\/pair/)).toBeInTheDocument()
   })
 })

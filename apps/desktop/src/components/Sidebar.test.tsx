@@ -62,6 +62,7 @@ function renderSidebar({
       sessions={[session]}
       selectedId={session.id}
       identity={DEFAULT_COMMIT_IDENTITY}
+      role="owner"
       onOpenSettings={vi.fn()}
       onSelect={vi.fn()}
       onNewSession={onNewSession}

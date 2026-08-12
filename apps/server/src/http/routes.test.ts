@@ -55,6 +55,7 @@ const secretStore = new SecretStore(db, randomBytes(32))
 const app = createApp({
   db,
   serverName: 'dukebox-test',
+  pairingEndpoint: { host: 'localhost', port: 7777 },
   features: { github, bus, sessions: sessionManager, secrets: secretStore },
 })
 
@@ -352,6 +353,23 @@ describe('DELETE /api/projects/:id', () => {
       method: 'DELETE',
     })
     expect(response.status).toBe(404)
+  })
+
+  it('refuses a member', async () => {
+    const project = await createProject()
+    const issued = await issuePairingCode(db, { host: 'localhost', port: 7777 })
+    const member = await redeemPairingCode(
+      db,
+      { code: issued.code, deviceName: 'Member', platform: 'linux' },
+      'dukebox-test',
+    )
+
+    const response = await app.request(`/api/projects/${project.id}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${member.deviceToken}` },
+    })
+    expect(response.status).toBe(403)
+    expect(await db.select().from(projects)).toHaveLength(1)
   })
 })
 
@@ -788,6 +806,30 @@ describe('agent credentials', () => {
   it('requires a device token like every other route', async () => {
     expect((await app.request('/api/agent-credentials')).status).toBe(401)
   })
+
+  it('lets a member see whether credentials are set, but not change them', async () => {
+    const issued = await issuePairingCode(db, { host: 'localhost', port: 7777 })
+    const member = await redeemPairingCode(
+      db,
+      { code: issued.code, deviceName: 'Member', platform: 'linux' },
+      'dukebox-test',
+    )
+
+    const get = await app.request('/api/agent-credentials', {
+      headers: { authorization: `Bearer ${member.deviceToken}` },
+    })
+    expect(get.status).toBe(200)
+
+    const put = await app.request('/api/agent-credentials', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${member.deviceToken}`,
+      },
+      body: JSON.stringify({ token: 'sk-ant-member' }),
+    })
+    expect(put.status).toBe(403)
+  })
 })
 
 describe('OpenCode providers', () => {
@@ -893,6 +935,30 @@ describe('OpenCode providers', () => {
 
   it('requires a device token like every other route', async () => {
     expect((await app.request('/api/opencode/providers')).status).toBe(401)
+  })
+
+  it('lets a member list providers, but not change them', async () => {
+    const issued = await issuePairingCode(db, { host: 'localhost', port: 7777 })
+    const member = await redeemPairingCode(
+      db,
+      { code: issued.code, deviceName: 'Member', platform: 'linux' },
+      'dukebox-test',
+    )
+
+    const list = await app.request('/api/opencode/providers', {
+      headers: { authorization: `Bearer ${member.deviceToken}` },
+    })
+    expect(list.status).toBe(200)
+
+    const put = await app.request('/api/opencode/providers', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${member.deviceToken}`,
+      },
+      body: JSON.stringify({ kind: 'groq', apiKey: 'gsk-member' }),
+    })
+    expect(put.status).toBe(403)
   })
 })
 
@@ -1039,7 +1105,11 @@ describe('without features configured', () => {
     // A server built without a GitHub client or session manager still serves
     // pairing and device management, which is what the install flow needs
     // before anything else works.
-    const minimal = createApp({ db, serverName: 'minimal' })
+    const minimal = createApp({
+      db,
+      serverName: 'minimal',
+      pairingEndpoint: { host: 'localhost', port: 7777 },
+    })
 
     const response = await minimal.request('/api/projects', {
       headers: { authorization: `Bearer ${token}` },
