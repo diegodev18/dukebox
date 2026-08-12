@@ -86,7 +86,7 @@ function SkipHunk({
         onClick={onToggle}
         aria-expanded={open}
         aria-label={label}
-        className="sticky left-0 block w-[100cqi] bg-muted/60 px-1.5 py-0.5 text-left text-muted-foreground hover:bg-muted hover:text-foreground"
+        className="block w-full bg-muted/60 px-3 py-0.5 text-left text-muted-foreground hover:bg-muted hover:text-foreground"
       >
         {label}
       </button>
@@ -125,14 +125,14 @@ function DiffRow({
     <div className="flex min-w-full">
       <span
         className={cn(
-          'sticky left-0 z-1 flex flex-none select-none border-l-2 px-1.5 tabular-nums text-muted-foreground',
+          'flex flex-none select-none items-center gap-2 border-l-2 py-0 pl-2 pr-3 tabular-nums text-muted-foreground',
           gutterTint,
         )}
       >
         <span className="inline-block text-right opacity-60" style={{ width: `${digits}ch` }}>
           {oldLine ?? ''}
         </span>
-        <span className="inline-block pl-2 text-right opacity-60" style={{ width: `${digits}ch` }}>
+        <span className="inline-block text-right opacity-60" style={{ width: `${digits}ch` }}>
           {newLine ?? ''}
         </span>
       </span>
