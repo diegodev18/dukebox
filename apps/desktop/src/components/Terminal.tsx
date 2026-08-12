@@ -17,7 +17,7 @@ interface TerminalProps {
   active: boolean
   onInput: (data: string) => void
   onResize: (cols: number, rows: number) => void
-  onDrain: () => void
+  onDrain: (count: number) => void
 }
 
 /** Dragging a window edge fires continuously; each resize is a round trip. */
@@ -92,7 +92,9 @@ export function Terminal({ tab, active, onInput, onResize, onDrain }: TerminalPr
         if (!terminal || !fit.current) return
 
         fit.current.fit()
-        handlers.current.onResize(terminal.cols, terminal.rows)
+        if (terminal.cols >= 2 && terminal.rows >= 1) {
+          handlers.current.onResize(terminal.cols, terminal.rows)
+        }
       }, RESIZE_DEBOUNCE_MS)
     })
 
@@ -109,11 +111,12 @@ export function Terminal({ tab, active, onInput, onResize, onDrain }: TerminalPr
     const terminal = xterm.current
     if (!terminal || tab.pending.length === 0) return
 
+    const count = tab.pending.length
     for (const chunk of tab.pending) {
       terminal.write(decode(chunk))
     }
 
-    onDrain()
+    onDrain(count)
   }, [tab.pending, onDrain])
 
   // Refit on becoming visible: a terminal sized while hidden measures a
@@ -122,7 +125,9 @@ export function Terminal({ tab, active, onInput, onResize, onDrain }: TerminalPr
     if (!active || !fit.current || !xterm.current) return
 
     fit.current.fit()
-    handlers.current.onResize(xterm.current.cols, xterm.current.rows)
+    if (xterm.current.cols >= 2 && xterm.current.rows >= 1) {
+      handlers.current.onResize(xterm.current.cols, xterm.current.rows)
+    }
   }, [active])
 
   return (

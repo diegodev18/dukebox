@@ -181,6 +181,15 @@ describe('DukeboxClient', () => {
     expect(init.method).toBe('POST')
   })
 
+  it('deletes a project', async () => {
+    const fetchMock = respondWith({ deleted: true })
+    await client.deleteProject('00000000-0000-4000-8000-000000000001')
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toContain('/api/projects/00000000-0000-4000-8000-000000000001')
+    expect(init.method).toBe('DELETE')
+  })
+
   it('lists OpenCode providers', async () => {
     const fetchMock = respondWith({
       providers: [{ id: 'anthropic', kind: 'anthropic', name: 'Anthropic', models: [] }],

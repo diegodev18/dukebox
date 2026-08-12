@@ -233,7 +233,9 @@ describe('EnvironmentsPanel', () => {
     const field = await screen.findByDisplayValue('refact/*')
     field.focus()
     fireEvent.change(field, { target: { value: 'feat/*' } })
-    await userEvent.tab()
+    // Tab can miss this field when the branch-list error has extra focusable
+    // chrome; blur is the event the row actually commits on.
+    fireEvent.blur(field)
 
     await waitFor(() =>
       expect(client.updateEnvironment).toHaveBeenCalledWith('env-1', { branchPattern: 'feat/*' }),

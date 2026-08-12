@@ -150,6 +150,17 @@ export class DukeboxClient {
     })
   }
 
+  /**
+   * Drop a project from Dukebox.
+   *
+   * Sessions cascade with it. Nothing on GitHub is touched.
+   */
+  async deleteProject(projectId: string): Promise<void> {
+    await this.request(`/api/projects/${encodeURIComponent(projectId)}`, {
+      method: 'DELETE',
+    })
+  }
+
   async listBranches(projectId: string): Promise<string[]> {
     const body = await this.request<{ branches: string[] }>(
       `/api/projects/${encodeURIComponent(projectId)}/branches`,

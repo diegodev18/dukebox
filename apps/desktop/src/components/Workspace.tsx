@@ -53,7 +53,7 @@ interface TerminalProps {
   onTerminalInput: (terminalId: string, data: string) => void
   onTerminalResize: (terminalId: string, cols: number, rows: number) => void
   onCloseTerminal: (terminalId: string) => void
-  onDrainTerminal: (terminalId: string) => void
+  onDrainTerminal: (terminalId: string, count: number) => void
   /** Set when opening a terminal was rejected, so the waiting state can clear. */
   error?: string | null
 }
@@ -386,7 +386,11 @@ function Panels({ session, files }: { session: SessionSummary | null; files: Fil
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
+    // One scroller for the list: a per-file `overflow-x` hid the horizontal
+    // bar under the last hunk, so a tall diff had to be scrolled to the
+    // bottom before a long line could be read. The file header sticks to the
+    // panel so the name does not pan away; line numbers travel with the code.
+    <div className="min-h-0 flex-1 overflow-auto [container-type:inline-size]">
       {files.map((file) => {
         const expanded = open === file.path
 
@@ -397,7 +401,7 @@ function Panels({ session, files }: { session: SessionSummary | null; files: Fil
               onClick={() => setOpen(expanded ? null : file.path)}
               aria-expanded={expanded}
               aria-label={basename(file.path)}
-              className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-[12.5px] hover:bg-muted"
+              className="sticky top-0 left-0 z-10 flex w-[100cqi] min-w-0 items-center gap-2 bg-surface px-3 py-2 text-left text-[12.5px] hover:bg-muted"
             >
               {expanded ? (
                 <ChevronDownIcon size={13} className="flex-none text-muted-foreground" />
@@ -414,7 +418,7 @@ function Panels({ session, files }: { session: SessionSummary | null; files: Fil
             </button>
 
             {expanded && (
-              <div className="overflow-x-auto border-t border-border py-1.5">
+              <div className="border-t border-border py-1.5">
                 <Diff file={file} />
               </div>
             )}
@@ -559,7 +563,7 @@ function TerminalPanel({
           active={tab.terminalId === active?.terminalId}
           onInput={(data) => onTerminalInput(tab.terminalId, data)}
           onResize={(cols, rows) => onTerminalResize(tab.terminalId, cols, rows)}
-          onDrain={() => onDrainTerminal(tab.terminalId)}
+          onDrain={(count) => onDrainTerminal(tab.terminalId, count)}
         />
       ))}
     </div>
