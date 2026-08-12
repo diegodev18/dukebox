@@ -103,6 +103,18 @@ export function EnvironmentReview({
     }
   }, [client, projectId, sessionId, environmentId])
 
+  // Saved is a moment, not a lock: after a beat, or as soon as they edit,
+  // the button is a save again.
+  useEffect(() => {
+    if (status.kind !== 'saved') return
+    const timer = setTimeout(() => setStatus({ kind: 'ready' }), 2500)
+    return () => clearTimeout(timer)
+  }, [status.kind])
+
+  const markDirty = () => {
+    setStatus((current) => (current.kind === 'saved' ? { kind: 'ready' } : current))
+  }
+
   const save = async () => {
     // Guarded again rather than trusted from the effect: without an id there
     // is no route to write to, and the button is unreachable in that state.
@@ -203,7 +215,10 @@ export function EnvironmentReview({
         Setup commands
         <textarea
           value={setupText}
-          onChange={(event) => setSetupText(event.target.value)}
+          onChange={(event) => {
+            markDirty()
+            setSetupText(event.target.value)
+          }}
           rows={4}
           disabled={status.kind === 'saving'}
           className="mt-1 block w-full resize-y rounded-md border border-border bg-background px-2.5 py-2 font-mono text-[12px] outline-none"
@@ -217,12 +232,13 @@ export function EnvironmentReview({
           <button
             type="button"
             className="text-[12px] text-muted-foreground underline-offset-2 hover:underline"
-            onClick={() =>
+            onClick={() => {
+              markDirty()
               setEnvRows((rows) => [
                 ...rows,
                 { name: '', secret: true, description: '', value: '', configured: false },
               ])
-            }
+            }}
           >
             Add variable
           </button>
@@ -240,13 +256,14 @@ export function EnvironmentReview({
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     value={row.name}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      markDirty()
                       setEnvRows((rows) =>
                         rows.map((candidate, i) =>
                           i === index ? { ...candidate, name: event.target.value } : candidate,
                         ),
                       )
-                    }
+                    }}
                     placeholder="NAME"
                     className="min-w-[10rem] flex-1 rounded border border-border bg-background px-2 py-1 font-mono text-[12px]"
                   />
@@ -254,7 +271,8 @@ export function EnvironmentReview({
                     <input
                       type="checkbox"
                       checked={row.secret}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        markDirty()
                         setEnvRows((rows) =>
                           rows.map((candidate, i) =>
                             i === index
@@ -262,7 +280,7 @@ export function EnvironmentReview({
                               : candidate,
                           ),
                         )
-                      }
+                      }}
                     />
                     Secret
                   </label>
@@ -273,13 +291,14 @@ export function EnvironmentReview({
                 <input
                   type={row.secret ? 'password' : 'text'}
                   value={row.value}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    markDirty()
                     setEnvRows((rows) =>
                       rows.map((candidate, i) =>
                         i === index ? { ...candidate, value: event.target.value } : candidate,
                       ),
                     )
-                  }
+                  }}
                   placeholder={
                     row.secret && row.configured
                       ? 'Already set — leave blank to keep'
@@ -299,7 +318,10 @@ export function EnvironmentReview({
         Agent instructions
         <textarea
           value={instructions}
-          onChange={(event) => setInstructions(event.target.value)}
+          onChange={(event) => {
+            markDirty()
+            setInstructions(event.target.value)
+          }}
           rows={2}
           disabled={status.kind === 'saving'}
           className="mt-1 block w-full resize-y rounded-md border border-border bg-background px-2.5 py-2 text-[12px] outline-none"

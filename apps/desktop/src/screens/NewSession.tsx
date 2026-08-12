@@ -413,7 +413,14 @@ export function NewSession({
               <code>re:</code> for a regular expression.
             </p>
 
-            <div className="mt-3 flex justify-end">
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setForceSetup(false)}
+                className="text-[12px] text-muted-foreground underline-offset-2 hover:underline"
+              >
+                Back
+              </button>
               <button
                 type="button"
                 onClick={() => void submit()}
@@ -444,13 +451,17 @@ export function NewSession({
             />
 
             <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
-              <button
-                type="button"
-                onClick={() => setForceSetup(true)}
-                className="text-[12px] text-muted-foreground underline-offset-2 hover:underline"
-              >
-                Reconfigure environment
-              </button>
+              {!usingBaseImage ? (
+                <button
+                  type="button"
+                  onClick={() => setForceSetup(true)}
+                  className="text-[12px] text-muted-foreground underline-offset-2 hover:underline"
+                >
+                  Reconfigure environment
+                </button>
+              ) : (
+                <span />
+              )}
               <button
                 type="button"
                 onClick={() => void submit()}

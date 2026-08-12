@@ -59,7 +59,7 @@ export function RepoPicker({
       />
 
       <p className="px-3 pt-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-        Recents
+        Repositories
       </p>
 
       <div className="max-h-64 overflow-y-auto pb-1">

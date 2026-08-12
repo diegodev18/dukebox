@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { diffLines } from '@/components/Diff'
+import { changeCounts, diffLines, isSimplifiedDiff, skipLabel } from '@/components/Diff'
 
 const kinds = (before: string, after: string) => diffLines(before, after).map((line) => line.kind)
-const texts = (before: string, after: string) => diffLines(before, after).map((line) => line.text)
+const texts = (before: string, after: string) =>
+  diffLines(before, after).map((line) => (line.kind === 'skip' ? skipLabel(line.count) : line.text))
 
 describe('whole-file changes', () => {
   it('marks every line added when the file is new', () => {
@@ -43,14 +44,16 @@ describe('line changes', () => {
   it('collapses a file with no changes to a single summary', () => {
     // With nothing changed there is no context to anchor, so the whole file
     // becomes one line saying so rather than a copy of itself.
-    expect(diffLines('a\nb\nc', 'a\nb\nc')).toEqual([{ kind: 'same', text: '⋯ 3 unchanged lines' }])
+    expect(diffLines('a\nb\nc', 'a\nb\nc')).toEqual([
+      { kind: 'skip', count: 3, hidden: ['a', 'b', 'c'] },
+    ])
   })
 })
 
 describe('collapsing context', () => {
   it('keeps a short file whole', () => {
     const result = diffLines('a\nb\nc', 'a\nB\nc')
-    expect(result.some((line) => line.text.startsWith('⋯'))).toBe(false)
+    expect(result.some((line) => line.kind === 'skip')).toBe(false)
   })
 
   it('hides long runs of unchanged lines', () => {
@@ -92,6 +95,17 @@ describe('collapsing context', () => {
 
     expect(summary).toBe('⋯ 1 unchanged line')
   })
+
+  it('keeps the hidden lines so a skip can be expanded', () => {
+    const before = Array.from({ length: 20 }, (_, i) => `line ${i}`).join('\n')
+    const after = before.replace('line 10', 'CHANGED')
+    const skip = diffLines(before, after).find((line) => line.kind === 'skip')
+
+    expect(skip?.kind).toBe('skip')
+    if (skip?.kind !== 'skip') return
+    expect(skip.hidden).toContain('line 0')
+    expect(skip.count).toBe(skip.hidden.length)
+  })
 })
 
 describe('large files', () => {
@@ -105,5 +119,24 @@ describe('large files', () => {
     expect(result).toHaveLength(3200)
     expect(result[0]).toEqual({ kind: 'removed', text: 'a 0' })
     expect(result.at(-1)).toEqual({ kind: 'added', text: 'b 1599' })
+    expect(isSimplifiedDiff(before, after)).toBe(true)
+  })
+
+  it('does not flag a small file as simplified', () => {
+    expect(isSimplifiedDiff('a\nb', 'a\nB')).toBe(false)
+  })
+})
+
+describe('changeCounts', () => {
+  it('counts every line of a new file as added', () => {
+    expect(changeCounts(null, 'one\ntwo')).toEqual({ added: 2, removed: 0 })
+  })
+
+  it('counts every line of a deleted file as removed', () => {
+    expect(changeCounts('one\ntwo', null)).toEqual({ added: 0, removed: 2 })
+  })
+
+  it('counts only the lines that changed in an edit', () => {
+    expect(changeCounts('a\nb\nc', 'a\nB\nc')).toEqual({ added: 1, removed: 1 })
   })
 })

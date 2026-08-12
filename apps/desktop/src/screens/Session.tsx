@@ -63,6 +63,7 @@ export function Session({
   // Only to name the environment a review session belongs to. The summary
   // carries the id; the name lives on the environment row.
   const [environmentNames, setEnvironmentNames] = useState<Record<string, string>>({})
+  const [archiveError, setArchiveError] = useState<string | null>(null)
 
   const refreshProjects = async () => {
     try {
@@ -213,13 +214,18 @@ export function Session({
           setSetupProjectId(null)
           setManagingProjectId(projectId)
         }}
+        archiveError={archiveError}
         onArchive={(sessionId) => {
           void (async () => {
             try {
               await client.archiveSession(sessionId)
-            } catch {
+              setArchiveError(null)
+            } catch (error) {
               // Leave the row where it is: a failed archive that vanishes
               // from the list looks like the session was deleted.
+              setArchiveError(
+                error instanceof Error ? error.message : 'Could not archive the session.',
+              )
               return
             }
 
@@ -237,7 +243,9 @@ export function Session({
       />
 
       {loading ? (
-        <div />
+        <p className="grid place-items-center text-[13px] text-muted-foreground">
+          Loading sessions…
+        </p>
       ) : settingsOpen ? (
         <SettingsScreen
           client={client}
@@ -348,6 +356,7 @@ function SessionColumn({
 
         <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
           <StatusDot status={session.status} />
+          <span>{statusLabel(session.status)}</span>
           {hasAgentIcon(session.agentId) ? (
             <AgentIcon agentId={session.agentId} />
           ) : (
@@ -374,6 +383,7 @@ function SessionColumn({
         purpose={session.purpose}
         running={live.transcript.running}
         status={session.status}
+        streamStatus={live.status}
       />
 
       <Composer
@@ -381,12 +391,24 @@ function SessionColumn({
         onInterrupt={live.interrupt}
         running={live.transcript.running}
         disabled={live.status === 'offline'}
+        error={live.error}
         {...(session.purpose === 'environment_setup'
           ? { placeholder: 'Add context for the setup agent…' }
           : {})}
       />
     </div>
   )
+}
+
+export function statusLabel(status: SessionSummary['status']): string {
+  return {
+    provisioning: 'Starting',
+    running: 'Running',
+    waiting_input: 'Waiting for you',
+    done: 'Done',
+    failed: 'Failed',
+    stopped: 'Stopped',
+  }[status]
 }
 
 export function StatusDot({ status }: { status: SessionSummary['status'] }) {
@@ -405,6 +427,8 @@ export function StatusDot({ status }: { status: SessionSummary['status'] }) {
 
   return (
     <span
+      role="img"
+      aria-label={statusLabel(status)}
       className={`size-1.5 flex-none rounded-full ${tone} ${live ? 'motion-safe:animate-pulse' : ''}`}
     />
   )
