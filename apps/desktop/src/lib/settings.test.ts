@@ -26,7 +26,7 @@ function store(initial: Record<string, unknown> = {}) {
 
 async function settingsModule() {
   vi.resetModules()
-  return await import('./settings.js')
+  return await import('@/lib/settings')
 }
 
 afterEach(() => {

@@ -1,15 +1,15 @@
 import { DEFAULT_COMMIT_IDENTITY } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
-import { PairingForm } from '../components/PairingForm.js'
-import type { DukeboxClient } from '../lib/client.js'
+import { PairingForm } from '@/components/PairingForm'
+import type { DukeboxClient } from '@/lib/client'
 import {
   listConnections,
   removeConnection,
   setActiveConnection,
   type Connection,
-} from '../lib/connection.js'
-import type { Settings, Theme } from '../lib/settings.js'
-import type { UseUpdate } from '../lib/useUpdate.js'
+} from '@/lib/connection'
+import type { Settings, Theme } from '@/lib/settings'
+import type { UseUpdate } from '@/lib/useUpdate'
 
 /**
  * The settings panel.

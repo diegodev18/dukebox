@@ -1,11 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { defaultSettings, type Settings } from '../lib/settings.js'
-import type { UseUpdate } from '../lib/useUpdate.js'
-import { Settings as SettingsScreen } from './Settings.js'
+import { defaultSettings, type Settings } from '@/lib/settings'
+import type { UseUpdate } from '@/lib/useUpdate'
+import { Settings as SettingsScreen } from '@/screens/Settings'
 
-vi.mock('../lib/connection.js', () => ({
+vi.mock('@/lib/connection', () => ({
   listConnections: vi.fn(),
   setActiveConnection: vi.fn(),
   removeConnection: vi.fn(),
@@ -15,7 +15,7 @@ vi.mock('../lib/connection.js', () => ({
   activeConnection: vi.fn(),
 }))
 
-import { listConnections, removeConnection, setActiveConnection } from '../lib/connection.js'
+import { listConnections, removeConnection, setActiveConnection } from '@/lib/connection'
 
 /**
  * The panel is exercised through its four categories. The server row is

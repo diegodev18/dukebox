@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { EnvironmentsPanel } from './EnvironmentsPanel.js'
+import { EnvironmentsPanel } from '@/components/EnvironmentsPanel'
 
 /**
  * Every assertion here targets text that is on screen unconditionally, so a

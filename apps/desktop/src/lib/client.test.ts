@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiFailure, baseUrl, DukeboxClient, reachable, socketUrl } from './client.js'
+import { ApiFailure, baseUrl, DukeboxClient, reachable, socketUrl } from '@/lib/client'
 
 /**
  * The client is the only place the app knows how to reach a server, so what

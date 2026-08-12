@@ -1,5 +1,5 @@
 import { serverMessage, type ClientCommand, type ServerMessage } from '@dukebox/protocol'
-import { socketUrl, type ServerAddress } from './client.js'
+import { socketUrl, type ServerAddress } from '@/lib/client'
 
 /**
  * The live connection to a session.

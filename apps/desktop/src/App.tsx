@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { UpdateBanner } from './components/UpdateBanner.js'
-import { DukeboxClient } from './lib/client.js'
-import { activeConnection, removeConnection, type Connection } from './lib/connection.js'
-import type { Settings } from './lib/settings.js'
-import { useSettings } from './lib/useSettings.js'
-import { useUpdate } from './lib/useUpdate.js'
-import { Pairing } from './screens/Pairing.js'
-import { Session } from './screens/Session.js'
+import { UpdateBanner } from '@/components/UpdateBanner'
+import { DukeboxClient } from '@/lib/client'
+import { activeConnection, removeConnection, type Connection } from '@/lib/connection'
+import type { Settings } from '@/lib/settings'
+import { useSettings } from '@/lib/useSettings'
+import { useUpdate } from '@/lib/useUpdate'
+import { Pairing } from '@/screens/Pairing'
+import { Session } from '@/screens/Session'
 
 /**
  * What the window shows.

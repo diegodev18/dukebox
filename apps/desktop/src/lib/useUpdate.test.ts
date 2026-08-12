@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Update } from './updater.js'
-import { useUpdate } from './useUpdate.js'
+import type { Update } from '@/lib/updater'
+import { useUpdate } from '@/lib/useUpdate'
 
 /**
  * The hook is the state machine the banner renders, so the transitions are
@@ -10,12 +10,12 @@ import { useUpdate } from './useUpdate.js'
  * next check.
  */
 
-vi.mock('./updater.js', () => ({
+vi.mock('@/lib/updater', () => ({
   checkForUpdate: vi.fn(),
   installUpdate: vi.fn(),
 }))
 
-import { checkForUpdate, installUpdate } from './updater.js'
+import { checkForUpdate, installUpdate } from '@/lib/updater'
 
 const checked = vi.mocked(checkForUpdate)
 const installed = vi.mocked(installUpdate)

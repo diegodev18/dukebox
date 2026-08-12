@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import type { Update } from '../lib/updater.js'
-import type { UpdateState } from '../lib/useUpdate.js'
-import { DownloadIcon } from './icons.js'
+import type { Update } from '@/lib/updater'
+import type { UpdateState } from '@/lib/useUpdate'
+import { DownloadIcon } from '@/components/icons'
 
 /**
  * The update notification, as a toast.
