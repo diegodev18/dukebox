@@ -33,8 +33,9 @@ export interface ThinkingBlock {
  * A tool call and its outcome, together.
  *
  * `result` stays undefined while the tool is still running, which is what the
- * UI keys its spinner off. A call that never resolves keeps it forever — that
- * is accurate, not a bug: the agent really is still waiting.
+ * UI keys its spinner off. A `done` or fatal error closes anything still
+ * waiting — after a restart those are the blocks that would otherwise spin
+ * forever on a turn that cannot finish.
  */
 export interface ToolBlock {
   kind: 'tool'
@@ -241,15 +242,43 @@ function fold(draft: Transcript, event: AgentEvent, seq: number): void {
         ...draft.blocks,
         { kind: 'error', id: `error-${seq}`, message: event.message, fatal: event.fatal },
       ]
-      if (event.fatal) draft.running = false
+      if (event.fatal) {
+        draft.running = false
+        closeOpenWork(draft)
+      }
       return
     }
 
     case 'done': {
       draft.running = false
+      closeOpenWork(draft)
       return
     }
   }
+}
+
+/**
+ * Settle work that will never finish.
+ *
+ * A turn that ends — `done`, or a fatal error — leaves any tool still waiting
+ * for a result and any permission still unanswered. After a control-plane
+ * restart those are the blocks that keep the UI spinning: the agent that was
+ * going to answer is gone.
+ */
+function closeOpenWork(draft: Transcript): void {
+  let changed = false
+  const blocks = draft.blocks.map((block) => {
+    if (block.kind === 'tool' && block.result === undefined) {
+      changed = true
+      return { ...block, result: { output: 'Interrupted.', isError: true } }
+    }
+    if (block.kind === 'permission' && !block.answered) {
+      changed = true
+      return { ...block, answered: true }
+    }
+    return block
+  })
+  if (changed) draft.blocks = blocks
 }
 
 /** Extend the trailing block of a kind, or start one. */

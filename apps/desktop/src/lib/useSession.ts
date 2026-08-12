@@ -180,7 +180,10 @@ export function useSession(
 
   const openTerminal = useCallback(
     (cols: number, rows: number) => {
-      if (sessionId) streamRef.current?.openTerminal(sessionId, cols, rows)
+      if (!sessionId) return
+
+      setError(null)
+      streamRef.current?.openTerminal(sessionId, cols, rows)
     },
     [sessionId],
   )

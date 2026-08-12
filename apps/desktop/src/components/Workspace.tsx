@@ -54,6 +54,8 @@ interface TerminalProps {
   onTerminalResize: (terminalId: string, cols: number, rows: number) => void
   onCloseTerminal: (terminalId: string) => void
   onDrainTerminal: (terminalId: string) => void
+  /** Set when opening a terminal was rejected, so the waiting state can clear. */
+  error?: string | null
 }
 
 interface Props extends TerminalProps {
@@ -440,8 +442,10 @@ function TerminalPanel({
   onTerminalResize,
   onCloseTerminal,
   onDrainTerminal,
+  error,
 }: TerminalProps & { session: SessionSummary | null }) {
   const [selected, setSelected] = useState<string | null>(null)
+  const [opening, setOpening] = useState(false)
 
   const tabs = terminals.tabs
   const active = tabs.find((tab) => tab.terminalId === selected) ?? tabs[0] ?? null
@@ -456,6 +460,15 @@ function TerminalPanel({
   useEffect(() => {
     if (newestId) setSelected(newestId)
   }, [newestId])
+
+  useEffect(() => {
+    if (tabs.length > 0 || error) setOpening(false)
+  }, [tabs.length, error])
+
+  const open = () => {
+    setOpening(true)
+    onOpenTerminal(80, 24)
+  }
 
   // Attach while the panel is on screen, detach when it is not. The dependency
   // is the id list rather than the tabs, which change identity on every chunk
@@ -482,14 +495,17 @@ function TerminalPanel({
     return (
       <div className="flex min-h-0 flex-1 flex-col items-start gap-2.5 px-4 py-4">
         <p className="text-[12.5px] text-muted-foreground">
-          No terminal is open. A shell here runs inside this session’s container.
+          {session.status === 'stopped'
+            ? 'No terminal is open. Opening one starts this session’s container again after the server restart.'
+            : 'No terminal is open. A shell here runs inside this session’s container.'}
         </p>
         <button
           type="button"
-          onClick={() => onOpenTerminal(80, 24)}
-          className="rounded-[calc(var(--radius)*0.6)] bg-muted px-2.5 py-1.5 text-[12.5px] font-medium hover:bg-border"
+          onClick={open}
+          disabled={opening}
+          className="rounded-[calc(var(--radius)*0.6)] bg-muted px-2.5 py-1.5 text-[12.5px] font-medium hover:bg-border disabled:opacity-50"
         >
-          New terminal
+          {opening ? 'Starting…' : 'New terminal'}
         </button>
       </div>
     )
@@ -526,11 +542,12 @@ function TerminalPanel({
         {tabs.length < MAX_TERMINALS && (
           <button
             type="button"
-            onClick={() => onOpenTerminal(80, 24)}
+            onClick={open}
+            disabled={opening}
             aria-label="New terminal"
-            className="grid size-6 place-items-center rounded-[calc(var(--radius)*0.6)] text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="grid size-6 place-items-center rounded-[calc(var(--radius)*0.6)] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
           >
-            +
+            {opening ? '…' : '+'}
           </button>
         )}
       </div>

@@ -1,5 +1,6 @@
 import {
   DEFAULT_COMMIT_IDENTITY,
+  isTerminal,
   type ProjectSummary,
   type SessionSummary,
 } from '@dukebox/protocol'
@@ -311,6 +312,7 @@ export function Session({
             onTerminalResize={live.resizeTerminal}
             onCloseTerminal={live.closeTerminal}
             onDrainTerminal={live.drainTerminal}
+            error={live.error}
             environmentReview={
               current.purpose === 'environment_setup' &&
               (current.status === 'done' || current.status === 'failed')
@@ -350,6 +352,12 @@ function SessionColumn({
   connection: Connection
   onPullRequest: (url: string) => void
 }) {
+  // A transcript can still look mid-turn after a restart — the last events
+  // never got a `done`. The session status is what actually knows whether an
+  // agent is running, and a Stop button that cannot interrupt anything is how
+  // that used to read as "stuck processing".
+  const working = live.transcript.running && !isTerminal(session.status)
+
   return (
     // `min-h-0` is what makes the transcript scroll instead of the window
     // growing. A flex item defaults to `min-height: auto`, which refuses to
@@ -390,6 +398,13 @@ function SessionColumn({
         </p>
       )}
 
+      {session.status === 'stopped' && live.status !== 'offline' && (
+        <p className="border-b border-border bg-surface px-4.5 py-2 text-[12.5px] text-muted-foreground">
+          This session stopped when the server restarted. Send a message or open a terminal to
+          continue in the same workspace.
+        </p>
+      )}
+
       {live.error && (
         <p
           role="alert"
@@ -403,7 +418,7 @@ function SessionColumn({
         transcript={live.transcript}
         onRespond={live.respond}
         purpose={session.purpose}
-        running={live.transcript.running}
+        running={working}
         status={session.status}
         streamStatus={live.status}
       />
@@ -411,7 +426,7 @@ function SessionColumn({
       <Composer
         onSend={live.send}
         onInterrupt={live.interrupt}
-        running={live.transcript.running}
+        running={working}
         disabled={live.status === 'offline'}
         error={live.error}
         {...(session.permissionMode

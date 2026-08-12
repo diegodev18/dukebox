@@ -31,7 +31,7 @@ export type TerminalListener = (chunk: Buffer) => void
 export type TerminalExitListener = (exitCode?: number) => void
 
 export interface TerminalRegistryDeps {
-  /** Opens a PTY in a session's container. Throws if the session is not running. */
+  /** Opens a PTY in a session's container. Resumes the session if needed. */
   openTerminal: (sessionId: string, size: { cols: number; rows: number }) => Promise<TerminalHandle>
 }
 

@@ -93,6 +93,11 @@ async function main() {
     openTerminal: (sessionId, size) => sessions.openTerminal(sessionId, size),
   })
 
+  // In-progress sessions in the database predate this process. Their
+  // containers may still be up, but this process has no adapter for them.
+  // Marked stopped so the app does not show a turn that can never finish.
+  await sessions.reclaimAfterRestart()
+
   const app = createApp({
     db,
     serverName: hostname(),

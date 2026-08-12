@@ -5,7 +5,7 @@ import type {
   ToolBlock,
   Transcript as TranscriptData,
 } from '@dukebox/protocol'
-import { EXIT_PLAN_MODE_ACTION } from '@dukebox/protocol'
+import { EXIT_PLAN_MODE_ACTION, isTerminal } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { ThinkingOrb } from 'thinking-orbs'
 import type { StreamStatus } from '@/lib/stream'
@@ -88,6 +88,10 @@ export function Transcript({
 
   const empty = transcript.blocks.length === 0
   const loading = empty && (streamStatus === 'connecting' || streamStatus === 'catching_up')
+  // After a restart the last events can still look mid-turn. The session
+  // status is what knows the agent is gone, and a spinner that never stops is
+  // how that used to read.
+  const showWorking = transcript.running && (status === undefined || !isTerminal(status))
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -118,7 +122,7 @@ export function Transcript({
             ))
           )}
 
-          {transcript.running && <Working blocks={transcript.blocks} />}
+          {showWorking && <Working blocks={transcript.blocks} />}
         </div>
       </div>
 
@@ -176,7 +180,7 @@ function BlockView({
       return <Thinking text={block.text} />
 
     case 'tool':
-      return <Tool block={block} />
+      return <Tool block={block} settled={status !== undefined && isTerminal(status)} />
 
     case 'permission':
       return <Permission block={block} onRespond={onRespond} />
@@ -286,9 +290,9 @@ function Thinking({ text }: { text: string }) {
  * Collapsed to one line by default: the name and target answer "what is it
  * doing" for almost every call, and a session doing real work makes dozens.
  */
-function Tool({ block }: { block: ToolBlock }) {
+function Tool({ block, settled }: { block: ToolBlock; settled?: boolean }) {
   const [open, setOpen] = useState(false)
-  const running = block.result === undefined
+  const running = block.result === undefined && !settled
   const failed = block.result?.isError === true
 
   return (
