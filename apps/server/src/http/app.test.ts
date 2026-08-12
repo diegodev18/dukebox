@@ -4,13 +4,17 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { close, db, prepareDatabase, resetDatabase } from '../testing/database.js'
 import { issuePairingCode } from '../auth/pairing.js'
 import { createApp } from './app.js'
+import { resetRateLimit, tooManyAttempts } from './rateLimit.js'
 
-const app = createApp({ db, serverName: 'dukebox-test' })
 const ENDPOINT = { host: 'dukebox-vps.tail1234.ts.net', port: 7777 }
+const app = createApp({ db, serverName: 'dukebox-test', pairingEndpoint: ENDPOINT })
 
 afterAll(() => close())
 beforeAll(prepareDatabase)
-beforeEach(resetDatabase)
+beforeEach(async () => {
+  resetRateLimit()
+  await resetDatabase()
+})
 
 function post(path: string, body: unknown) {
   return app.request(path, {
@@ -36,7 +40,7 @@ async function pair(name = 'Diego MacBook') {
     platform: 'macos',
   })
 
-  return (await response.json()) as { deviceId: string; deviceToken: string }
+  return (await response.json()) as { deviceId: string; deviceToken: string; role: string }
 }
 
 describe('GET /health', () => {
@@ -61,6 +65,7 @@ describe('POST /pair/redeem', () => {
     expect(await response.json()).toMatchObject({
       deviceToken: expect.any(String),
       serverName: 'dukebox-test',
+      role: 'owner',
     })
   })
 
@@ -137,7 +142,11 @@ describe('device authentication', () => {
     const response = await authed('/api/me', deviceToken)
 
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({ deviceId })
+    expect(await response.json()).toMatchObject({
+      deviceId,
+      role: 'owner',
+      capabilities: { manageDevices: true, manageAgents: true, deleteProjects: true },
+    })
   })
 
   it('rejects a request with no token', async () => {
@@ -168,10 +177,11 @@ describe('device authentication', () => {
   })
 
   it('rejects a revoked device', async () => {
-    const { deviceToken, deviceId } = await pair()
-    await authed(`/api/devices/${deviceId}`, deviceToken, { method: 'DELETE' })
+    const owner = await pair('Owner')
+    const member = await pair('Member')
+    await authed(`/api/devices/${member.deviceId}`, owner.deviceToken, { method: 'DELETE' })
 
-    expect((await authed('/api/me', deviceToken)).status).toBe(401)
+    expect((await authed('/api/me', member.deviceToken)).status).toBe(401)
   })
 
   it('guards every route under /api', async () => {
@@ -184,14 +194,24 @@ describe('device authentication', () => {
 })
 
 describe('device management', () => {
-  it('lists paired devices', async () => {
+  it('lists paired devices with roles, for the owner', async () => {
     const { deviceToken } = await pair('First')
     await pair('Second')
 
     const response = await authed('/api/devices', deviceToken)
-    const body = (await response.json()) as { devices: { name: string }[] }
+    const body = (await response.json()) as { devices: { name: string; role: string }[] }
 
     expect(body.devices.map((device) => device.name)).toEqual(['Second', 'First'])
+    expect(body.devices.map((device) => device.role)).toEqual(['member', 'owner'])
+  })
+
+  it('hides the device list from a member', async () => {
+    await pair('Owner')
+    const member = await pair('Member')
+
+    const response = await authed('/api/devices', member.deviceToken)
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({ error: 'forbidden' })
   })
 
   it('never returns a token hash in the device list', async () => {
@@ -202,7 +222,7 @@ describe('device management', () => {
     expect(body).not.toContain('token_hash')
   })
 
-  it('revokes another device without affecting the caller', async () => {
+  it('lets the owner revoke a member without affecting itself', async () => {
     const first = await pair('First')
     const second = await pair('Second')
 
@@ -215,11 +235,73 @@ describe('device management', () => {
     expect((await authed('/api/me', second.deviceToken)).status).toBe(401)
   })
 
-  it('lets a device revoke itself, which is how signing out works', async () => {
+  it('lets a member revoke itself, which is how signing out works', async () => {
+    await pair('Owner')
+    const member = await pair('Member')
+
+    const response = await authed(`/api/devices/${member.deviceId}`, member.deviceToken, {
+      method: 'DELETE',
+    })
+    expect(response.status).toBe(200)
+    expect((await authed('/api/me', member.deviceToken)).status).toBe(401)
+  })
+
+  it('refuses to let the owner revoke itself over HTTP', async () => {
     const { deviceToken, deviceId } = await pair()
 
     const response = await authed(`/api/devices/${deviceId}`, deviceToken, { method: 'DELETE' })
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({ error: 'is_owner' })
+  })
+
+  it('refuses to let a member revoke someone else', async () => {
+    const owner = await pair('Owner')
+    const member = await pair('Member')
+
+    const response = await authed(`/api/devices/${owner.deviceId}`, member.deviceToken, {
+      method: 'DELETE',
+    })
+    expect(response.status).toBe(403)
+  })
+
+  it('issues a member invite the owner can copy', async () => {
+    const { deviceToken } = await pair()
+
+    const response = await authed('/api/devices/invites', deviceToken, { method: 'POST' })
+    const body = (await response.json()) as { url: string; expiresAt: number }
+
     expect(response.status).toBe(200)
+    expect(body.url).toMatch(/^dukebox:\/\/pair\?/)
+    expect(body.expiresAt).toBeGreaterThan(Date.now())
+  })
+
+  it('lists and revokes a pending invite', async () => {
+    const { deviceToken } = await pair()
+    const created = (await (
+      await authed('/api/devices/invites', deviceToken, { method: 'POST' })
+    ).json()) as { id: string }
+
+    const listed = (await (await authed('/api/devices/invites', deviceToken)).json()) as {
+      invites: { id: string }[]
+    }
+    expect(listed.invites.map((invite) => invite.id)).toEqual([created.id])
+
+    expect(
+      (await authed(`/api/devices/invites/${created.id}`, deviceToken, { method: 'DELETE' }))
+        .status,
+    ).toBe(200)
+    expect(await (await authed('/api/devices/invites', deviceToken)).json()).toEqual({
+      invites: [],
+    })
+  })
+
+  it('hides invites from a member', async () => {
+    await pair('Owner')
+    const member = await pair('Member')
+
+    expect(
+      (await authed('/api/devices/invites', member.deviceToken, { method: 'POST' })).status,
+    ).toBe(403)
   })
 
   it('returns 404 for a device that is not active', async () => {
@@ -231,5 +313,20 @@ describe('device management', () => {
     )
 
     expect(response.status).toBe(404)
+  })
+})
+
+describe('POST /pair/redeem rate limit', () => {
+  it('returns 429 after too many attempts from the same client', async () => {
+    for (let i = 0; i < 30; i++) tooManyAttempts('redeem:local')
+
+    const response = await post('/pair/redeem', {
+      code: 'AAAA-BBBB',
+      deviceName: 'Flood',
+      platform: 'macos',
+    })
+
+    expect(response.status).toBe(429)
+    expect(await response.json()).toMatchObject({ error: 'rate_limited' })
   })
 })

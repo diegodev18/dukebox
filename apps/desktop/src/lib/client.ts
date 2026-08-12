@@ -1,11 +1,16 @@
 import type {
   ApiError,
   CreateEnvironmentRequest,
+  CreateInviteResponse,
+  DeviceSummary,
   EnvironmentProposal,
   EnvironmentSummary,
+  ListInvitesResponse,
   ListOpencodeCatalogResponse,
   ListOpencodeProvidersResponse,
+  MeResponse,
   OpencodeProvider,
+  PairingInvite,
   PairRedeemResponse,
   ProjectEnvironmentResponse,
   ProjectSummary,
@@ -102,8 +107,30 @@ export class DukeboxClient {
   }
 
   /** Confirm the token still works. Used on launch before showing anything. */
-  async whoami(): Promise<{ deviceId: string; deviceName: string }> {
+  async whoami(): Promise<MeResponse> {
     return this.request('/api/me')
+  }
+
+  async listDevices(): Promise<DeviceSummary[]> {
+    const body = await this.request<{ devices: DeviceSummary[] }>('/api/devices')
+    return body.devices
+  }
+
+  async createInvite(): Promise<CreateInviteResponse> {
+    return this.request('/api/devices/invites', { method: 'POST' })
+  }
+
+  async listInvites(): Promise<PairingInvite[]> {
+    const body = await this.request<ListInvitesResponse>('/api/devices/invites')
+    return body.invites
+  }
+
+  async revokeInvite(id: string): Promise<void> {
+    await this.request(`/api/devices/invites/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  async revokeDevice(id: string): Promise<void> {
+    await this.request(`/api/devices/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 
   async listRepositories(): Promise<RepositorySummary[]> {

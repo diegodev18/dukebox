@@ -1,6 +1,7 @@
 import {
   DEFAULT_COMMIT_IDENTITY,
   isTerminal,
+  type DeviceRole,
   type ProjectSummary,
   type SessionSummary,
 } from '@dukebox/protocol'
@@ -68,6 +69,7 @@ export function Session({
   // carries the id; the name lives on the environment row.
   const [environmentNames, setEnvironmentNames] = useState<Record<string, string>>({})
   const [archiveError, setArchiveError] = useState<string | null>(null)
+  const [role, setRole] = useState<DeviceRole | null>(null)
 
   const refreshProjects = async () => {
     try {
@@ -82,15 +84,17 @@ export function Session({
 
     const load = async () => {
       try {
-        const [loadedProjects, loadedSessions] = await Promise.all([
+        const [loadedProjects, loadedSessions, me] = await Promise.all([
           client.listProjects(),
           client.listSessions(),
+          client.whoami(),
         ])
 
         if (cancelled) return
 
         setProjects(loadedProjects)
         setSessions(loadedSessions)
+        setRole(me.role)
         setSelected((current) => current ?? loadedSessions[0]?.id ?? null)
         setLoading(false)
       } catch {
@@ -177,6 +181,7 @@ export function Session({
       {settingsOpen ? (
         <SettingsNav
           category={settingsCategory}
+          role={role}
           onCategoryChange={setSettingsCategory}
           onBack={() => setSettingsOpen(false)}
         />
@@ -186,6 +191,7 @@ export function Session({
           sessions={sessions}
           selectedId={creating ? null : selected}
           identity={settings.commitIdentity ?? DEFAULT_COMMIT_IDENTITY}
+          role={role}
           onOpenSettings={(category) => {
             setCreating(false)
             setSetupProjectId(null)
@@ -264,6 +270,7 @@ export function Session({
           settings={settings}
           update={update}
           category={settingsCategory}
+          role={role}
           onSaveSettings={onSaveSettings}
           onSwitchServer={onSwitchServer}
           onClose={() => setSettingsOpen(false)}
@@ -281,6 +288,7 @@ export function Session({
           preferSetupProjectId={setupProjectId}
           preferAgentId={preferAgentId}
           onConfigureProviders={() => {
+            if (role !== 'owner') return
             setPreferAgentId('opencode')
             setSettingsCategory('agents')
             setSettingsOpen(true)

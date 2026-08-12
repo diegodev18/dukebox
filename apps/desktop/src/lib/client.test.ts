@@ -58,11 +58,35 @@ describe('DukeboxClient', () => {
   const client = new DukeboxClient(address, 'device-token')
 
   it('sends the device token on every request', async () => {
-    const fetchMock = respondWith({ deviceId: 'd1', deviceName: 'Mac' })
+    const fetchMock = respondWith({
+      deviceId: 'd1',
+      deviceName: 'Mac',
+      role: 'owner',
+      capabilities: { manageDevices: true, manageAgents: true, deleteProjects: true },
+    })
     await client.whoami()
 
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer device-token')
+  })
+
+  it('lists devices', async () => {
+    const fetchMock = respondWith({
+      devices: [
+        {
+          id: 'd1',
+          name: 'Mac',
+          platform: 'macos',
+          role: 'owner',
+          createdAt: 1,
+          lastSeenAt: null,
+        },
+      ],
+    })
+    const devices = await client.listDevices()
+    expect(devices[0]?.role).toBe('owner')
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toContain('/api/devices')
   })
 
   it('unwraps a list response', async () => {

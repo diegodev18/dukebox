@@ -13,6 +13,7 @@ import {
 import { count, desc, eq, and, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
 import type { GitHubClient } from '../github/client.js'
+import { requireOwner, routeParam, type AuthedVariables } from './auth.js'
 import type { SecretStore } from '../secrets/store.js'
 
 /**
@@ -32,7 +33,7 @@ export interface ProjectRoutesDeps {
 }
 
 export function projectRoutes(deps: ProjectRoutesDeps) {
-  const app = new Hono()
+  const app = new Hono<{ Variables: AuthedVariables }>()
 
   /**
    * Repositories on GitHub, marked with whether they are already projects.
@@ -161,7 +162,7 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
     const [project] = await deps.db
       .select({ repoFullName: projects.repoFullName })
       .from(projects)
-      .where(eq(projects.id, c.req.param('id')))
+      .where(eq(projects.id, routeParam(c, 'id')))
 
     if (!project) {
       return c.json({ error: 'not_found', message: 'no such project' }, 404)
@@ -177,7 +178,7 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
    * scoped, because the same database URL serves every way of running a repo.
    */
   app.get('/projects/:id/environment', async (c) => {
-    const projectId = c.req.param('id')
+    const projectId = routeParam(c, 'id')
     const environmentId = c.req.query('environmentId')
 
     if (!environmentId) {
@@ -239,7 +240,7 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
    * branch being worked on.
    */
   app.put('/projects/:id/environment', async (c) => {
-    const projectId = c.req.param('id')
+    const projectId = routeParam(c, 'id')
     const environmentId = c.req.query('environmentId')
 
     if (!environmentId) {
@@ -333,10 +334,14 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
    * and pull requests an agent produced are the user's work, and deleting a
    * project here is about Dukebox's own bookkeeping.
    */
-  app.delete('/projects/:id', async (c) => {
+  app.delete('/projects/:id', requireOwner, async (c) => {
+    const id = routeParam(c, 'id')
+    if (!id) {
+      return c.json({ error: 'not_found', message: 'no such project' }, 404)
+    }
     const deleted = await deps.db
       .delete(projects)
-      .where(eq(projects.id, c.req.param('id')))
+      .where(eq(projects.id, id))
       .returning({ id: projects.id })
 
     if (deleted.length === 0) {

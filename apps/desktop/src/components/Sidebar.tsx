@@ -1,4 +1,9 @@
-import { type CommitIdentity, type ProjectSummary, type SessionSummary } from '@dukebox/protocol'
+import {
+  type CommitIdentity,
+  type DeviceRole,
+  type ProjectSummary,
+  type SessionSummary,
+} from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { filterProjects, filterSessions } from '@/lib/searchSessions'
 import { StatusDot, statusLabel } from '@/screens/Session'
@@ -20,6 +25,7 @@ interface Props {
   selectedId: string | null
   /** Who commits are authored as — the identity from settings, if configured. */
   identity: CommitIdentity
+  role: DeviceRole | null
   onOpenSettings: (category: SettingsCategory) => void
   onSelect: (sessionId: string) => void
   onNewSession: () => void
@@ -35,6 +41,7 @@ export function Sidebar({
   sessions,
   selectedId,
   identity,
+  role,
   onOpenSettings,
   onSelect,
   onNewSession,
@@ -125,7 +132,7 @@ export function Sidebar({
           room when asked, not permanently at the foot of the sidebar. */}
       <div className="flex items-stretch border-t border-border">
         <div className="min-w-0 flex-1">
-          <UserMenu user={identity} onOpenSettings={onOpenSettings} />
+          <UserMenu user={identity} role={role} onOpenSettings={onOpenSettings} />
         </div>
         <button
           type="button"

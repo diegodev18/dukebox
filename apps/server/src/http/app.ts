@@ -1,17 +1,25 @@
-import { pairRedeemRequest, type DeviceSummary } from '@dukebox/protocol'
+import { pairRedeemRequest, type DeviceRole, type DeviceSummary } from '@dukebox/protocol'
 import type { Database, Device } from '@dukebox/db'
 import { Hono } from 'hono'
 import {
   authenticateDevice,
+  deviceCapabilities,
+  deviceIsOwner,
+  issuePairingCode,
   listDevices,
+  listPendingInvites,
   PairingError,
   redeemPairingCode,
   revokeDevice,
+  revokeInvite,
+  RevokeError,
 } from '../auth/pairing.js'
 import type { EventBus } from '../events/bus.js'
 import type { GitHubClient } from '../github/client.js'
 import type { SecretStore } from '../secrets/store.js'
 import type { SessionManager } from '../sessions/manager.js'
+import { OWNER_FORBIDDEN, requireOwner, type AuthedVariables } from './auth.js'
+import { clientKey, tooManyAttempts } from './rateLimit.js'
 import { environmentRoutes } from './environments.js'
 import { projectRoutes } from './projects.js'
 import { opencodeRoutes } from './opencode.js'
@@ -30,6 +38,13 @@ export interface AppContext {
   db: Database
   serverName: string
   /**
+   * Host and port written into invite links, matching what `duke pair new`
+   * advertises. Tests pass a fixed endpoint; production uses the tailnet name.
+   */
+  pairingEndpoint: { host: string; port: number }
+  /** Drop live WebSockets for a device that was just revoked. */
+  onDeviceRevoked?: (deviceId: string) => void
+  /**
    * Project and session routes, mounted when the server has what they need.
    *
    * Optional so tests covering pairing and auth can build an app without a
@@ -43,10 +58,8 @@ export interface AppContext {
   }
 }
 
-type Variables = { device: Device }
-
 export function createApp(context: AppContext) {
-  const app = new Hono<{ Variables: Variables }>()
+  const app = new Hono<{ Variables: AuthedVariables }>()
 
   /**
    * Liveness check.
@@ -65,6 +78,13 @@ export function createApp(context: AppContext) {
    * use, short lived, and only reachable from inside the tailnet.
    */
   app.post('/pair/redeem', async (c) => {
+    if (tooManyAttempts(`redeem:${clientKey(c)}`)) {
+      return c.json(
+        { error: 'rate_limited', message: 'too many pairing attempts; try again shortly' },
+        429,
+      )
+    }
+
     const body = await c.req.json().catch(() => null)
     const parsed = pairRedeemRequest.safeParse(body)
 
@@ -114,24 +134,78 @@ export function createApp(context: AppContext) {
   /** The calling device, for an app to confirm what it is authenticated as. */
   app.get('/api/me', (c) => {
     const device = c.get('device')
-    return c.json({ deviceId: device.id, deviceName: device.name })
+    const role = device.role as DeviceRole
+    return c.json({
+      deviceId: device.id,
+      deviceName: device.name,
+      role,
+      capabilities: deviceCapabilities(device),
+    })
   })
 
-  app.get('/api/devices', async (c) => {
+  app.get('/api/devices', requireOwner, async (c) => {
     const listed: DeviceSummary[] = await listDevices(context.db)
     return c.json({ devices: listed })
   })
 
+  app.post('/api/devices/invites', requireOwner, async (c) => {
+    try {
+      const issued = await issuePairingCode(context.db, context.pairingEndpoint, 'member')
+      return c.json({
+        id: issued.id,
+        url: issued.url,
+        expiresAt: issued.expiresAt.getTime(),
+      })
+    } catch (error) {
+      if (error instanceof PairingError) {
+        return c.json({ error: error.code, message: error.message }, 403)
+      }
+      throw error
+    }
+  })
+
+  app.get('/api/devices/invites', requireOwner, async (c) => {
+    return c.json({ invites: await listPendingInvites(context.db) })
+  })
+
+  app.delete('/api/devices/invites/:id', requireOwner, async (c) => {
+    const id = c.req.param('id')
+    if (!id) {
+      return c.json({ error: 'not_found', message: 'no such pending invite' }, 404)
+    }
+    const revoked = await revokeInvite(context.db, id)
+    if (!revoked) {
+      return c.json({ error: 'not_found', message: 'no such pending invite' }, 404)
+    }
+    return c.json({ revoked: true })
+  })
+
   app.delete('/api/devices/:id', async (c) => {
     const id = c.req.param('id')
-
-    // A device revoking itself is allowed: it is how "sign out on this
-    // machine" works.
-    const revoked = await revokeDevice(context.db, id)
-    if (!revoked) {
+    if (!id) {
       return c.json({ error: 'not_found', message: 'no such active device' }, 404)
     }
+    const caller = c.get('device')
 
+    // Members may only revoke themselves (Forget this server). The owner may
+    // revoke any member, but never the owner device — that is CLI-only.
+    if (!deviceIsOwner(caller) && caller.id !== id) {
+      return c.json(OWNER_FORBIDDEN, 403)
+    }
+
+    try {
+      const revoked = await revokeDevice(context.db, id)
+      if (!revoked) {
+        return c.json({ error: 'not_found', message: 'no such active device' }, 404)
+      }
+    } catch (error) {
+      if (error instanceof RevokeError) {
+        return c.json({ error: error.code, message: error.message }, 403)
+      }
+      throw error
+    }
+
+    context.onDeviceRevoked?.(id)
     return c.json({ revoked: true })
   })
 

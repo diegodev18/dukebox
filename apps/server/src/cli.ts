@@ -3,9 +3,10 @@
  * Administrative commands, run over SSH on the VPS as `duke` (installed by
  * install.sh as a symlink into the release bundle).
  *
- *   duke pair new                       issue a pairing link
+ *   duke pair new                       issue a pairing link (owner if none, else member)
+ *   duke pair replace-owner             revoke the owner and issue a new owner link
  *   duke device ls                      list paired devices
- *   duke device rm <id>                 revoke a device
+ *   duke device rm <id>                 revoke a member device
  *   duke status                         report what the server can see
  *   duke version                        print the installed release version
  *   duke update [--check]               update to the latest server release
@@ -34,7 +35,13 @@ import { access, readFile, rename, rm } from 'node:fs/promises'
 import { DEFAULT_CONFIG_PATH, ConfigError, loadConfig } from './config.js'
 import { runMigrations } from './db/migrate.js'
 import { EventBus } from './events/bus.js'
-import { issuePairingCode, listDevices, revokeDevice } from './auth/pairing.js'
+import {
+  issuePairingCode,
+  listDevices,
+  replaceOwnerPairing,
+  revokeDevice,
+  RevokeError,
+} from './auth/pairing.js'
 import { findInstallRoot, installedVersion } from './admin/version.js'
 import {
   dockerLogsArgs,
@@ -78,6 +85,19 @@ function formatAge(timestamp: number | null): string {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
   if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h ago`
   return `${Math.floor(seconds / 86_400)}d ago`
+}
+
+function printPairingLink(url: string, expiresAt: Date, role: string): void {
+  const minutes = Math.round((expiresAt.getTime() - Date.now()) / 60_000)
+  const kind = role === 'owner' ? 'owner device' : 'member device'
+
+  console.log()
+  console.log(`  Paste this into the Dukebox desktop app (${kind}):`)
+  console.log()
+  console.log(`  ${url}`)
+  console.log()
+  console.log(`  Expires in ${minutes} minutes.`)
+  console.log()
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -570,8 +590,25 @@ async function main() {
       return
 
     case 'pair':
+      if (subcommand === 'replace-owner') {
+        await withDatabase(async (db, config) => {
+          const transport = new TailscaleTransport()
+          const preflight = await transport.preflight()
+          if (!preflight.ok) {
+            console.error(`cannot issue a pairing link: ${preflight.message}`)
+            process.exitCode = 1
+            return
+          }
+
+          const endpoint = await transport.advertisedEndpoint(config.server.port)
+          const issued = await replaceOwnerPairing(db, endpoint)
+          printPairingLink(issued.url, issued.expiresAt, 'owner')
+        })
+        return
+      }
+
       if (subcommand !== 'new') {
-        console.error('usage: duke pair new')
+        console.error('usage: duke pair <new | replace-owner>')
         process.exitCode = 1
         return
       }
@@ -588,15 +625,7 @@ async function main() {
 
         const endpoint = await transport.advertisedEndpoint(config.server.port)
         const issued = await issuePairingCode(db, endpoint)
-        const minutes = Math.round((issued.expiresAt.getTime() - Date.now()) / 60_000)
-
-        console.log()
-        console.log('  Paste this into the Dukebox desktop app:')
-        console.log()
-        console.log(`  ${issued.url}`)
-        console.log()
-        console.log(`  Expires in ${minutes} minutes. Issue another with: duke pair new`)
-        console.log()
+        printPairingLink(issued.url, issued.expiresAt, issued.role)
       })
       return
 
@@ -612,7 +641,7 @@ async function main() {
 
           for (const device of devices) {
             console.log(
-              `${device.id}  ${device.platform.padEnd(8)} ${device.name.padEnd(24)} last seen ${formatAge(device.lastSeenAt)}`,
+              `${device.id}  ${device.role.padEnd(6)} ${device.platform.padEnd(8)} ${device.name.padEnd(24)} last seen ${formatAge(device.lastSeenAt)}`,
             )
           }
         })
@@ -627,11 +656,20 @@ async function main() {
           return
         }
         await withDatabase(async (db) => {
-          if (await revokeDevice(db, deviceId)) {
-            console.log(`revoked ${deviceId}`)
-          } else {
-            console.error(`no active device with id ${deviceId}`)
-            process.exitCode = 1
+          try {
+            if (await revokeDevice(db, deviceId)) {
+              console.log(`revoked ${deviceId}`)
+            } else {
+              console.error(`no active device with id ${deviceId}`)
+              process.exitCode = 1
+            }
+          } catch (error) {
+            if (error instanceof RevokeError) {
+              console.error(error.message)
+              process.exitCode = 1
+              return
+            }
+            throw error
           }
         })
         return
@@ -667,7 +705,7 @@ async function main() {
 
     default:
       console.error(
-        'usage: duke <version | status | restart | update [--from-git [ref]] | image rebuild | rollback | logs [session|docker] | config | pair new | device ls | device rm <id>>',
+        'usage: duke <version | status | restart | update [--from-git [ref]] | image rebuild | rollback | logs [session|docker] | config | pair new | pair replace-owner | device ls | device rm <id>>',
       )
       process.exitCode = 1
   }

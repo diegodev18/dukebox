@@ -406,6 +406,7 @@ export function attachWebSocketServer(server: Server, deps: WebSocketDeps): WebS
 
   wss.on('connection', (socket: WebSocket, _request: IncomingMessage, device: Device) => {
     const connection = new Connection(socket, device, deps)
+    registerSocket(device.id, socket)
 
     // Session state, for every session rather than the subscribed one: the
     // sidebar lists them all, and without this it shows whatever was true when
@@ -415,6 +416,7 @@ export function attachWebSocketServer(server: Server, deps: WebSocketDeps): WebS
       .catch(() => undefined)
 
     const teardown = async () => {
+      unregisterSocket(device.id, socket)
       await (
         await updates
       )?.()
@@ -435,4 +437,28 @@ export function attachWebSocketServer(server: Server, deps: WebSocketDeps): WebS
   })
 
   return wss
+}
+
+const socketsByDevice = new Map<string, Set<WebSocket>>()
+
+function registerSocket(deviceId: string, socket: WebSocket): void {
+  const sockets = socketsByDevice.get(deviceId) ?? new Set()
+  sockets.add(socket)
+  socketsByDevice.set(deviceId, sockets)
+}
+
+function unregisterSocket(deviceId: string, socket: WebSocket): void {
+  const sockets = socketsByDevice.get(deviceId)
+  if (!sockets) return
+  sockets.delete(socket)
+  if (sockets.size === 0) socketsByDevice.delete(deviceId)
+}
+
+/** Close every live socket for a device that was just revoked. */
+export function disconnectDevice(deviceId: string): void {
+  const sockets = socketsByDevice.get(deviceId)
+  if (!sockets) return
+  for (const socket of [...sockets]) {
+    socket.close(4000, 'revoked')
+  }
 }

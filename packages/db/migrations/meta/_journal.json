@@ -50,6 +50,13 @@
       "when": 1786550000000,
       "tag": "0006_permission_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786560000000,
+      "tag": "0007_device_roles",
+      "breakpoints": true
     }
   ]
 }

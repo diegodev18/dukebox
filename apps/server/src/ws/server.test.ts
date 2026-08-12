@@ -62,7 +62,11 @@ afterAll(async () => {
 beforeAll(async () => {
   await prepareDatabase()
 
-  const app = createApp({ db, serverName: 'dukebox-test' })
+  const app = createApp({
+    db,
+    serverName: 'dukebox-test',
+    pairingEndpoint: { host: '127.0.0.1', port: 7777 },
+  })
 
   await new Promise<void>((resolve) => {
     server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 }, (info) => {

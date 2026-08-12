@@ -1,6 +1,7 @@
 import { OPENCODE_CATALOG, upsertOpencodeProviderRequest } from '@dukebox/protocol'
 import { Hono } from 'hono'
 import type { SecretStore } from '../secrets/store.js'
+import { requireOwner, type AuthedVariables } from './auth.js'
 import {
   loadOpencodeProviders,
   publicProvider,
@@ -21,7 +22,7 @@ export interface OpencodeRoutesDeps {
 }
 
 export function opencodeRoutes(deps: OpencodeRoutesDeps) {
-  const app = new Hono()
+  const app = new Hono<{ Variables: AuthedVariables }>()
 
   app.get('/opencode/catalog', (c) => {
     return c.json({
@@ -38,7 +39,7 @@ export function opencodeRoutes(deps: OpencodeRoutesDeps) {
     return c.json({ providers: providers.map(publicProvider) })
   })
 
-  app.put('/opencode/providers', async (c) => {
+  app.put('/opencode/providers', requireOwner, async (c) => {
     const body = await c.req.json().catch(() => null)
     const parsed = upsertOpencodeProviderRequest.safeParse(body)
 
@@ -60,8 +61,11 @@ export function opencodeRoutes(deps: OpencodeRoutesDeps) {
     return c.json({ provider: publicProvider(next) })
   })
 
-  app.delete('/opencode/providers/:id', async (c) => {
+  app.delete('/opencode/providers/:id', requireOwner, async (c) => {
     const id = c.req.param('id')
+    if (!id) {
+      return c.json({ error: 'not_found', message: 'no such provider' }, 404)
+    }
     const providers = await loadOpencodeProviders(deps.secrets)
     const remaining = providers.filter((provider) => provider.id !== id)
 

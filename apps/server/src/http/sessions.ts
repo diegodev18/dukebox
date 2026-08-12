@@ -7,6 +7,7 @@ import {
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
 import type { EventBus } from '../events/bus.js'
+import { routeParam, type AuthedVariables } from './auth.js'
 import { SessionError, type SessionManager } from '../sessions/manager.js'
 import { toSummary } from '../sessions/summarize.js'
 
@@ -25,7 +26,7 @@ export interface SessionRoutesDeps {
 }
 
 export function sessionRoutes(deps: SessionRoutesDeps) {
-  const app = new Hono()
+  const app = new Hono<{ Variables: AuthedVariables }>()
 
   app.get('/sessions', async (c) => {
     const projectId = c.req.query('projectId')
@@ -49,7 +50,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
     const [session] = await deps.db
       .select()
       .from(sessions)
-      .where(eq(sessions.id, c.req.param('id')))
+      .where(eq(sessions.id, routeParam(c, 'id')))
 
     if (!session) {
       return c.json({ error: 'not_found', message: 'no such session' }, 404)
@@ -87,6 +88,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
 
       const session = await deps.sessions.start({
         ...rest,
+        createdByDeviceId: c.get('device').id,
         purpose,
         ...(prompt ? { prompt } : {}),
         // Spread rather than passed through: an optional property set to
@@ -125,7 +127,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
    * yet, or when the session ran on the base image with nowhere to store one.
    */
   app.get('/sessions/:id/environment-proposal', async (c) => {
-    const sessionId = c.req.param('id')
+    const sessionId = routeParam(c, 'id')
 
     const [session] = await deps.db
       .select({ environmentId: sessions.environmentId, purpose: sessions.purpose })
@@ -167,7 +169,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
    * cache cannot cover.
    */
   app.get('/sessions/:id/events', async (c) => {
-    const sessionId = c.req.param('id')
+    const sessionId = routeParam(c, 'id')
 
     const [session] = await deps.db
       .select({ id: sessions.id })
@@ -193,7 +195,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
     }
 
     try {
-      const url = await deps.sessions.openPullRequest(c.req.param('id'), parsed.data.title)
+      const url = await deps.sessions.openPullRequest(routeParam(c, 'id'), parsed.data.title)
       return c.json({ url })
     } catch (error) {
       if (error instanceof SessionError) {
@@ -212,7 +214,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
    * place rather than re-cloning and reinstalling.
    */
   app.delete('/sessions/:id', async (c) => {
-    const sessionId = c.req.param('id')
+    const sessionId = routeParam(c, 'id')
 
     const [session] = await deps.db
       .select({ id: sessions.id })
@@ -234,7 +236,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
    * a delete.
    */
   app.post('/sessions/:id/archive', async (c) => {
-    const sessionId = c.req.param('id')
+    const sessionId = routeParam(c, 'id')
 
     try {
       await deps.sessions.archive(sessionId)
