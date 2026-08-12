@@ -1,9 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { defaultSettings, type Settings } from '@/lib/settings'
 import type { UseUpdate } from '@/lib/useUpdate'
-import { Settings as SettingsScreen } from '@/screens/Settings'
+import { Settings as SettingsScreen, SettingsNav, type SettingsCategory } from '@/screens/Settings'
 
 vi.mock('@/lib/connection', () => ({
   listConnections: vi.fn(),
@@ -67,12 +68,58 @@ function updateMock(): UseUpdate {
   }
 }
 
+function SettingsHarness({
+  category: initialCategory = 'account',
+  ...overrides
+}: {
+  settings?: Settings
+  connection?: ConnectionValue
+  client?: ReturnType<typeof clientMock>
+  update?: UseUpdate
+  category?: SettingsCategory
+  onSaveSettings?: ReturnType<typeof vi.fn>
+  onSwitchServer?: ReturnType<typeof vi.fn>
+  onClose?: ReturnType<typeof vi.fn>
+  onDisconnected?: ReturnType<typeof vi.fn>
+}) {
+  const [category, setCategory] = useState<SettingsCategory>(initialCategory)
+  const props = {
+    settings: defaultSettings(),
+    connection: server,
+    client: clientMock(),
+    update: updateMock(),
+    onSaveSettings: vi.fn(),
+    onSwitchServer: vi.fn(),
+    onClose: vi.fn(),
+    onDisconnected: vi.fn(),
+    ...overrides,
+  }
+
+  return (
+    <div className="flex h-full">
+      <SettingsNav category={category} onCategoryChange={setCategory} onBack={props.onClose} />
+      <SettingsScreen
+        client={props.client as never}
+        connection={props.connection as never}
+        settings={props.settings}
+        update={props.update}
+        category={category}
+        onSaveSettings={props.onSaveSettings}
+        onSwitchServer={props.onSwitchServer}
+        onClose={props.onClose}
+        onDisconnected={props.onDisconnected}
+      />
+    </div>
+  )
+}
+
 function renderSettings(
   overrides: {
     settings?: Settings
     connection?: ConnectionValue
     client?: ReturnType<typeof clientMock>
     update?: UseUpdate
+    category?: SettingsCategory
   } = {},
 ) {
   const props = {
@@ -87,18 +134,7 @@ function renderSettings(
     ...overrides,
   }
 
-  render(
-    <SettingsScreen
-      client={props.client as never}
-      connection={props.connection as never}
-      settings={props.settings}
-      update={props.update}
-      onSaveSettings={props.onSaveSettings}
-      onSwitchServer={props.onSwitchServer}
-      onClose={props.onClose}
-      onDisconnected={props.onDisconnected}
-    />,
-  )
+  render(<SettingsHarness {...props} />)
   return props
 }
 
@@ -107,24 +143,24 @@ async function openCategory(label: string) {
 }
 
 describe('Settings', () => {
-  it('shows every category and lands on Appearance first', () => {
+  it('shows every category and lands on Account first', () => {
     renderSettings()
 
-    expect(screen.getByRole('heading', { name: 'Appearance' })).toBeInTheDocument()
-    for (const label of ['Appearance', 'Account', 'Servers', 'Updates']) {
-      expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
-    }
+    expect(screen.getByRole('heading', { name: 'Account' })).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Settings' })
+    const buttons = [...nav.querySelectorAll('button')].map((button) => button.textContent?.trim())
+    expect(buttons).toEqual(['Settings', 'Account', 'Servers', 'Appearance', 'Updates'])
   })
 
   it('applies and persists a theme change', async () => {
     const { onSaveSettings } = renderSettings()
+    await openCategory('Appearance')
     await userEvent.click(screen.getByRole('button', { name: 'Dark' }))
     expect(onSaveSettings).toHaveBeenCalledWith({ theme: 'dark' })
   })
 
   it('saves the commit identity', async () => {
     const { onSaveSettings } = renderSettings()
-    await openCategory('Account')
 
     await userEvent.clear(screen.getByLabelText(/^Name$/))
     await userEvent.type(screen.getByLabelText(/^Name$/), 'Diego')
@@ -141,7 +177,6 @@ describe('Settings', () => {
     const client = clientMock()
     renderSettings({ client })
 
-    await openCategory('Account')
     await waitFor(() => expect(screen.getByText('Not configured')).toBeInTheDocument())
 
     await userEvent.type(screen.getByPlaceholderText(/paste token/i), 'sk-ant-123')
@@ -155,7 +190,6 @@ describe('Settings', () => {
     client.agentCredentialsConfigured.mockResolvedValue(true)
     renderSettings({ client })
 
-    await openCategory('Account')
     await waitFor(() => expect(screen.getByText('Configured')).toBeInTheDocument())
 
     await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
@@ -166,7 +200,6 @@ describe('Settings', () => {
     const client = clientMock()
     renderSettings({ client })
 
-    await openCategory('Account')
     await waitFor(() => expect(screen.getByText(/no providers configured/i)).toBeInTheDocument())
 
     await userEvent.click(screen.getByRole('button', { name: /add provider/i }))
@@ -180,22 +213,10 @@ describe('Settings', () => {
     )
   })
 
-  it('opens Account when asked to land there', async () => {
-    render(
-      <SettingsScreen
-        settings={defaultSettings()}
-        connection={server as never}
-        client={clientMock() as never}
-        update={updateMock()}
-        onSaveSettings={vi.fn()}
-        onSwitchServer={vi.fn()}
-        onClose={vi.fn()}
-        onDisconnected={vi.fn()}
-        initialCategory="account"
-      />,
-    )
+  it('opens Appearance when asked to land there', async () => {
+    renderSettings({ category: 'appearance' })
 
-    expect(await screen.findByRole('heading', { name: 'Account' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Appearance' })).toBeInTheDocument()
   })
 
   it('lists paired servers and switches to another one', async () => {
@@ -237,7 +258,7 @@ describe('Settings', () => {
   it('reports an available update and can check again', async () => {
     const update = updateMock()
     update.state = { status: 'available', update: { version: '0.2.0', body: '' } as never }
-    const { onSaveSettings } = renderSettings({ update })
+    renderSettings({ update })
 
     await openCategory('Updates')
     await waitFor(() => expect(screen.getByText(/0.2.0 is available/i)).toBeInTheDocument())
@@ -254,9 +275,9 @@ describe('Settings', () => {
     expect(onSaveSettings).toHaveBeenCalledWith({ checkForUpdatesOnLaunch: false })
   })
 
-  it('closes with the Done button', async () => {
+  it('closes with the Back button', async () => {
     const { onClose } = renderSettings()
-    await userEvent.click(screen.getByRole('button', { name: 'Done' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
     expect(onClose).toHaveBeenCalled()
   })
 })
