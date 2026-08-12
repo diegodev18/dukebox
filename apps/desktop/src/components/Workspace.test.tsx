@@ -87,38 +87,3 @@ describe('Workspace terminal tabs', () => {
     expect(screen.getByRole('button', { name: '047' })).toBeInTheDocument()
   })
 })
-
-describe('Workspace terminal tabs', () => {
-  it('turns the tab name into an input when clicked', async () => {
-    await openTerminalPanel()
-
-    await userEvent.click(screen.getByRole('button', { name: '047' }))
-
-    expect(screen.getByRole('textbox', { name: 'Terminal name' })).toHaveValue('047')
-  })
-
-  it('renames the tab when the input is submitted', async () => {
-    await openTerminalPanel()
-
-    await userEvent.click(screen.getByRole('button', { name: '047' }))
-    const input = screen.getByRole('textbox', { name: 'Terminal name' })
-    await userEvent.clear(input)
-    await userEvent.type(input, 'build')
-    await userEvent.keyboard('{Enter}')
-
-    expect(terminalHandlers.onRenameTerminal).toHaveBeenCalledWith('t1', 'build')
-  })
-
-  it('keeps the original name when editing is cancelled', async () => {
-    await openTerminalPanel()
-
-    await userEvent.click(screen.getByRole('button', { name: '047' }))
-    const input = screen.getByRole('textbox', { name: 'Terminal name' })
-    await userEvent.clear(input)
-    await userEvent.type(input, 'build')
-    await userEvent.keyboard('{Escape}')
-
-    expect(terminalHandlers.onRenameTerminal).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: '047' })).toBeInTheDocument()
-  })
-})
