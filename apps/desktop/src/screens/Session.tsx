@@ -60,6 +60,7 @@ export function Session({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>('account')
   const [setupProjectId, setSetupProjectId] = useState<string | null>(null)
+  const [preferProjectId, setPreferProjectId] = useState<string | null>(null)
   // Remember OpenCode when new session opens provider settings, so Back
   // restores the form with that agent still selected.
   const [preferAgentId, setPreferAgentId] = useState<string | null>(null)
@@ -159,6 +160,7 @@ export function Session({
     setSelected(session.id)
     setCreating(false)
     setSetupProjectId(null)
+    setPreferProjectId(null)
     setManagingProjectId(null)
     setPreferAgentId(null)
   }
@@ -189,6 +191,7 @@ export function Session({
           onOpenSettings={(category) => {
             setCreating(false)
             setSetupProjectId(null)
+            setPreferProjectId(null)
             setManagingProjectId(null)
             setPreferAgentId(null)
             setSettingsCategory(category)
@@ -199,12 +202,14 @@ export function Session({
             setCreating(false)
             setSettingsOpen(false)
             setSetupProjectId(null)
+            setPreferProjectId(null)
             setManagingProjectId(null)
             setPreferAgentId(null)
             setSelected(sessionId)
           }}
-          onNewSession={() => {
+          onNewSession={(projectId) => {
             setSetupProjectId(null)
+            setPreferProjectId(projectId ?? null)
             setManagingProjectId(null)
             setPreferAgentId(null)
             setSettingsOpen(false)
@@ -212,6 +217,7 @@ export function Session({
           }}
           onConfigureEnvironment={(projectId) => {
             setSetupProjectId(projectId)
+            setPreferProjectId(null)
             setManagingProjectId(null)
             setPreferAgentId(null)
             setSettingsOpen(false)
@@ -221,10 +227,44 @@ export function Session({
             setCreating(false)
             setSettingsOpen(false)
             setSetupProjectId(null)
+            setPreferProjectId(null)
             setPreferAgentId(null)
             setManagingProjectId(projectId)
           }}
           archiveError={archiveError}
+          onRemoveProject={(projectId) => {
+            void (async () => {
+              try {
+                await client.deleteProject(projectId)
+                setArchiveError(null)
+              } catch (error) {
+                setArchiveError(
+                  error instanceof Error ? error.message : 'Could not remove the project.',
+                )
+                return
+              }
+
+              const remaining = sessions.filter((session) => session.projectId !== projectId)
+              setProjects((current) => current.filter((project) => project.id !== projectId))
+              setSessions(remaining)
+              setSelected((currentSelected) => {
+                if (!currentSelected) return currentSelected
+                if (remaining.some((session) => session.id === currentSelected)) {
+                  return currentSelected
+                }
+                return remaining[0]?.id ?? null
+              })
+              if (managingProjectId === projectId) setManagingProjectId(null)
+              if (setupProjectId === projectId) {
+                setSetupProjectId(null)
+                setCreating(false)
+              }
+              if (preferProjectId === projectId) {
+                setPreferProjectId(null)
+                setCreating(false)
+              }
+            })()
+          }}
           onArchive={(sessionId) => {
             void (async () => {
               try {
@@ -279,6 +319,7 @@ export function Session({
           identity={settings.commitIdentity}
           onCreated={onSessionCreated}
           preferSetupProjectId={setupProjectId}
+          preferProjectId={preferProjectId}
           preferAgentId={preferAgentId}
           onConfigureProviders={() => {
             setPreferAgentId('opencode')
