@@ -5,6 +5,7 @@ import type {
   ToolBlock,
   Transcript as TranscriptData,
 } from '@dukebox/protocol'
+import { EXIT_PLAN_MODE_ACTION } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { ThinkingOrb } from 'thinking-orbs'
 import type { StreamStatus } from '@/lib/stream'
@@ -354,12 +355,22 @@ function Permission({
   const [decision, setDecision] = useState<'allow' | 'deny' | null>(null)
   const answered = block.answered || decision !== null
 
+  const isPlanExit = block.action === EXIT_PLAN_MODE_ACTION
+
   if (answered) {
     if (decision === 'allow') {
-      return <p className="text-[13px] text-done">Allowed {block.action}</p>
+      return (
+        <p className="text-[13px] text-done">
+          {isPlanExit ? 'Implementing the plan' : `Allowed ${block.action}`}
+        </p>
+      )
     }
     if (decision === 'deny') {
-      return <p className="text-[13px] text-muted-foreground">Denied {block.action}</p>
+      return (
+        <p className="text-[13px] text-muted-foreground">
+          {isPlanExit ? 'Kept planning' : `Denied ${block.action}`}
+        </p>
+      )
     }
     return <p className="text-[13px] text-muted-foreground">Answered: {block.action}</p>
   }
@@ -372,7 +383,13 @@ function Permission({
   return (
     <div className="rounded-[var(--radius)] border border-running/45 bg-running/5 px-3.5 py-3">
       <p className="text-[13px]">
-        The agent wants to <span className="font-medium">{block.action}</span>.
+        {isPlanExit ? (
+          'The plan is ready. Implement it, or keep planning.'
+        ) : (
+          <>
+            The agent wants to <span className="font-medium">{block.action}</span>.
+          </>
+        )}
       </p>
 
       <div className="mt-2.5 flex gap-2">
@@ -381,14 +398,14 @@ function Permission({
           onClick={() => respond(true)}
           className="rounded-[calc(var(--radius)*0.6)] bg-foreground px-3 py-1.5 text-[12.5px] font-medium text-background"
         >
-          Allow
+          {isPlanExit ? 'Implement' : 'Allow'}
         </button>
         <button
           type="button"
           onClick={() => respond(false)}
           className="rounded-[calc(var(--radius)*0.6)] border border-border px-3 py-1.5 text-[12.5px] font-medium hover:bg-muted"
         >
-          Deny
+          {isPlanExit ? 'Keep planning' : 'Deny'}
         </button>
       </div>
     </div>

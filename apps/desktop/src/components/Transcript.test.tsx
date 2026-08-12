@@ -59,4 +59,38 @@ describe('Transcript', () => {
     expect(screen.getByText('Allowed run a command')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Allow' })).not.toBeInTheDocument()
   })
+
+  it('offers to implement a plan rather than allow a generic tool', async () => {
+    const onRespond = vi.fn()
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [{ kind: 'permission', id: 'p1', action: 'exit_plan_mode', detail: null }],
+        })}
+        onRespond={onRespond}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Implement' }))
+
+    expect(onRespond).toHaveBeenCalledWith('p1', true)
+    expect(screen.getByText('Implementing the plan')).toBeInTheDocument()
+  })
+
+  it('keeps planning when the plan is not approved', async () => {
+    const onRespond = vi.fn()
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [{ kind: 'permission', id: 'p1', action: 'exit_plan_mode', detail: null }],
+        })}
+        onRespond={onRespond}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Keep planning' }))
+
+    expect(onRespond).toHaveBeenCalledWith('p1', false)
+    expect(screen.getByText('Kept planning')).toBeInTheDocument()
+  })
 })

@@ -38,6 +38,25 @@ export type AvailableModelId = (typeof AVAILABLE_MODELS)[number]['id']
 
 export const DEFAULT_MODEL: AvailableModelId = 'sonnet'
 
+export const AVAILABLE_PERMISSION_MODES = [
+  { id: 'plan', label: 'Plan' },
+  { id: 'auto', label: 'Auto' },
+  { id: 'acceptEdits', label: 'Accept edits' },
+  { id: 'bypass', label: 'Bypass' },
+] as const
+
+export type AvailablePermissionModeId = (typeof AVAILABLE_PERMISSION_MODES)[number]['id']
+
+export const DEFAULT_PERMISSION_MODE: AvailablePermissionModeId = 'bypass'
+
+export function permissionModeLabel(mode: string): string | undefined {
+  return AVAILABLE_PERMISSION_MODES.find((entry) => entry.id === mode)?.label
+}
+
+export function agentHasPermissionModes(agentId: string): boolean {
+  return agentId === 'claude-code'
+}
+
 /** Human name for a model id, when one is known. */
 export function modelLabel(modelId: string): string | undefined {
   return AVAILABLE_MODELS.find((model) => model.id === modelId)?.label

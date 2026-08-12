@@ -282,6 +282,14 @@ export const sessions = pgTable(
     baseCommit: text('base_commit'),
 
     /**
+     * How the agent is allowed to act.
+     *
+     * Null when the agent has no modes (OpenCode). Claude Code stores
+     * `bypass`, `plan`, `auto`, or `acceptEdits`.
+     */
+    permissionMode: text('permission_mode'),
+
+    /**
      * Highest seq assigned so far. The source of truth for numbering: a new
      * event takes `last_seq + 1` under a row lock, which keeps sequences gap
      * free even with concurrent writers.

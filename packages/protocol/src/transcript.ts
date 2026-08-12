@@ -1,4 +1,5 @@
 import type { AgentEvent, EnvelopedEvent } from './events.js'
+import type { PermissionMode } from './session.js'
 
 /**
  * The event stream, folded into what a person reads.
@@ -84,6 +85,8 @@ export interface Transcript {
   /** The agent behind this session, once it has said so. */
   agentId?: string
   model?: string
+  /** How the agent is allowed to act, once it has said so. */
+  permissionMode?: PermissionMode
   /** True between the first event of a turn and its `done`. */
   running: boolean
   /** Highest seq folded in. What a reconnect resumes from. */
@@ -214,6 +217,11 @@ function fold(draft: Transcript, event: AgentEvent, seq: number): void {
         ...draft.blocks,
         { kind: 'permission', id: event.id, action: event.action, detail: event.detail },
       ]
+      return
+    }
+
+    case 'permission_mode': {
+      draft.permissionMode = event.mode
       return
     }
 

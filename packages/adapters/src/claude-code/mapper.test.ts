@@ -54,6 +54,11 @@ describe('ClaudeCodeMapper', () => {
       expect(text.toLowerCase()).toContain('hello')
     })
 
+    it('emits the permission mode recorded on init', () => {
+      const { events } = mapFixture('text-only')
+      expect(events).toContainEqual({ type: 'permission_mode', mode: 'acceptEdits' })
+    })
+
     it('emits no tool calls', () => {
       const { events } = mapFixture('text-only')
       expect(typesOf(events)).not.toContain('tool_call')
@@ -338,6 +343,81 @@ describe('ClaudeCodeMapper', () => {
       expect(second).toEqual([])
     })
 
+    it('emits permission_mode from init', () => {
+      const mapper = new ClaudeCodeMapper()
+      const events = mapper.map({
+        type: 'system',
+        subtype: 'init',
+        session_id: 's',
+        permissionMode: 'plan',
+      })
+
+      expect(events).toContainEqual({ type: 'permission_mode', mode: 'plan' })
+    })
+
+    it('maps Claude bypassPermissions onto bypass', () => {
+      const mapper = new ClaudeCodeMapper()
+      const events = mapper.map({
+        type: 'system',
+        subtype: 'init',
+        session_id: 's',
+        permissionMode: 'bypassPermissions',
+      })
+
+      expect(events).toContainEqual({ type: 'permission_mode', mode: 'bypass' })
+    })
+  })
+
+  describe('control requests', () => {
+    it('turns can_use_tool into a permission_request', () => {
+      const mapper = new ClaudeCodeMapper()
+      const events = mapper.map({
+        type: 'control_request',
+        request_id: 'req-1',
+        request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } },
+      })
+
+      expect(events).toEqual([
+        {
+          type: 'permission_request',
+          id: 'req-1',
+          action: 'Bash',
+          detail: { command: 'ls' },
+        },
+      ])
+    })
+
+    it('maps ExitPlanMode onto the plan-approval action', () => {
+      const mapper = new ClaudeCodeMapper()
+      const events = mapper.map({
+        type: 'control_request',
+        request_id: 'req-plan',
+        request: { subtype: 'can_use_tool', tool_name: 'ExitPlanMode', input: {} },
+      })
+
+      expect(events).toEqual([
+        {
+          type: 'permission_request',
+          id: 'req-plan',
+          action: 'exit_plan_mode',
+          detail: {},
+        },
+      ])
+    })
+
+    it('ignores control requests that are not tool prompts', () => {
+      const mapper = new ClaudeCodeMapper()
+      expect(
+        mapper.map({
+          type: 'control_request',
+          request_id: 'x',
+          request: { subtype: 'interrupt' },
+        }),
+      ).toEqual([])
+    })
+  })
+
+  describe('session id', () => {
     it('tracks the latest session id', () => {
       const mapper = new ClaudeCodeMapper()
 

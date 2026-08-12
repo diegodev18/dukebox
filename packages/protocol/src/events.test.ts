@@ -11,6 +11,7 @@ describe('agentEvent', () => {
       { type: 'tool_result', id: 'call_1', output: 'contents', isError: false },
       { type: 'file_diff', path: 'a.ts', before: 'old', after: 'new' },
       { type: 'permission_request', id: 'perm_1', action: 'write', detail: null },
+      { type: 'permission_mode', mode: 'plan' },
       { type: 'usage', inputTokens: 10, outputTokens: 20, costUsd: 0.01 },
       { type: 'error', message: 'boom', fatal: true },
       { type: 'done', reason: 'completed' },
@@ -48,6 +49,16 @@ describe('agentEvent', () => {
 
   it('rejects a done event with an unknown reason', () => {
     expect(agentEvent.safeParse({ type: 'done', reason: 'gave_up' }).success).toBe(false)
+  })
+
+  it('accepts every permission mode', () => {
+    for (const mode of ['bypass', 'plan', 'auto', 'acceptEdits'] as const) {
+      expect(agentEvent.safeParse({ type: 'permission_mode', mode }).success).toBe(true)
+    }
+  })
+
+  it('rejects an unknown permission mode', () => {
+    expect(agentEvent.safeParse({ type: 'permission_mode', mode: 'dontAsk' }).success).toBe(false)
   })
 })
 

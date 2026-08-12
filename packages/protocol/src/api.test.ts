@@ -33,6 +33,25 @@ describe('createSessionRequest', () => {
     })
     expect(parsed.purpose).toBe('coding')
   })
+
+  it('accepts a permission mode', () => {
+    const parsed = createSessionRequest.parse({
+      projectId: '00000000-0000-4000-8000-000000000001',
+      agentId: 'claude-code',
+      prompt: 'fix it',
+      permissionMode: 'plan',
+    })
+    expect(parsed.permissionMode).toBe('plan')
+  })
+
+  it('omits permission mode when the caller did not pick one', () => {
+    const parsed = createSessionRequest.parse({
+      projectId: '00000000-0000-4000-8000-000000000001',
+      agentId: 'claude-code',
+      prompt: 'fix it',
+    })
+    expect(parsed.permissionMode).toBeUndefined()
+  })
 })
 
 describe('environment schemas', () => {

@@ -1,11 +1,13 @@
-import type { EnvironmentSummary } from '@dukebox/protocol'
+import type { EnvironmentSummary, PermissionMode } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import {
   AgentIcon,
   AVAILABLE_AGENTS,
   AVAILABLE_MODELS,
+  AVAILABLE_PERMISSION_MODES,
   agentLabel,
   modelLabel,
+  permissionModeLabel,
 } from '@/components/AgentIcon'
 import { CheckIcon, ChevronDownIcon, FolderIcon, ServerIcon } from '@/components/icons'
 
@@ -362,6 +364,44 @@ export function ModelPicker({
             }}
           >
             <span className="truncate">{model.label}</span>
+          </PickerRow>
+        ))}
+      </div>
+    </PickerShell>
+  )
+}
+
+export function PermissionModePicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: PermissionMode
+  onChange: (mode: PermissionMode) => void
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const label = permissionModeLabel(value) ?? value
+
+  return (
+    <PickerShell
+      open={open}
+      onOpenChange={setOpen}
+      disabled={Boolean(disabled)}
+      label={<span className="truncate">{label || 'Mode'}</span>}
+      ariaLabel="Permission mode"
+    >
+      <div className="max-h-64 overflow-y-auto py-1">
+        {AVAILABLE_PERMISSION_MODES.map((mode) => (
+          <PickerRow
+            key={mode.id}
+            selected={mode.id === value}
+            onSelect={() => {
+              onChange(mode.id)
+              setOpen(false)
+            }}
+          >
+            <span className="truncate">{mode.label}</span>
           </PickerRow>
         ))}
       </div>

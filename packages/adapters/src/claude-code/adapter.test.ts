@@ -2,7 +2,18 @@ import type { AgentEvent } from '@dukebox/protocol'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it } from 'vitest'
 import type { SessionContext } from '../types.js'
-import { buildArgs, ClaudeCodeAdapter, encodeUserMessage } from './adapter.js'
+import {
+  buildArgs,
+  ClaudeCodeAdapter,
+  encodePermissionResponse,
+  encodeSetPermissionMode,
+  encodeUserMessage,
+} from './adapter.js'
+
+function flagValue(args: string[], flag: string): string | undefined {
+  const index = args.indexOf(flag)
+  return index === -1 ? undefined : args[index + 1]
+}
 
 /**
  * These cover the parts that do not need a running agent: how the process is
@@ -35,11 +46,30 @@ describe('buildArgs', () => {
     expect(buildArgs(contextWith())).toContain('--verbose')
   })
 
-  it('bypasses permissions, since the container is the safety boundary', () => {
-    // acceptEdits would still prompt for Bash, and a headless session has
-    // nobody to answer the prompt.
+  it('bypasses permissions by default, since the container is the safety boundary', () => {
     const args = buildArgs(contextWith())
     expect(args[args.indexOf('--permission-mode') + 1]).toBe('bypassPermissions')
+  })
+
+  it('always allows switching into bypass later', () => {
+    expect(buildArgs(contextWith())).toContain('--allow-dangerously-skip-permissions')
+  })
+
+  it('always exposes the stdio permission channel, so plan mode can prompt', () => {
+    const args = buildArgs(contextWith())
+    expect(args[args.indexOf('--permission-prompt-tool') + 1]).toBe('stdio')
+  })
+
+  it('passes plan, auto, and acceptEdits through as Claude flags', () => {
+    expect(flagValue(buildArgs(contextWith({ permissionMode: 'plan' })), '--permission-mode')).toBe(
+      'plan',
+    )
+    expect(flagValue(buildArgs(contextWith({ permissionMode: 'auto' })), '--permission-mode')).toBe(
+      'auto',
+    )
+    expect(
+      flagValue(buildArgs(contextWith({ permissionMode: 'acceptEdits' })), '--permission-mode'),
+    ).toBe('acceptEdits')
   })
 
   it('omits --resume for a new session', () => {
@@ -120,6 +150,7 @@ describe('ClaudeCodeAdapter', () => {
       adapter,
     )
     consume(stream)
+    ;(adapter as unknown as { stream: PassThrough }).stream = stream
 
     return { adapter, stream }
   }
@@ -135,9 +166,8 @@ describe('ClaudeCodeAdapter', () => {
 
     expect(adapter.capabilities.resume).toBe(true)
     expect(adapter.capabilities.thinking).toBe(true)
-    // bypassPermissions means the agent never asks, so no approval card is
-    // shown.
-    expect(adapter.capabilities.permissions).toBe(false)
+    expect(adapter.capabilities.permissions).toBe(true)
+    expect(adapter.capabilities.permissionModes).toBe(true)
   })
 
   it('yields events parsed from the process output', async () => {
@@ -243,10 +273,133 @@ describe('ClaudeCodeAdapter', () => {
     await expect(new ClaudeCodeAdapter().send({ text: 'hi' })).rejects.toThrow('not started')
   })
 
-  it('treats a permission response as a no-op', async () => {
-    // Callers should not have to branch on capabilities to answer a prompt
-    // that this agent never sends.
-    await expect(new ClaudeCodeAdapter().respondToPermission('id', true)).resolves.toBeUndefined()
+  it('answers a permission over the control channel', async () => {
+    const { adapter, stream } = adapterWithStream()
+    const written: string[] = []
+    stream.write = ((chunk: string) => {
+      written.push(String(chunk))
+      return true
+    }) as typeof stream.write
+
+    await adapter.respondToPermission('req-1', true)
+
+    expect(written).toEqual([encodePermissionResponse('req-1', true)])
+  })
+
+  it('reports when auto mode is unavailable for the model', async () => {
+    const { adapter, stream } = adapterWithStream()
+    ;(adapter as unknown as { requestedMode: string }).requestedMode = 'auto'
+
+    stream.write(
+      `${JSON.stringify({
+        type: 'system',
+        subtype: 'init',
+        session_id: 'sess-1',
+        permissionMode: 'acceptEdits',
+      })}\n`,
+    )
+    stream.end()
+
+    const events = await collect(adapter)
+
+    expect(events).toContainEqual({
+      type: 'error',
+      message: 'Claude Code could not enable auto mode for this model.',
+      fatal: false,
+    })
+    expect(events).toContainEqual({ type: 'permission_mode', mode: 'acceptEdits' })
+  })
+
+  it('stays in plan when ExitPlanMode is denied', async () => {
+    const { adapter, stream } = adapterWithStream()
+    const written: string[] = []
+    stream.write = ((chunk: string) => {
+      written.push(String(chunk))
+      return true
+    }) as typeof stream.write
+
+    ;(adapter as unknown as { pendingPermissions: Map<string, string> }).pendingPermissions.set(
+      'req-plan',
+      'exit_plan_mode',
+    )
+
+    await adapter.respondToPermission('req-plan', false)
+
+    expect(written).toEqual([encodePermissionResponse('req-plan', false)])
+  })
+
+  it('switches to auto after allowing an ExitPlanMode request', async () => {
+    const { adapter, stream } = adapterWithStream()
+    const written: string[] = []
+    stream.write = ((chunk: string) => {
+      written.push(String(chunk))
+      return true
+    }) as typeof stream.write
+
+    // Seed the pending map the way a live can_use_tool would.
+    ;(adapter as unknown as { pendingPermissions: Map<string, string> }).pendingPermissions.set(
+      'req-plan',
+      'exit_plan_mode',
+    )
+
+    const events: AgentEvent[] = []
+    const collecting = (async () => {
+      for await (const event of adapter.events()) events.push(event)
+    })()
+
+    await adapter.respondToPermission('req-plan', true)
+    await adapter.stop()
+    await collecting
+
+    expect(written[0]).toBe(encodePermissionResponse('req-plan', true))
+    expect(JSON.parse(written[1] ?? '{}')).toMatchObject({
+      type: 'control_request',
+      request: { subtype: 'set_permission_mode', mode: 'auto' },
+    })
+    expect(events).toContainEqual({ type: 'permission_mode', mode: 'auto' })
+  })
+
+  it('asks Claude to change permission mode', async () => {
+    const { adapter, stream } = adapterWithStream()
+    const written: string[] = []
+    stream.write = ((chunk: string) => {
+      written.push(String(chunk))
+      return true
+    }) as typeof stream.write
+
+    const events: AgentEvent[] = []
+    const collecting = (async () => {
+      for await (const event of adapter.events()) events.push(event)
+    })()
+
+    await adapter.setPermissionMode('plan')
+    await adapter.stop()
+    await collecting
+
+    expect(JSON.parse(written[0] ?? '{}')).toMatchObject({
+      type: 'control_request',
+      request: { subtype: 'set_permission_mode', mode: 'plan' },
+    })
+    expect(events).toContainEqual({ type: 'permission_mode', mode: 'plan' })
+  })
+
+  it('encodes a permission decision as a control_response', () => {
+    expect(JSON.parse(encodePermissionResponse('abc', false))).toEqual({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: 'abc',
+        response: { behavior: 'deny', message: 'User denied permission' },
+      },
+    })
+  })
+
+  it('encodes a mode change as a control_request', () => {
+    expect(JSON.parse(encodeSetPermissionMode('auto', 'pm-1'))).toEqual({
+      type: 'control_request',
+      request_id: 'pm-1',
+      request: { subtype: 'set_permission_mode', mode: 'auto' },
+    })
   })
 
   it('ends the event stream on stop', async () => {

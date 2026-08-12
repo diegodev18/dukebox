@@ -37,4 +37,43 @@ describe('Composer', () => {
 
     expect(screen.getByText(/↵ Send/)).toBeInTheDocument()
   })
+
+  it('shows a permission mode picker when the session has modes', () => {
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        permissionMode="plan"
+        onPermissionModeChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Permission mode' })).toBeInTheDocument()
+    expect(screen.getByText('Plan')).toBeInTheDocument()
+  })
+
+  it('hides the picker when the agent has no modes', () => {
+    render(<Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />)
+
+    expect(screen.queryByRole('button', { name: 'Permission mode' })).not.toBeInTheDocument()
+  })
+
+  it('notifies when the mode changes', async () => {
+    const onPermissionModeChange = vi.fn()
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        permissionMode="plan"
+        onPermissionModeChange={onPermissionModeChange}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Permission mode' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Auto' }))
+
+    expect(onPermissionModeChange).toHaveBeenCalledWith('auto')
+  })
 })

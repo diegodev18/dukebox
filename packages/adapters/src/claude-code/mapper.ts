@@ -1,15 +1,19 @@
 import type { AgentEvent } from '@dukebox/protocol'
+import { EXIT_PLAN_MODE_ACTION } from '@dukebox/protocol'
 import {
   assistantMessage,
+  controlRequestMessage,
   initMessage,
   resultMessage,
   streamEnvelope,
   userMessage,
   type AssistantMessage,
+  type ControlRequestMessage,
   type InitMessage,
   type ResultMessage,
   type UserRoleMessage,
 } from './messages.js'
+import { fromClaudePermissionMode } from './modes.js'
 
 /**
  * Translate Claude Code's stream into AgentEvents.
@@ -60,8 +64,11 @@ export class ClaudeCodeMapper {
         return this.mapUser(raw)
       case 'result':
         return this.mapResult(raw)
+      case 'control_request':
+        return this.mapControlRequest(raw)
       default:
-        // rate_limit_event and anything added in a future release.
+        // rate_limit_event, control_response, and anything added in a future
+        // release.
         return []
     }
   }
@@ -76,18 +83,26 @@ export class ClaudeCodeMapper {
     this.sessionId = init.session_id
     this.model = init.model ?? this.model
 
-    // A resumed session emits init again; the UI should not see a second
-    // start for what the user experiences as one conversation.
-    if (this.started) return []
+    if (this.started) {
+      // A resumed session emits init again. The mode may have changed since
+      // the last process, so still report it.
+      const mode = fromClaudePermissionMode(init.permissionMode)
+      return mode ? [{ type: 'permission_mode', mode }] : []
+    }
     this.started = true
 
-    return [
+    const events: AgentEvent[] = [
       {
         type: 'session_started',
         agentId: 'claude-code',
         ...(this.model ? { model: this.model } : {}),
       },
     ]
+
+    const mode = fromClaudePermissionMode(init.permissionMode)
+    if (mode) events.push({ type: 'permission_mode', mode })
+
+    return events
   }
 
   private mapAssistant(raw: unknown): AgentEvent[] {
@@ -220,6 +235,26 @@ export class ClaudeCodeMapper {
     })
 
     return events
+  }
+
+  private mapControlRequest(raw: unknown): AgentEvent[] {
+    const parsed = controlRequestMessage.safeParse(raw)
+    if (!parsed.success) return []
+
+    const message: ControlRequestMessage = parsed.data
+    if (message.request.subtype !== 'can_use_tool') return []
+
+    const toolName = message.request.tool_name ?? 'unknown'
+    const action = toolName === 'ExitPlanMode' ? EXIT_PLAN_MODE_ACTION : toolName
+
+    return [
+      {
+        type: 'permission_request',
+        id: message.request_id,
+        action,
+        detail: message.request.input ?? null,
+      },
+    ]
   }
 }
 

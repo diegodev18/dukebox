@@ -342,6 +342,17 @@ describe('commands', () => {
       { type: 'permission_response', sessionId: SESSION, id: 'perm-1', allow: true },
     ])
   })
+
+  it('changes the permission mode', () => {
+    const { stream, socket } = setup()
+    stream.connect()
+    socket().open()
+    stream.setPermissionMode(SESSION, 'plan')
+
+    expect(socket().commands()).toEqual([
+      { type: 'set_permission_mode', sessionId: SESSION, mode: 'plan' },
+    ])
+  })
 })
 
 describe('bad input', () => {

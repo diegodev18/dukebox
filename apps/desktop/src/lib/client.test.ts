@@ -135,6 +135,19 @@ describe('DukeboxClient', () => {
     expect(JSON.parse(init.body as string).model).toBe('opus')
   })
 
+  it('forwards a permission mode when the caller picks one', async () => {
+    const fetchMock = respondWith({ id: 's1' })
+    await client.startSession({
+      projectId: 'p1',
+      agentId: 'claude-code',
+      prompt: 'go',
+      permissionMode: 'plan',
+    })
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string).permissionMode).toBe('plan')
+  })
+
   it('archives a session', async () => {
     const fetchMock = respondWith({ archived: true })
     await client.archiveSession('00000000-0000-4000-8000-000000000001')

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { envelopedEvent } from './events.js'
-import { sessionStatus, sessionSummary } from './session.js'
+import { permissionMode, sessionStatus, sessionSummary } from './session.js'
 
 /**
  * WebSocket messages between the desktop app and the control plane.
@@ -52,6 +52,13 @@ export const permissionResponseCommand = z.object({
 export const interruptCommand = z.object({
   type: z.literal('interrupt'),
   sessionId: z.string().uuid(),
+})
+
+/** Change how the agent is allowed to act. No-op when the agent has no modes. */
+export const setPermissionModeCommand = z.object({
+  type: z.literal('set_permission_mode'),
+  sessionId: z.string().uuid(),
+  mode: permissionMode,
 })
 
 /**
@@ -125,6 +132,7 @@ export const clientCommand = z.discriminatedUnion('type', [
   promptCommand,
   permissionResponseCommand,
   interruptCommand,
+  setPermissionModeCommand,
   terminalOpenCommand,
   terminalAttachCommand,
   terminalDetachCommand,

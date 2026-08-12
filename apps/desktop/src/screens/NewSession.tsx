@@ -9,7 +9,13 @@ import {
   type SessionSummary,
 } from '@dukebox/protocol'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AVAILABLE_AGENTS, AVAILABLE_MODELS, DEFAULT_MODEL } from '@/components/AgentIcon'
+import {
+  AVAILABLE_AGENTS,
+  AVAILABLE_MODELS,
+  DEFAULT_MODEL,
+  DEFAULT_PERMISSION_MODE,
+  agentHasPermissionModes,
+} from '@/components/AgentIcon'
 import { OpenCodeProviders, opencodeModelOptions } from '@/components/OpenCodeProviders'
 import { SendIcon } from '@/components/icons'
 import {
@@ -19,6 +25,7 @@ import {
   EnvironmentPicker,
   InstancePicker,
   ModelPicker,
+  PermissionModePicker,
   RepoPicker,
 } from '@/components/RepoBranchPickers'
 import type { DukeboxClient } from '@/lib/client'
@@ -81,6 +88,7 @@ export function NewSession({
   const [environmentId, setEnvironmentId] = useState<string>(BASE_IMAGE_VALUE)
   const [agentId, setAgentId] = useState<string>(AVAILABLE_AGENTS[0].id)
   const [model, setModel] = useState<string>(DEFAULT_MODEL)
+  const [permissionMode, setPermissionMode] = useState(DEFAULT_PERMISSION_MODE)
   const [opencodeProviders, setOpencodeProviders] = useState<OpencodeProvider[]>([])
   const [prompt, setPrompt] = useState('')
   const [forceSetup, setForceSetup] = useState(Boolean(preferSetupProjectId))
@@ -296,6 +304,7 @@ export function NewSession({
             baseBranch,
             purpose: 'environment_setup',
             environmentId: environment.id,
+            ...(agentHasPermissionModes(agentId) ? { permissionMode } : {}),
             ...(identity ? { commitIdentity: identity } : {}),
           })
         } catch (error) {
@@ -317,6 +326,7 @@ export function NewSession({
         baseBranch,
         purpose: 'coding',
         ...(environmentId ? { environmentId } : {}),
+        ...(agentHasPermissionModes(agentId) ? { permissionMode } : {}),
         ...(identity ? { commitIdentity: identity } : {}),
       })
 
@@ -373,6 +383,13 @@ export function NewSession({
           <AgentPicker value={agentId} onChange={selectAgent} disabled={busy} />
           {!(usingOpenCode && models.length === 0) && (
             <ModelPicker value={model} onChange={setModel} disabled={busy} models={models} />
+          )}
+          {agentHasPermissionModes(agentId) && (
+            <PermissionModePicker
+              value={permissionMode}
+              onChange={setPermissionMode}
+              disabled={busy}
+            />
           )}
           <InstancePicker instances={instances} value={connection.deviceId} disabled={busy} />
         </div>

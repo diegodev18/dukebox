@@ -25,6 +25,8 @@ const session = (
   updatedAt: 1,
   lastSeq: 0,
   pullRequestUrl: null,
+  environmentId: null,
+  permissionMode: 'bypass',
   ...overrides,
 })
 

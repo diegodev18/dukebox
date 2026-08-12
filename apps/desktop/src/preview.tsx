@@ -40,6 +40,7 @@ const event = (event: EnvelopedEvent['event']): EnvelopedEvent => ({
 
 const script: EnvelopedEvent[] = [
   event({ type: 'session_started', agentId: 'claude-code', model: 'claude-opus-4' }),
+  event({ type: 'permission_mode', mode: 'plan' }),
   event({ type: 'thinking', delta: 'The parser drops the frame header. ' }),
   event({ type: 'thinking', delta: 'Worth checking how exec differs from execStream.' }),
   event({
@@ -105,6 +106,12 @@ const script: EnvelopedEvent[] = [
     path: 'packages/sandbox/src/demux.test.ts',
     before: null,
     after: "it('strips docker frame headers', () => {})",
+  }),
+  event({
+    type: 'permission_request',
+    id: 'perm-plan',
+    action: 'exit_plan_mode',
+    detail: {},
   }),
   event({
     type: 'permission_request',
@@ -376,6 +383,8 @@ function Preview() {
     updatedAt: Date.now(),
     lastSeq: codingTranscript.lastSeq,
     pullRequestUrl: null,
+    environmentId: null,
+    permissionMode: 'plan',
   } as SessionSummary
 
   const setupSession = {
@@ -392,6 +401,8 @@ function Preview() {
     updatedAt: Date.now(),
     lastSeq: setupTranscript.lastSeq,
     pullRequestUrl: null,
+    environmentId: null,
+    permissionMode: 'bypass',
   } as SessionSummary
 
   const activeSession = view === 'setup' ? setupSession : codingSession
@@ -489,6 +500,12 @@ function Preview() {
               onSend={(text) => console.log('send', text)}
               onInterrupt={() => console.log('interrupt')}
               running={false}
+              {...(view === 'coding'
+                ? {
+                    permissionMode: 'auto' as const,
+                    onPermissionModeChange: (mode) => console.log('mode', mode),
+                  }
+                : {})}
               {...(view === 'setup' ? { placeholder: 'Add context for the setup agent…' } : {})}
             />
           </div>
