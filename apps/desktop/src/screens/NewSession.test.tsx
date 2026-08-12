@@ -65,17 +65,23 @@ const connection = { deviceId: 'd1', serverName: 'server', address: { host: 'loc
 function renderScreen(
   client: ReturnType<typeof makeClient>,
   projectOverrides = {},
-  extra: { onConfigureProviders?: () => void; preferAgentId?: string | null } = {},
+  extra: {
+    onConfigureProviders?: () => void
+    preferAgentId?: string | null
+    preferProjectId?: string | null
+    projects?: (typeof project)[]
+  } = {},
 ) {
   return render(
     <NewSession
       client={client as never}
       connection={connection as never}
-      projects={[{ ...project, ...projectOverrides } as never]}
+      projects={(extra.projects ?? [{ ...project, ...projectOverrides }]) as never}
       identity={null}
       onCreated={vi.fn()}
       onConfigureProviders={extra.onConfigureProviders ?? vi.fn()}
       preferAgentId={extra.preferAgentId}
+      preferProjectId={extra.preferProjectId}
     />,
   )
 }
@@ -403,5 +409,31 @@ describe('NewSession loading', () => {
     renderScreen(client)
 
     expect(screen.getByRole('status')).toHaveTextContent(/loading repositories/i)
+  })
+})
+
+describe('NewSession preferProjectId', () => {
+  it('preselects the project without forcing environment setup', async () => {
+    const other = {
+      ...project,
+      id: '00000000-0000-4000-8000-000000000002',
+      repoFullName: 'acme/other',
+      defaultBranch: 'develop',
+      environmentCount: 0,
+    }
+    const client = makeClient({
+      listRepositories: vi.fn().mockResolvedValue([
+        { fullName: project.repoFullName, defaultBranch: 'main', isRegistered: true },
+        { fullName: other.repoFullName, defaultBranch: 'develop', isRegistered: true },
+      ]),
+    })
+
+    renderScreen(client, {}, { preferProjectId: other.id, projects: [project, other] })
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Repository' })).toHaveTextContent('other'),
+    )
+    expect(screen.queryByRole('heading', { name: 'Configure environment' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/what should it do/i)).toBeInTheDocument()
   })
 })
