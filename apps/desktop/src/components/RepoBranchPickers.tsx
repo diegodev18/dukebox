@@ -1,3 +1,4 @@
+import type { EnvironmentSummary } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import {
   AgentIcon,
@@ -145,6 +146,69 @@ export function BranchPicker({
             </PickerRow>
           ))
         )}
+      </div>
+    </PickerShell>
+  )
+}
+
+/** Sentinel for "no environment": the base image, with no override. */
+export const BASE_IMAGE_VALUE = ''
+
+/**
+ * Which environment the session runs in.
+ *
+ * Only environments whose pattern covers the chosen branch are listed — an
+ * environment that cannot apply is not a choice. The base image closes the
+ * list as the always-available fallback, so there is never a dead end.
+ */
+export function EnvironmentPicker({
+  environments,
+  value,
+  onChange,
+  disabled,
+}: {
+  environments: EnvironmentSummary[]
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const selected = environments.find((environment) => environment.id === value)
+
+  return (
+    <PickerShell
+      open={open}
+      onOpenChange={setOpen}
+      disabled={Boolean(disabled)}
+      label={<span className="truncate">{selected?.name ?? 'Base image'}</span>}
+      ariaLabel="Environment"
+    >
+      <div className="max-h-64 overflow-y-auto py-1">
+        {environments.map((environment) => (
+          <PickerRow
+            key={environment.id}
+            selected={environment.id === value}
+            onSelect={() => {
+              onChange(environment.id)
+              setOpen(false)
+            }}
+          >
+            <span className="truncate">{environment.name}</span>
+            <span className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground">
+              {environment.branchPattern}
+            </span>
+          </PickerRow>
+        ))}
+
+        <PickerRow
+          selected={value === BASE_IMAGE_VALUE}
+          onSelect={() => {
+            onChange(BASE_IMAGE_VALUE)
+            setOpen(false)
+          }}
+        >
+          <span className="truncate">No environment (base image)</span>
+        </PickerRow>
       </div>
     </PickerShell>
   )

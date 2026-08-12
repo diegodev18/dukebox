@@ -23,5 +23,6 @@ export function toSummary(session: Session): SessionSummary {
     updatedAt: session.updatedAt.getTime(),
     lastSeq: session.lastSeq,
     pullRequestUrl: session.prUrl,
+    environmentId: session.environmentId,
   }
 }

@@ -1,9 +1,18 @@
-import type { ProjectSummary, RepositorySummary, SessionSummary } from '@dukebox/protocol'
+import {
+  matchesBranch,
+  resolveEnvironment,
+  type EnvironmentSummary,
+  type ProjectSummary,
+  type RepositorySummary,
+  type SessionSummary,
+} from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { AVAILABLE_AGENTS, DEFAULT_MODEL } from '../components/AgentIcon.js'
 import {
   AgentPicker,
+  BASE_IMAGE_VALUE,
   BranchPicker,
+  EnvironmentPicker,
   InstancePicker,
   ModelPicker,
   RepoPicker,
@@ -15,11 +24,11 @@ import type { Connection } from '../lib/connection.js'
  * Starting a session from the centre column.
  *
  * Choices sit above the prompt: which repository, which branch to branch
- * from, which agent, which model, and which instance. A repository that is
- * not yet a project becomes one on the way through.
+ * from, which agent, which model, which environment, and which instance. A
+ * repository that is not yet a project becomes one on the way through.
  *
- * Projects without a saved environment are steered into an environment_setup
- * session first; coding sessions only start once setup/env exist.
+ * Environments are offered, never required: a branch no environment covers
+ * runs on the base image, with a quiet notice rather than a blocked form.
  */
 
 interface Props {
@@ -30,6 +39,10 @@ interface Props {
   /** Prefer starting environment setup for this project (e.g. from sidebar). */
   preferSetupProjectId?: string | null
 }
+
+/** Matches the search field in the pickers, so the two read as one family. */
+const INPUT_CLASS =
+  'mt-1 w-full rounded-[calc(var(--radius)*0.6)] border border-border-strong bg-background px-2.5 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground'
 
 type Status =
   | { kind: 'idle' }
@@ -57,15 +70,21 @@ export function NewSession({
   )
   const [branches, setBranches] = useState<string[]>([])
   const [branchesLoading, setBranchesLoading] = useState(false)
+  const [environments, setEnvironments] = useState<EnvironmentSummary[]>([])
+  const [environmentId, setEnvironmentId] = useState<string>(BASE_IMAGE_VALUE)
   const [agentId, setAgentId] = useState<string>(AVAILABLE_AGENTS[0].id)
   const [model, setModel] = useState<string>(DEFAULT_MODEL)
   const [prompt, setPrompt] = useState('')
   const [forceSetup, setForceSetup] = useState(Boolean(preferSetupProjectId))
+  const [newEnvironmentName, setNewEnvironmentName] = useState('Default')
+  const [newEnvironmentPattern, setNewEnvironmentPattern] = useState('**')
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const field = useRef<HTMLTextAreaElement>(null)
 
-  const selectedProject = projects.find((candidate) => candidate.repoFullName === target) ?? null
-  const needsEnvironment = forceSetup || !selectedProject || !selectedProject.hasEnvironment
+  // Setup is offered, not required: a branch with no environment runs on the
+  // base image rather than being blocked.
+  const needsEnvironment = forceSetup
+  const usingBaseImage = environmentId === BASE_IMAGE_VALUE
 
   useEffect(() => {
     let cancelled = false
@@ -144,6 +163,35 @@ export function NewSession({
     }
   }, [client, target, projects, repositories])
 
+  // Environments belong to the project, so they reload when it changes.
+  useEffect(() => {
+    const project = projects.find((candidate) => candidate.repoFullName === target)
+
+    if (!project) {
+      setEnvironments([])
+      return
+    }
+
+    let cancelled = false
+
+    client
+      .listEnvironments(project.id)
+      .then((found) => {
+        if (cancelled) return
+        setEnvironments(found)
+      })
+      .catch(() => {
+        // Best-effort, like the branch list: without environments the form
+        // falls back to the base image, which is a valid way to start.
+        if (cancelled) return
+        setEnvironments([])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [client, target, projects])
+
   useEffect(() => {
     const element = field.current
     if (!element) return
@@ -151,6 +199,28 @@ export function NewSession({
     element.style.height = 'auto'
     element.style.height = `${Math.min(element.scrollHeight, 200)}px`
   }, [prompt])
+
+  // `refact/auth` suggests `refact/*` — the family, not the one branch. A
+  // branch with no slash suggests the catch-all instead.
+  useEffect(() => {
+    const [prefix] = baseBranch.split('/')
+    setNewEnvironmentPattern(baseBranch.includes('/') ? `${prefix}/*` : '**')
+  }, [baseBranch])
+
+  // Only environments whose pattern covers the branch can apply. Position
+  // orders them, so the first match is the one the server would resolve.
+  const matching = environments
+    .filter((environment) => matchesBranch(environment.branchPattern, baseBranch))
+    .sort((left, right) => left.position - right.position)
+
+  // Changing branch re-resolves the environment with the same rule the server
+  // uses, so the picker never shows one the server would not have chosen. A
+  // catch-all still matches a feature branch, so keeping the current choice
+  // here would strand `Default` on a branch that has a more specific
+  // environment. With no match at all this settles on the base image.
+  useEffect(() => {
+    setEnvironmentId(resolveEnvironment(environments, baseBranch)?.id ?? BASE_IMAGE_VALUE)
+  }, [baseBranch, environments])
 
   const selectRepo = (fullName: string) => {
     setTarget(fullName)
@@ -176,14 +246,34 @@ export function NewSession({
         project = created = await client.createProject(target)
       }
 
-      if (needsEnvironment || !project.hasEnvironment) {
-        const session = await client.startSession({
-          projectId: project.id,
-          agentId,
-          model,
-          baseBranch,
-          purpose: 'environment_setup',
+      if (needsEnvironment) {
+        // The environment has to exist before the session starts, so the setup
+        // run has somewhere to write its draft. If starting then fails, the row
+        // is removed again: a retry with the same name would otherwise collide
+        // with the unique (project_id, name) index and turn a transient failure
+        // into a permanent one.
+        const environment = await client.createEnvironment(project.id, {
+          name: newEnvironmentName.trim() || 'Default',
+          branchPattern: newEnvironmentPattern.trim() || '**',
         })
+
+        let session: SessionSummary
+        try {
+          session = await client.startSession({
+            projectId: project.id,
+            agentId,
+            model,
+            baseBranch,
+            purpose: 'environment_setup',
+            environmentId: environment.id,
+          })
+        } catch (error) {
+          await client.deleteEnvironment(environment.id).catch(() => {
+            // Rollback is best-effort; the original failure is what to report.
+          })
+          throw error
+        }
+
         onCreated(session, created)
         return
       }
@@ -195,6 +285,7 @@ export function NewSession({
         prompt: prompt.trim(),
         baseBranch,
         purpose: 'coding',
+        ...(environmentId ? { environmentId } : {}),
       })
 
       onCreated(session, created)
@@ -231,6 +322,16 @@ export function NewSession({
             disabled={busy || !target}
             loading={branchesLoading}
           />
+          {/* A lone "base image" entry would be noise, so it stays hidden
+              until the project actually has environments to choose between. */}
+          {environments.length > 0 && (
+            <EnvironmentPicker
+              environments={matching}
+              value={environmentId}
+              onChange={setEnvironmentId}
+              disabled={busy || !target}
+            />
+          )}
           <AgentPicker value={agentId} onChange={setAgentId} disabled={busy} />
           <ModelPicker value={model} onChange={setModel} disabled={busy} />
           <InstancePicker instances={instances} value={connection.deviceId} disabled={busy} />
@@ -241,8 +342,31 @@ export function NewSession({
             <h2 className="text-[14px] font-medium">Configure environment</h2>
             <p className="mt-1 text-[13px] text-muted-foreground">
               {agentId} will inspect the repository and propose setup commands and environment
-              variables. You review and save them before coding sessions can start.
+              variables. You review and save them, and branches this environment covers use them
+              from then on.
             </p>
+            <label className="mt-3 block text-[12px] text-muted-foreground">
+              Name
+              <input
+                value={newEnvironmentName}
+                onChange={(event) => setNewEnvironmentName(event.target.value)}
+                className={INPUT_CLASS}
+              />
+            </label>
+            <label className="mt-2 block text-[12px] text-muted-foreground">
+              Branches
+              <input
+                value={newEnvironmentPattern}
+                onChange={(event) => setNewEnvironmentPattern(event.target.value)}
+                aria-describedby="pattern-help"
+                className={INPUT_CLASS}
+              />
+            </label>
+            <p id="pattern-help" className="mt-1 text-[11px] text-muted-foreground">
+              Glob like <code>refact/*</code> or <code>**</code> for every branch. Prefix with{' '}
+              <code>re:</code> for a regular expression.
+            </p>
+
             <div className="mt-3 flex justify-end">
               <button
                 type="button"
@@ -296,6 +420,19 @@ export function NewSession({
               </button>
             </div>
           </div>
+        )}
+
+        {!needsEnvironment && usingBaseImage && (
+          <p className="mt-2 text-[12px] text-muted-foreground">
+            No environment for this branch — the base image will be used.{' '}
+            <button
+              type="button"
+              onClick={() => setForceSetup(true)}
+              className="underline underline-offset-2"
+            >
+              Configure environment
+            </button>
+          </p>
         )}
 
         {status.kind === 'failed' && (

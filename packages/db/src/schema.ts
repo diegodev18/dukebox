@@ -106,15 +106,53 @@ export const projects = pgTable(
 
     defaultBranch: text('default_branch').notNull().default('main'),
 
+    createdAt,
+    updatedAt,
+  },
+  (table) => [uniqueIndex('projects_repo_full_name_idx').on(table.repoFullName)],
+)
+
+/**
+ * One way to run a project, scoped to a family of branches.
+ *
+ * A project has many: a refactor branch needing an extra toolchain and a docs
+ * branch needing no install at all should not share one configuration. Which
+ * one applies is decided by `branchPattern` against the session's base branch,
+ * and ties are broken by `position` rather than by guessing which pattern is
+ * more specific.
+ *
+ * No environment matching a branch is not an error — that session runs on the
+ * base image with no override.
+ */
+export const environments = pgTable(
+  'environments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+
+    name: text('name').notNull(),
+
     /**
-     * UI overrides merged over the repo's `.duke/config.yaml`.
-     * Null means the repo's config is used as-is.
+     * Which branches this environment is available for.
+     *
+     * Glob by default (`**`, `refact/*`), or a regular expression behind a
+     * `re:` prefix. Note the catch-all is `**` and not `*`: a single star
+     * stops at a slash.
      */
+    branchPattern: text('branch_pattern').notNull(),
+
+    /** Tie-break when several patterns match. Lower wins. */
+    position: integer('position').notNull().default(0),
+
+    /** UI overrides merged over the repo's `.duke/config.yaml`. */
     configOverride: jsonb('config_override'),
 
     /**
-     * Image built after running the project's setup commands. Reused so later
-     * sessions start in seconds instead of reinstalling dependencies.
+     * Image built after running this environment's setup commands. Per
+     * environment, because different setup commands produce different images.
      */
     snapshotImage: text('snapshot_image'),
 
@@ -129,7 +167,14 @@ export const projects = pgTable(
     createdAt,
     updatedAt,
   },
-  (table) => [uniqueIndex('projects_repo_full_name_idx').on(table.repoFullName)],
+  (table) => [
+    // Exactly the picker's query: every environment of one project, in order.
+    index('environments_project_id_position_idx').on(table.projectId, table.position),
+
+    // Two environments of one project sharing a name would make the picker
+    // unreadable.
+    uniqueIndex('environments_project_id_name_idx').on(table.projectId, table.name),
+  ],
 )
 
 /**
@@ -206,6 +251,17 @@ export const sessions = pgTable(
     branch: text('branch').notNull(),
     baseBranch: text('base_branch').notNull(),
 
+    /**
+     * The environment this session runs in, or null for the base image.
+     *
+     * Resolved once at creation and persisted rather than re-derived on
+     * resume: a session resumed weeks later must use the environment it
+     * started with, even if patterns changed or the list was reordered.
+     */
+    environmentId: uuid('environment_id').references(() => environments.id, {
+      onDelete: 'set null',
+    }),
+
     /** Null until the container is created; cleared when it is removed. */
     containerId: text('container_id'),
 
@@ -250,6 +306,7 @@ export const sessions = pgTable(
     index('sessions_project_id_idx').on(table.projectId),
     // The sidebar lists sessions newest first, filtered by status.
     index('sessions_status_updated_at_idx').on(table.status, table.updatedAt),
+    index('sessions_environment_id_idx').on(table.environmentId),
   ],
 )
 
@@ -313,6 +370,8 @@ export type PairingCode = typeof pairingCodes.$inferSelect
 export type NewPairingCode = typeof pairingCodes.$inferInsert
 export type Project = typeof projects.$inferSelect
 export type NewProject = typeof projects.$inferInsert
+export type Environment = typeof environments.$inferSelect
+export type NewEnvironment = typeof environments.$inferInsert
 export type Secret = typeof secrets.$inferSelect
 export type NewSecret = typeof secrets.$inferInsert
 export type Session = typeof sessions.$inferSelect

@@ -13,7 +13,10 @@
 - Spec: `docs/superpowers/specs/2026-08-06-multiple-environments-design.md`. Read it before starting.
 - Glob semantics: `*` matches any run of characters **except `/`**; `**` matches any run **including `/`**; `?` matches exactly one character.
 - The catch-all pattern is `**`, never `*`. The migration writes `**`.
-- Regex patterns use the `re:` prefix and are implicitly anchored `^…$`.
+- Regex patterns use the `re:` prefix. Anchoring respects what the user wrote: a
+  missing `^` is added; a missing `$` is added only when the user did not anchor
+  the start. So `re:main` becomes `^(?:main)$` (no substring matches) while
+  `re:^(feat|fix)/` stays start-anchored with a free tail (matches `feat/auth`).
 - Pattern guards: max 200 characters; reject nested quantifiers; never compile with the `g` flag.
 - An invalid pattern never throws from `matchesBranch` — it returns `false`.
 - Pattern validation runs server-side in write endpoints, not only in the UI.
@@ -130,9 +133,22 @@ describe('matchesBranch — regex', () => {
     expect(matchesBranch('re:^(feat|fix)/', 'chore/x')).toBe(false)
   })
 
-  it('anchors implicitly', () => {
+  it('anchors an unanchored pattern at both ends', () => {
     expect(matchesBranch('re:main', 'main')).toBe(true)
     expect(matchesBranch('re:main', 'feat/maintenance')).toBe(false)
+    expect(matchesBranch('re:main', 'main-old')).toBe(false)
+  })
+
+  it('leaves the tail free when the user anchored the start', () => {
+    // Someone writing `^(feat|fix)/` means "branches under feat/ or fix/".
+    // Forcing a `$` onto that would make it match nothing at all.
+    expect(matchesBranch('re:^(feat|fix)/', 'feat/auth')).toBe(true)
+    expect(matchesBranch('re:^feat/', 'feat/a/b')).toBe(true)
+  })
+
+  it('respects an explicit end anchor', () => {
+    expect(matchesBranch('re:^main$', 'main')).toBe(true)
+    expect(matchesBranch('re:^main$', 'main-old')).toBe(false)
   })
 
   it('returns false for an invalid regex instead of throwing', () => {
@@ -286,14 +302,27 @@ function globToRegexSource(pattern: string): string {
  * results.
  */
 function compile(pattern: string): RegExp | null {
-  const source = pattern.startsWith(REGEX_PREFIX)
-    ? pattern.slice(REGEX_PREFIX.length)
-    : globToRegexSource(pattern)
+  const isRegex = pattern.startsWith(REGEX_PREFIX)
+
+  const source = isRegex ? pattern.slice(REGEX_PREFIX.length) : globToRegexSource(pattern)
 
   try {
-    // Anchored: an unanchored pattern matches substrings, so `re:main` would
-    // match `feat/maintenance`, which nobody expects of a branch filter.
-    return new RegExp(`^(?:${source})$`)
+    // A glob describes the whole branch name, so it is always anchored at both
+    // ends.
+    if (!isRegex) return new RegExp(`^(?:${source})$`)
+
+    // A regex keeps whatever anchoring its author wrote. Adding the missing
+    // `^` is what stops `re:main` matching `feat/maintenance` or `main-old` —
+    // substring matching on a branch filter surprises everyone. But a pattern
+    // that anchored its own start, like `^(feat|fix)/`, means "branches under
+    // these prefixes": forcing a `$` onto it would make it match nothing.
+    const anchoredStart = source.startsWith('^')
+    const anchoredEnd = source.endsWith('$')
+
+    const head = anchoredStart ? '' : '^(?:'
+    const tail = anchoredStart ? '' : anchoredEnd ? ')' : ')$'
+
+    return new RegExp(`${head}${source}${tail}`)
   } catch {
     return null
   }
@@ -528,10 +557,16 @@ CREATE UNIQUE INDEX "environments_project_id_name_idx" ON "environments" USING b
 -- Existing single environments become one row each. The pattern is `**` and
 -- not `*` because a single star stops at a slash, so `*` would silently stop
 -- matching branches like `refact/auth` that work today.
+-- The filter covers all three columns, not just config_override. A project can
+-- carry an unconfirmed environment_draft (a setup agent's proposal nobody has
+-- reviewed yet) or a snapshot with no override; filtering on config_override
+-- alone would drop those on the floor when the columns are dropped below.
 INSERT INTO "environments" ("project_id", "name", "branch_pattern", "position", "config_override", "snapshot_image", "environment_draft")
 SELECT "id", 'Default', '**', 0, "config_override", "snapshot_image", "environment_draft"
 FROM "projects"
-WHERE "config_override" IS NOT NULL;
+WHERE "config_override" IS NOT NULL
+   OR "environment_draft" IS NOT NULL
+   OR "snapshot_image" IS NOT NULL;
 --> statement-breakpoint
 ALTER TABLE "sessions" ADD COLUMN "environment_id" uuid;
 --> statement-breakpoint

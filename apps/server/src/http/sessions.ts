@@ -1,4 +1,4 @@
-import { projects, sessions, type Database } from '@dukebox/db'
+import { environments, sessions, type Database } from '@dukebox/db'
 import {
   createSessionRequest,
   environmentProposal,
@@ -74,7 +74,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
     }
 
     try {
-      const { baseBranch, prompt, purpose, model, ...rest } = parsed.data
+      const { baseBranch, prompt, purpose, model, environmentId, ...rest } = parsed.data
 
       const session = await deps.sessions.start({
         ...rest,
@@ -85,11 +85,21 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
         // an absent base branch as "use the project's default".
         ...(baseBranch ? { baseBranch } : {}),
         ...(model ? { model } : {}),
+        // Likewise absent rather than undefined: the manager reads an absent
+        // environment as "resolve one from the base branch".
+        ...(environmentId ? { environmentId } : {}),
       })
 
       return c.json(toSummary(session), 202)
     } catch (error) {
       if (error instanceof SessionError) {
+        // An environment belonging to another project is a refusal, not a
+        // malformed request: the client asked for something real and was
+        // denied it.
+        if (/environment does not belong/.test(error.message)) {
+          return c.json({ error: 'forbidden', message: error.message }, 403)
+        }
+
         return c.json({ error: 'invalid_request', message: error.message }, 400)
       }
       throw error
@@ -99,14 +109,15 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
   /**
    * The environment proposal produced by an environment_setup session.
    *
-   * Prefer the project's draft (written when the session finished). Falls back
-   * to null when the agent has not produced a valid proposal yet.
+   * Read from the environment the session ran in, which is where the manager
+   * writes the draft. Null when the agent has not produced a valid proposal
+   * yet, or when the session ran on the base image with nowhere to store one.
    */
   app.get('/sessions/:id/environment-proposal', async (c) => {
     const sessionId = c.req.param('id')
 
     const [session] = await deps.db
-      .select({ projectId: sessions.projectId, purpose: sessions.purpose })
+      .select({ environmentId: sessions.environmentId, purpose: sessions.purpose })
       .from(sessions)
       .where(eq(sessions.id, sessionId))
 
@@ -121,13 +132,17 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
       )
     }
 
-    const [project] = await deps.db
-      .select({ environmentDraft: projects.environmentDraft })
-      .from(projects)
-      .where(eq(projects.id, session.projectId))
+    if (!session.environmentId) {
+      return c.json({ proposal: null })
+    }
 
-    const parsed = project?.environmentDraft
-      ? environmentProposal.safeParse(project.environmentDraft)
+    const [environment] = await deps.db
+      .select({ environmentDraft: environments.environmentDraft })
+      .from(environments)
+      .where(eq(environments.id, session.environmentId))
+
+    const parsed = environment?.environmentDraft
+      ? environmentProposal.safeParse(environment.environmentDraft)
       : null
 
     return c.json({ proposal: parsed?.success ? parsed.data : null })
