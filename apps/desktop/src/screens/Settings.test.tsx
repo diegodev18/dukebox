@@ -19,9 +19,8 @@ vi.mock('@/lib/connection', () => ({
 import { listConnections, removeConnection, setActiveConnection } from '@/lib/connection'
 
 /**
- * The panel is exercised through its four categories. The server row is
- * asserted via `within(listitem)` because both the "Use" and "Forget" buttons
- * exist on every row, and a bare click would hit whichever came first.
+ * The panel is exercised through its categories. The server row is asserted
+ * carefully because Forget is two clicks (confirm), and Use/Forget coexist.
  */
 
 const server: ConnectionValue = {
@@ -149,7 +148,7 @@ describe('Settings', () => {
     expect(screen.getByRole('heading', { name: 'Account' })).toBeInTheDocument()
     const nav = screen.getByRole('navigation', { name: 'Settings' })
     const buttons = [...nav.querySelectorAll('button')].map((button) => button.textContent?.trim())
-    expect(buttons).toEqual(['Settings', 'Account', 'Servers', 'Appearance', 'Updates'])
+    expect(buttons).toEqual(['Settings', 'Account', 'Agents', 'Servers', 'Appearance', 'Updates'])
   })
 
   it('applies and persists a theme change', async () => {
@@ -159,23 +158,25 @@ describe('Settings', () => {
     expect(onSaveSettings).toHaveBeenCalledWith({ theme: 'dark' })
   })
 
-  it('saves the commit identity', async () => {
+  it('auto-saves the commit identity after typing settles', async () => {
     const { onSaveSettings } = renderSettings()
 
     await userEvent.clear(screen.getByLabelText(/^Name$/))
     await userEvent.type(screen.getByLabelText(/^Name$/), 'Diego')
     await userEvent.clear(screen.getByLabelText(/^Email$/))
     await userEvent.type(screen.getByLabelText(/^Email$/), 'diego@example.com')
-    await userEvent.click(screen.getByRole('button', { name: 'Save identity' }))
 
-    expect(onSaveSettings).toHaveBeenCalledWith({
-      commitIdentity: { name: 'Diego', email: 'diego@example.com' },
-    })
+    await waitFor(() =>
+      expect(onSaveSettings).toHaveBeenCalledWith({
+        commitIdentity: { name: 'Diego', email: 'diego@example.com' },
+      }),
+    )
   })
 
   it('shows whether the agent API is configured and saves a token', async () => {
     const client = clientMock()
     renderSettings({ client })
+    await openCategory('Agents')
 
     await waitFor(() => expect(screen.getByText('Not configured')).toBeInTheDocument())
 
@@ -189,6 +190,7 @@ describe('Settings', () => {
     const client = clientMock()
     client.agentCredentialsConfigured.mockResolvedValue(true)
     renderSettings({ client })
+    await openCategory('Agents')
 
     await waitFor(() => expect(screen.getByText('Configured')).toBeInTheDocument())
 
@@ -196,9 +198,10 @@ describe('Settings', () => {
     await waitFor(() => expect(client.clearAgentCredentials).toHaveBeenCalled())
   })
 
-  it('saves an OpenCode provider from Account', async () => {
+  it('saves an OpenCode provider from Agents', async () => {
     const client = clientMock()
     renderSettings({ client })
+    await openCategory('Agents')
 
     await waitFor(() => expect(screen.getByText(/no providers configured/i)).toBeInTheDocument())
 
@@ -237,7 +240,7 @@ describe('Settings', () => {
     expect(onSwitchServer).toHaveBeenCalledWith(expect.objectContaining({ deviceId: 'device-2' }))
   })
 
-  it('forgets a server without disconnecting when it is not the active one', async () => {
+  it('asks before forgetting a server and does not disconnect inactive ones', async () => {
     vi.mocked(listConnections).mockResolvedValue([
       server,
       { ...server, deviceId: 'device-2', serverName: 'debian-02' },
@@ -249,6 +252,10 @@ describe('Settings', () => {
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Forget' })).toHaveLength(2))
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Forget' })[1])
+    expect(removeConnection).not.toHaveBeenCalled()
+    expect(screen.getByText(/Forget debian-02/i)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Forget server' }))
 
     await waitFor(() => expect(removeConnection).toHaveBeenCalledWith('device-2'))
     expect(onSwitchServer).not.toHaveBeenCalled()
