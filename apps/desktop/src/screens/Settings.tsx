@@ -1,8 +1,19 @@
-import { DEFAULT_COMMIT_IDENTITY } from '@dukebox/protocol'
+import {
+  DEFAULT_COMMIT_IDENTITY,
+  DEFAULT_GIT_PREFERENCES,
+  type GitPreferences,
+} from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { ChevronLeftIcon } from '@/components/icons'
-import { OpenCodeProviders } from '@/components/OpenCodeProviders'
+import { OpenCodeProviders, opencodeModelOptions } from '@/components/OpenCodeProviders'
 import { PairingForm } from '@/components/PairingForm'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type { DukeboxClient } from '@/lib/client'
 import {
   listConnections,
@@ -20,10 +31,11 @@ import type { UseUpdate } from '@/lib/useUpdate'
  * nav. The content column shows one section at a time — never nested deeper.
  */
 
-export type SettingsCategory = 'account' | 'agents' | 'servers' | 'appearance' | 'updates'
+export type SettingsCategory = 'account' | 'git' | 'agents' | 'servers' | 'appearance' | 'updates'
 
 const CATEGORIES: { id: SettingsCategory; label: string }[] = [
   { id: 'account', label: 'Account' },
+  { id: 'git', label: 'Git' },
   { id: 'agents', label: 'Agents' },
   { id: 'servers', label: 'Servers' },
   { id: 'appearance', label: 'Appearance' },
@@ -113,6 +125,13 @@ export function Settings({
             onSaveIdentity={(commitIdentity) => onSaveSettings({ commitIdentity })}
           />
         )}
+        {category === 'git' && (
+          <GitSection
+            git={settings.git}
+            client={client}
+            onSave={(git) => onSaveSettings({ git })}
+          />
+        )}
         {category === 'agents' && <AgentsSection client={client} />}
         {category === 'servers' && (
           <ServersSection
@@ -185,6 +204,188 @@ function AppearanceSection({
         </div>
       </div>
     </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Git
+// ---------------------------------------------------------------------------
+
+function GitSection({
+  git,
+  client,
+  onSave,
+}: {
+  git: GitPreferences
+  client: DukeboxClient
+  onSave: (git: GitPreferences) => void
+}) {
+  const prefs = { ...DEFAULT_GIT_PREFERENCES, ...git }
+  const [models, setModels] = useState<{ id: string; label: string }[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    client
+      .listOpencodeProviders()
+      .then((providers) => {
+        if (!cancelled) setModels(opencodeModelOptions(providers))
+      })
+      .catch(() => {
+        if (!cancelled) setModels([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [client])
+
+  const patch = (partial: Partial<GitPreferences>) => onSave({ ...prefs, ...partial })
+
+  return (
+    <section aria-labelledby="git-title">
+      <h2 id="git-title" className="text-[14px] font-medium">
+        Git
+      </h2>
+      <p className="mt-1 text-[12.5px] text-muted-foreground">
+        How sessions commit and open pull requests. Applied to new sessions.
+      </p>
+
+      <ToggleRow
+        label="Create pull requests as drafts"
+        description="Reviewers will not be asked until you mark one ready."
+        checked={prefs.createAsDraft}
+        onChange={(createAsDraft) => patch({ createAsDraft })}
+      />
+      <ToggleRow
+        label="Open a draft automatically"
+        description="When the agent changes files, push the branch and open a draft pull request."
+        checked={prefs.autoOpenDraft}
+        onChange={(autoOpenDraft) => patch({ autoOpenDraft })}
+      />
+      <ToggleRow
+        label="Commit leftover changes at the end of a turn"
+        description="If the agent left uncommitted files, commit them before pushing."
+        checked={prefs.commitOnTurnEnd}
+        onChange={(commitOnTurnEnd) => patch({ commitOnTurnEnd })}
+      />
+      <ToggleRow
+        label="Delete the branch after merge"
+        description="Removes the session branch from GitHub once the pull request lands."
+        checked={prefs.deleteBranchAfterMerge}
+        onChange={(deleteBranchAfterMerge) => patch({ deleteBranchAfterMerge })}
+      />
+
+      <div className="mt-5 flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium">Merge method</p>
+          <p className="mt-0.5 text-[12px] text-muted-foreground">
+            How the app merges when you confirm from the pull request tab.
+          </p>
+        </div>
+        <Select
+          value={prefs.mergeMethod}
+          onValueChange={(value) => patch({ mergeMethod: value as GitPreferences['mergeMethod'] })}
+        >
+          <SelectTrigger className="w-[160px]" aria-label="Merge method">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="squash">Squash</SelectItem>
+            <SelectItem value="merge">Merge commit</SelectItem>
+            <SelectItem value="rebase">Rebase</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="mt-5 flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium">Pull request description</p>
+          <p className="mt-0.5 text-[12px] text-muted-foreground">
+            Written from the diff, never from the conversation.
+          </p>
+        </div>
+        <Select
+          value={prefs.prDescription}
+          onValueChange={(value) =>
+            patch({ prDescription: value as GitPreferences['prDescription'] })
+          }
+        >
+          <SelectTrigger className="w-[160px]" aria-label="Pull request description">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="auto">Auto</SelectItem>
+            <SelectItem value="dedicated">Dedicated model</SelectItem>
+            <SelectItem value="heuristic">Git only</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {prefs.prDescription !== 'heuristic' && (
+        <div className="mt-5 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[13px] font-medium">Description model</p>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
+              Optional. Uses a configured OpenCode provider; otherwise the git summary.
+            </p>
+          </div>
+          <Select
+            value={prefs.dedicatedModel ?? 'session'}
+            onValueChange={(value) =>
+              patch({ dedicatedModel: value === 'session' ? undefined : value })
+            }
+          >
+            <SelectTrigger className="w-[200px]" aria-label="Description model">
+              <SelectValue placeholder="Same as session" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="session">Same as session</SelectItem>
+              {models.map((model) => (
+                <SelectItem key={model.id} value={model.id}>
+                  {model.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function ToggleRow({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string
+  description: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="mt-4 flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <p className="text-[13px] font-medium">{label}</p>
+        <p className="mt-0.5 text-[12px] text-muted-foreground">{description}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+        className={`relative h-5 w-9 flex-none rounded-full transition-colors ${
+          checked ? 'bg-foreground' : 'bg-muted'
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 size-4 rounded-full bg-background transition-transform ${
+            checked ? 'left-4.5' : 'left-0.5'
+          }`}
+        />
+      </button>
+    </div>
   )
 }
 

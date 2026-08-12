@@ -1,4 +1,5 @@
-import type { CommitIdentity } from '@dukebox/protocol'
+import type { CommitIdentity, GitPreferences } from '@dukebox/protocol'
+import { DEFAULT_GIT_PREFERENCES } from '@dukebox/protocol'
 import { load, type Store } from '@tauri-apps/plugin-store'
 
 /**
@@ -28,6 +29,8 @@ export interface Settings {
    * person configures their own.
    */
   commitIdentity: CommitIdentity | null
+  /** How new sessions commit, open, and merge pull requests. */
+  git: GitPreferences
 }
 
 export function defaultSettings(): Settings {
@@ -35,6 +38,7 @@ export function defaultSettings(): Settings {
     theme: 'system',
     checkForUpdatesOnLaunch: true,
     commitIdentity: null,
+    git: DEFAULT_GIT_PREFERENCES,
   }
 }
 
@@ -51,12 +55,22 @@ async function open(): Promise<Store> {
 }
 
 export async function loadSettings(): Promise<Settings> {
-  const saved = await (await open()).get<Settings>(SETTINGS_KEY)
-  return { ...defaultSettings(), ...saved }
+  const defaults = defaultSettings()
+  const saved = await (await open()).get<Partial<Settings>>(SETTINGS_KEY)
+  return {
+    ...defaults,
+    ...saved,
+    git: { ...defaults.git, ...saved?.git },
+  }
 }
 
 export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
-  const next = { ...(await loadSettings()), ...patch }
+  const current = await loadSettings()
+  const next: Settings = {
+    ...current,
+    ...patch,
+    git: patch.git ? { ...current.git, ...patch.git } : current.git,
+  }
   await (await open()).set(SETTINGS_KEY, next)
 
   // The theme mirror follows every save that touches the theme, so a reboot

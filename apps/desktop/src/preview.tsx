@@ -9,7 +9,6 @@ import { createRoot } from 'react-dom/client'
 import { AgentIcon } from '@/components/AgentIcon'
 import { Composer } from '@/components/Composer'
 import { Transcript } from '@/components/Transcript'
-import { PullRequest } from '@/components/PullRequest'
 import { Workspace } from '@/components/Workspace'
 import {
   applyTerminalMessage,
@@ -267,6 +266,24 @@ const fakeClient = {
   putEnvironment: async () => {
     console.log('environment saved')
   },
+  openPullRequest: async () => ({
+    url: 'https://github.com/diegodev18/dukebox/pull/1',
+    title: 'Fix the demux bug',
+    isDraft: true,
+    state: 'open' as const,
+  }),
+  markPullRequestReady: async () => ({
+    url: 'https://github.com/diegodev18/dukebox/pull/1',
+    title: 'Fix the demux bug',
+    isDraft: false,
+    state: 'open' as const,
+  }),
+  mergePullRequest: async () => ({
+    url: 'https://github.com/diegodev18/dukebox/pull/1',
+    title: 'Fix the demux bug',
+    isDraft: false,
+    state: 'merged' as const,
+  }),
 } as never
 
 /** A session's worth of terminal output, as a real shell would paint it. */
@@ -385,12 +402,18 @@ function Preview() {
     baseBranch: 'main',
     // Zero on purpose: this is what the server reports for a session whose
     // summary has not refreshed since the agent started editing. The pull
-    // request button has to appear anyway, off the live count.
+    // request tab still appears off the live file count.
     changedFileCount: 0,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     lastSeq: codingTranscript.lastSeq,
-    pullRequestUrl: null,
+    pullRequestUrl: 'https://github.com/diegodev18/dukebox/pull/1',
+    pullRequest: {
+      url: 'https://github.com/diegodev18/dukebox/pull/1',
+      title: 'Fix the demux bug',
+      isDraft: true,
+      state: 'open' as const,
+    },
     environmentId: null,
     permissionMode: 'plan',
   } as SessionSummary
@@ -409,6 +432,7 @@ function Preview() {
     updatedAt: Date.now(),
     lastSeq: setupTranscript.lastSeq,
     pullRequestUrl: null,
+    pullRequest: null,
     environmentId: null,
     permissionMode: 'bypass',
   } as SessionSummary
@@ -479,14 +503,6 @@ function Preview() {
             <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
               <h1 className="truncate font-medium">{activeSession.title}</h1>
               <span className="flex-1" />
-              {view === 'coding' && (
-                <PullRequest
-                  client={fakeClient}
-                  session={codingSession}
-                  changedFiles={codingTranscript.files.length}
-                  onOpened={(url) => console.log('opened', url)}
-                />
-              )}
 
               <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
                 <span
@@ -535,6 +551,14 @@ function Preview() {
                     environmentId: '00000000-0000-4000-8000-0000000000e1',
                     environmentName: 'Refactors',
                     onSaved: () => console.log('environment saved'),
+                  }
+                : null
+            }
+            pullRequest={
+              view === 'coding'
+                ? {
+                    client: fakeClient,
+                    onUpdated: (patch) => console.log('pr updated', patch),
                   }
                 : null
             }

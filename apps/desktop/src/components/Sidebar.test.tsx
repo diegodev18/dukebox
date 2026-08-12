@@ -31,6 +31,7 @@ const session: SessionSummary = {
   updatedAt: Date.now(),
   lastSeq: 4,
   pullRequestUrl: null,
+  pullRequest: null,
   environmentId: null,
   permissionMode: 'bypass',
 }

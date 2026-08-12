@@ -376,6 +376,7 @@ describe('session updates', () => {
       updatedAt: Date.now(),
       lastSeq: 5,
       pullRequestUrl: null,
+      pullRequest: null,
       environmentId: null,
       permissionMode: 'bypass',
     })
@@ -410,6 +411,7 @@ describe('session updates', () => {
       updatedAt: Date.now(),
       lastSeq: 1,
       pullRequestUrl: null,
+      pullRequest: null,
       environmentId: null,
       permissionMode: 'bypass',
     })

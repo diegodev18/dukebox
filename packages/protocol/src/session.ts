@@ -105,6 +105,70 @@ export const sessionPurpose = z.enum(['coding', 'environment_setup'])
 
 export type SessionPurpose = z.infer<typeof sessionPurpose>
 
+/** How a pull request is merged from the app. */
+export const mergeMethod = z.enum(['squash', 'merge', 'rebase'])
+
+export type MergeMethod = z.infer<typeof mergeMethod>
+
+/**
+ * How the pull request title and body are written.
+ *
+ * `auto` uses the session's provider when one is configured, then a dedicated
+ * model, then a git-only fallback. `dedicated` skips the session provider.
+ * `heuristic` never calls a model.
+ */
+export const prDescriptionMode = z.enum(['auto', 'dedicated', 'heuristic'])
+
+export type PrDescriptionMode = z.infer<typeof prDescriptionMode>
+
+/**
+ * Per-session git / pull-request behaviour, sent from the app's settings.
+ *
+ * Defaults match Cursor: draft PRs, opened automatically, leftover changes
+ * committed at the end of a turn, squash merge, delete the branch after.
+ */
+export const gitPreferences = z.object({
+  createAsDraft: z.boolean().default(true),
+  autoOpenDraft: z.boolean().default(true),
+  commitOnTurnEnd: z.boolean().default(true),
+  mergeMethod: mergeMethod.default('squash'),
+  deleteBranchAfterMerge: z.boolean().default(true),
+  prDescription: prDescriptionMode.default('auto'),
+  /** OpenCode `provider/model` used when writing the PR description. */
+  dedicatedModel: z.string().min(1).optional(),
+})
+
+export type GitPreferences = z.infer<typeof gitPreferences>
+
+export const DEFAULT_GIT_PREFERENCES: GitPreferences = gitPreferences.parse({})
+
+/** Fill missing keys so a partial row or an older client still works. */
+export function parseGitPreferences(raw: unknown): GitPreferences {
+  const parsed = gitPreferences.safeParse(raw ?? {})
+  return parsed.success ? parsed.data : DEFAULT_GIT_PREFERENCES
+}
+
+/** GitHub's view of a pull request opened from a session. */
+export const pullRequestState = z.enum(['open', 'merged', 'closed'])
+
+export type PullRequestState = z.infer<typeof pullRequestState>
+
+export const pullRequestSummary = z.object({
+  url: z.string().url(),
+  title: z.string(),
+  isDraft: z.boolean(),
+  state: pullRequestState,
+})
+
+export type PullRequestSummary = z.infer<typeof pullRequestSummary>
+
+export const pullRequestDetails = pullRequestSummary.extend({
+  body: z.string().optional(),
+  mergeable: z.enum(['MERGEABLE', 'CONFLICTING', 'UNKNOWN']).nullable().optional(),
+})
+
+export type PullRequestDetails = z.infer<typeof pullRequestDetails>
+
 /** A session as the client sees it. */
 export const sessionSummary = z.object({
   id: z.string().uuid(),
@@ -129,6 +193,12 @@ export const sessionSummary = z.object({
    * refuse.
    */
   pullRequestUrl: z.string().url().nullable(),
+  /**
+   * The same pull request, with the fields the workspace tab needs.
+   *
+   * Null until one is opened. `pullRequestUrl` stays for older clients.
+   */
+  pullRequest: pullRequestSummary.nullable().default(null),
   /**
    * The environment this session resolved to, or null for the base image.
    *

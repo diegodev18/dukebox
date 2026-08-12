@@ -52,6 +52,35 @@ describe('createSessionRequest', () => {
     })
     expect(parsed.permissionMode).toBeUndefined()
   })
+
+  it('fills git preference defaults when the object is empty', () => {
+    const parsed = createSessionRequest.parse({
+      projectId: '00000000-0000-4000-8000-000000000001',
+      agentId: 'claude-code',
+      prompt: 'fix it',
+      gitPreferences: {},
+    })
+    expect(parsed.gitPreferences).toMatchObject({
+      createAsDraft: true,
+      autoOpenDraft: true,
+      commitOnTurnEnd: true,
+      mergeMethod: 'squash',
+      deleteBranchAfterMerge: true,
+      prDescription: 'auto',
+    })
+  })
+
+  it('accepts a partial git preference override', () => {
+    const parsed = createSessionRequest.parse({
+      projectId: '00000000-0000-4000-8000-000000000001',
+      agentId: 'claude-code',
+      prompt: 'fix it',
+      gitPreferences: { autoOpenDraft: false, mergeMethod: 'rebase' },
+    })
+    expect(parsed.gitPreferences?.autoOpenDraft).toBe(false)
+    expect(parsed.gitPreferences?.mergeMethod).toBe('rebase')
+    expect(parsed.gitPreferences?.createAsDraft).toBe(true)
+  })
 })
 
 describe('environment schemas', () => {

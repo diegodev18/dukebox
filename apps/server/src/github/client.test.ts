@@ -200,9 +200,16 @@ describe('createPullRequest', () => {
     expect(run.mock.calls[0]?.[0] as unknown as string[]).toContain('--draft')
   })
 
-  it('is not a draft by default', async () => {
+  it('is a draft by default', async () => {
     const { client, run } = clientReturning('https://github.com/diego/dukebox/pull/1')
     await client.createPullRequest(options)
+
+    expect(run.mock.calls[0]?.[0] as unknown as string[]).toContain('--draft')
+  })
+
+  it('can open a ready pull request', async () => {
+    const { client, run } = clientReturning('https://github.com/diego/dukebox/pull/1')
+    await client.createPullRequest({ ...options, draft: false })
 
     expect(run.mock.calls[0]?.[0] as unknown as string[]).not.toContain('--draft')
   })
@@ -216,12 +223,26 @@ describe('createPullRequest', () => {
 })
 
 describe('findPullRequest', () => {
-  it('returns the URL of an open pull request for the branch', async () => {
+  it('returns an open pull request for the branch', async () => {
     const { client } = clientReturning(
-      JSON.stringify([{ url: 'https://github.com/diego/dukebox/pull/42' }]),
+      JSON.stringify([
+        {
+          url: 'https://github.com/diego/dukebox/pull/42',
+          title: 'Add a health check',
+          body: 'Adds /health.',
+          isDraft: true,
+          state: 'OPEN',
+          mergeable: 'MERGEABLE',
+        },
+      ]),
     )
 
-    expect(await client.findPullRequest('diego/dukebox', 'duke/abc')).toContain('/pull/42')
+    expect(await client.findPullRequest('diego/dukebox', 'duke/abc')).toMatchObject({
+      url: 'https://github.com/diego/dukebox/pull/42',
+      title: 'Add a health check',
+      isDraft: true,
+      state: 'open',
+    })
   })
 
   it('returns null when there is none', async () => {
@@ -229,12 +250,56 @@ describe('findPullRequest', () => {
     expect(await client.findPullRequest('diego/dukebox', 'duke/abc')).toBeNull()
   })
 
-  it('looks only at open pull requests', async () => {
+  it('looks at every state so a merged PR is still found', async () => {
     const { client, run } = clientReturning('[]')
     await client.findPullRequest('diego/dukebox', 'duke/abc')
 
     const args = run.mock.calls[0]?.[0] as unknown as string[]
-    expect(args[args.indexOf('--state') + 1]).toBe('open')
+    expect(args[args.indexOf('--state') + 1]).toBe('all')
+  })
+})
+
+describe('markReady', () => {
+  it('asks gh to mark the pull request ready', async () => {
+    const { client, run } = clientReturning('')
+    await client.markReady('diego/dukebox', 'https://github.com/diego/dukebox/pull/1')
+
+    const args = run.mock.calls[0]?.[0] as unknown as string[]
+    expect(args.slice(0, 2)).toEqual(['pr', 'ready'])
+    expect(args).toContain('https://github.com/diego/dukebox/pull/1')
+  })
+})
+
+describe('mergePullRequest', () => {
+  it('squashes by default of the caller', async () => {
+    const { client, run } = clientReturning('')
+    await client.mergePullRequest({
+      repoFullName: 'diego/dukebox',
+      url: 'https://github.com/diego/dukebox/pull/1',
+      method: 'squash',
+      deleteBranch: true,
+    })
+
+    const args = run.mock.calls[0]?.[0] as unknown as string[]
+    expect(args).toContain('--squash')
+    expect(args).toContain('--delete-branch')
+  })
+})
+
+describe('editPullRequest', () => {
+  it('passes a new title and body', async () => {
+    const { client, run } = clientReturning('')
+    await client.editPullRequest({
+      repoFullName: 'diego/dukebox',
+      url: 'https://github.com/diego/dukebox/pull/1',
+      title: 'New title',
+      body: 'New body',
+    })
+
+    const args = run.mock.calls[0]?.[0] as unknown as string[]
+    expect(args.slice(0, 2)).toEqual(['pr', 'edit'])
+    expect(args[args.indexOf('--title') + 1]).toBe('New title')
+    expect(args[args.indexOf('--body') + 1]).toBe('New body')
   })
 })
 

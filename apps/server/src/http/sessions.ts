@@ -2,6 +2,7 @@ import { environments, sessions, type Database } from '@dukebox/db'
 import {
   createSessionRequest,
   environmentProposal,
+  mergePullRequestRequest,
   openPullRequestRequest,
 } from '@dukebox/protocol'
 import { and, desc, eq, isNull } from 'drizzle-orm'
@@ -81,6 +82,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
         model,
         environmentId,
         commitIdentity,
+        gitPreferences,
         permissionMode,
         ...rest
       } = parsed.data
@@ -99,6 +101,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
         // environment as "resolve one from the base branch".
         ...(environmentId ? { environmentId } : {}),
         ...(commitIdentity ? { commitIdentity } : {}),
+        ...(gitPreferences ? { gitPreferences } : {}),
       })
 
       return c.json(toSummary(session), 202)
@@ -193,12 +196,56 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
     }
 
     try {
-      const url = await deps.sessions.openPullRequest(c.req.param('id'), parsed.data.title)
-      return c.json({ url })
+      const opened = await deps.sessions.openPullRequest(c.req.param('id'), parsed.data.title)
+      return c.json(opened)
     } catch (error) {
       if (error instanceof SessionError) {
         // 409: the request was understood, but the session is not in a state
         // where a pull request means anything.
+        return c.json({ error: 'conflict', message: error.message }, 409)
+      }
+      throw error
+    }
+  })
+
+  app.get('/sessions/:id/pr', async (c) => {
+    try {
+      const pullRequest = await deps.sessions.getPullRequest(c.req.param('id'))
+      if (!pullRequest) {
+        return c.json({ error: 'not_found', message: 'this session has no pull request' }, 404)
+      }
+      return c.json(pullRequest)
+    } catch (error) {
+      if (error instanceof SessionError) {
+        return c.json({ error: 'not_found', message: error.message }, 404)
+      }
+      throw error
+    }
+  })
+
+  app.post('/sessions/:id/pr/ready', async (c) => {
+    try {
+      return c.json(await deps.sessions.markPullRequestReady(c.req.param('id')))
+    } catch (error) {
+      if (error instanceof SessionError) {
+        return c.json({ error: 'conflict', message: error.message }, 409)
+      }
+      throw error
+    }
+  })
+
+  app.post('/sessions/:id/pr/merge', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    const parsed = mergePullRequestRequest.safeParse(body ?? {})
+
+    if (!parsed.success) {
+      return c.json({ error: 'invalid_request', message: parsed.error.message }, 400)
+    }
+
+    try {
+      return c.json(await deps.sessions.mergePullRequest(c.req.param('id'), parsed.data.method))
+    } catch (error) {
+      if (error instanceof SessionError) {
         return c.json({ error: 'conflict', message: error.message }, 409)
       }
       throw error

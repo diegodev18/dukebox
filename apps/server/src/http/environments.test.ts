@@ -31,7 +31,25 @@ const sessionManager = {
   start: vi.fn(),
   stop: vi.fn(async () => {}),
   archive: vi.fn(async () => {}),
-  openPullRequest: vi.fn(async () => 'https://github.com/acme/env-routes/pull/1'),
+  openPullRequest: vi.fn(async () => ({
+    url: 'https://github.com/acme/env-routes/pull/1',
+    title: 'Env',
+    isDraft: true,
+    state: 'open' as const,
+  })),
+  getPullRequest: vi.fn(async () => null),
+  markPullRequestReady: vi.fn(async () => ({
+    url: 'https://github.com/acme/env-routes/pull/1',
+    title: 'Env',
+    isDraft: false,
+    state: 'open' as const,
+  })),
+  mergePullRequest: vi.fn(async () => ({
+    url: 'https://github.com/acme/env-routes/pull/1',
+    title: 'Env',
+    isDraft: false,
+    state: 'merged' as const,
+  })),
 } as unknown as SessionManager
 
 const secretStore = new SecretStore(db, randomBytes(32))

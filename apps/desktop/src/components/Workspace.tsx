@@ -4,6 +4,7 @@ import type { DukeboxClient } from '@/lib/client'
 import type { TerminalState } from '@/lib/useTerminals'
 import { Diff, changeCounts } from '@/components/Diff'
 import { EnvironmentReview } from '@/components/EnvironmentReview'
+import { PullRequestPanel, type PullRequestTab } from '@/components/PullRequest'
 import {
   CommitIcon,
   ChevronDownIcon,
@@ -31,7 +32,14 @@ const COLLAPSED_KEY = 'dukebox:workspace-collapsed'
 /** How many terminals a session may have. Matches the server's own cap. */
 const MAX_TERMINALS = 4
 
-type WorkspaceTab = 'files' | 'terminal' | 'environment'
+type WorkspaceTab = 'files' | 'terminal' | 'environment' | 'pr'
+
+const TAB_LABELS: Record<WorkspaceTab, string> = {
+  files: 'Files',
+  terminal: 'Terminal',
+  environment: 'Environment',
+  pr: 'Pull request',
+}
 
 /** Props to mount the Environment review form as a workspace tab. */
 export interface EnvironmentReviewTab {
@@ -64,15 +72,33 @@ interface Props extends TerminalProps {
   files: FileChange[]
   /** When set, the Environment tab appears with the review form. */
   environmentReview?: EnvironmentReviewTab | null
+  /** When set, the Pull request tab can open, mark ready, and merge. */
+  pullRequest?: PullRequestTab | null
 }
 
-export function Workspace({ session, files, environmentReview, ...terminalProps }: Props) {
+export function Workspace({
+  session,
+  files,
+  environmentReview,
+  pullRequest,
+  ...terminalProps
+}: Props) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === 'true')
   const [tab, setTab] = useState<WorkspaceTab>('files')
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, String(collapsed))
   }, [collapsed])
+
+  const showPr =
+    Boolean(pullRequest) &&
+    session?.purpose !== 'environment_setup' &&
+    Boolean(
+      session?.pullRequest ||
+      session?.pullRequestUrl ||
+      files.length > 0 ||
+      (session?.changedFileCount ?? 0) > 0,
+    )
 
   // Open the Environment tab when a proposal is ready to review — the form is
   // why this session exists, and burying it behind Files would look unfinished.
@@ -83,15 +109,29 @@ export function Workspace({ session, files, environmentReview, ...terminalProps 
     setCollapsed(false)
   }, [reviewSessionId])
 
+  const prUrl = session?.pullRequest?.url ?? session?.pullRequestUrl
+  useEffect(() => {
+    if (!prUrl || !showPr) return
+    setTab('pr')
+    setCollapsed(false)
+  }, [prUrl, showPr])
+
   // Drop back to Files if the Environment tab disappears (e.g. switching to a
   // coding session) while it was selected.
   useEffect(() => {
     if (!environmentReview && tab === 'environment') setTab('files')
   }, [environmentReview, tab])
 
-  const tabs: WorkspaceTab[] = environmentReview
-    ? ['files', 'terminal', 'environment']
-    : ['files', 'terminal']
+  useEffect(() => {
+    if (!showPr && tab === 'pr') setTab('files')
+  }, [showPr, tab])
+
+  const tabs: WorkspaceTab[] = [
+    'files',
+    'terminal',
+    ...(environmentReview ? (['environment'] as const) : []),
+    ...(showPr ? (['pr'] as const) : []),
+  ]
 
   return (
     <aside
@@ -147,7 +187,7 @@ export function Workspace({ session, files, environmentReview, ...terminalProps 
             >
               <TerminalPanel session={session} {...terminalProps} />
             </div>
-          ) : environmentReview ? (
+          ) : tab === 'environment' && environmentReview ? (
             <div
               role="tabpanel"
               id="workspace-panel-environment"
@@ -163,6 +203,13 @@ export function Workspace({ session, files, environmentReview, ...terminalProps 
                 onSaved={environmentReview.onSaved}
               />
             </div>
+          ) : tab === 'pr' && pullRequest && session ? (
+            <PullRequestPanel
+              client={pullRequest.client}
+              session={session}
+              files={files}
+              onUpdated={pullRequest.onUpdated}
+            />
           ) : null}
         </>
       )}
@@ -246,13 +293,13 @@ function TabBar({
           aria-controls={`workspace-panel-${tab}`}
           tabIndex={active === tab ? 0 : -1}
           onClick={() => onSelect(tab)}
-          className={`rounded-[calc(var(--radius)*0.6)] px-2.5 py-1 text-[12.5px] capitalize ${
+          className={`rounded-[calc(var(--radius)*0.6)] px-2.5 py-1 text-[12.5px] ${
             active === tab
               ? 'bg-muted font-medium text-foreground'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground'
           }`}
         >
-          {tab}
+          {TAB_LABELS[tab]}
         </button>
       ))}
     </div>

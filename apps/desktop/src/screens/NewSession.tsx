@@ -3,6 +3,7 @@ import {
   resolveEnvironment,
   type CommitIdentity,
   type EnvironmentSummary,
+  type GitPreferences,
   type OpencodeProvider,
   type ProjectSummary,
   type RepositorySummary,
@@ -49,6 +50,8 @@ interface Props {
   projects: ProjectSummary[]
   /** Who commits are authored as; null means the server's default. */
   identity: CommitIdentity | null
+  /** How this session should commit and open pull requests. */
+  gitPreferences?: Partial<GitPreferences>
   onCreated: (session: SessionSummary, project: ProjectSummary | null) => void
   /** Prefer starting environment setup for this project (e.g. from sidebar). */
   preferSetupProjectId?: string | null
@@ -73,6 +76,7 @@ export function NewSession({
   connection,
   projects,
   identity,
+  gitPreferences,
   onCreated,
   preferSetupProjectId,
   preferAgentId,
@@ -386,6 +390,7 @@ export function NewSession({
             environmentId: environment.id,
             ...(agentHasPermissionModes(agentId) ? { permissionMode } : {}),
             ...(identity ? { commitIdentity: identity } : {}),
+            ...(gitPreferences ? { gitPreferences } : {}),
           })
         } catch (error) {
           await client.deleteEnvironment(environment.id).catch(() => {
@@ -408,6 +413,7 @@ export function NewSession({
         ...(environmentId ? { environmentId } : {}),
         ...(agentHasPermissionModes(agentId) ? { permissionMode } : {}),
         ...(identity ? { commitIdentity: identity } : {}),
+        ...(gitPreferences ? { gitPreferences } : {}),
       })
 
       onCreated(session, created)

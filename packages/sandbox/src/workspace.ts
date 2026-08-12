@@ -248,6 +248,29 @@ export class Workspace {
     return this.headCommit()
   }
 
+  /** Whether the working tree has uncommitted changes. */
+  async isDirty(): Promise<boolean> {
+    const status = await this.run(['git', 'status', '--porcelain'])
+    return status.stdout.trim() !== ''
+  }
+
+  /**
+   * Commit subjects since `baseCommit`, newest last.
+   *
+   * Used to write a pull request that describes the work rather than the
+   * conversation that produced it.
+   */
+  async commitsSince(baseCommit: string): Promise<string[]> {
+    const result = await this.run(['git', 'log', '--format=%s', '--reverse', `${baseCommit}..HEAD`])
+    return splitLines(result.stdout).filter(Boolean)
+  }
+
+  /** Compact diffstat since `baseCommit`, including untracked files after add. */
+  async diffStat(baseCommit: string): Promise<string> {
+    const result = await this.run(['git', 'diff', '--stat', baseCommit])
+    return result.stdout.trim()
+  }
+
   /**
    * Whether the credential socket is reachable from inside the container.
    *

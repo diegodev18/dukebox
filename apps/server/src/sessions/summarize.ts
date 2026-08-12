@@ -1,7 +1,9 @@
 import type { Session } from '@dukebox/db'
 import {
   permissionMode,
+  pullRequestState,
   type PermissionMode,
+  type PullRequestSummary,
   type SessionStatus,
   type SessionSummary,
 } from '@dukebox/protocol'
@@ -14,6 +16,8 @@ import {
  * sidebar showing different fields depending on how it heard.
  */
 export function toSummary(session: Session): SessionSummary {
+  const pullRequest = toPullRequest(session)
+
   return {
     id: session.id,
     projectId: session.projectId,
@@ -28,8 +32,22 @@ export function toSummary(session: Session): SessionSummary {
     updatedAt: session.updatedAt.getTime(),
     lastSeq: session.lastSeq,
     pullRequestUrl: session.prUrl,
+    pullRequest,
     environmentId: session.environmentId,
     permissionMode: parsePermissionMode(session.permissionMode, session.agentId),
+  }
+}
+
+function toPullRequest(session: Session): PullRequestSummary | null {
+  if (!session.prUrl) return null
+
+  const parsed = pullRequestState.safeParse(session.prState)
+
+  return {
+    url: session.prUrl,
+    title: session.prTitle ?? '',
+    isDraft: session.prDraft ?? true,
+    state: parsed.success ? parsed.data : 'open',
   }
 }
 

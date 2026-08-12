@@ -148,6 +148,22 @@ describe('DukeboxClient', () => {
     expect(JSON.parse(init.body as string).permissionMode).toBe('plan')
   })
 
+  it('forwards git preferences when the caller has them', async () => {
+    const fetchMock = respondWith({ id: 's1' })
+    await client.startSession({
+      projectId: 'p1',
+      agentId: 'claude-code',
+      prompt: 'go',
+      gitPreferences: { autoOpenDraft: false, mergeMethod: 'rebase' },
+    })
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string).gitPreferences).toMatchObject({
+      autoOpenDraft: false,
+      mergeMethod: 'rebase',
+    })
+  })
+
   it('archives a session', async () => {
     const fetchMock = respondWith({ archived: true })
     await client.archiveSession('00000000-0000-4000-8000-000000000001')
@@ -155,6 +171,35 @@ describe('DukeboxClient', () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toContain('/api/sessions/00000000-0000-4000-8000-000000000001/archive')
     expect(init.method).toBe('POST')
+  })
+
+  it('opens, reads, marks ready, and merges a pull request', async () => {
+    const pr = {
+      url: 'https://github.com/diego/dukebox/pull/1',
+      title: 'Add a thing',
+      isDraft: true,
+      state: 'open',
+    }
+    const fetchMock = respondWith(pr)
+    const sessionId = '00000000-0000-4000-8000-000000000001'
+
+    await client.openPullRequest(sessionId)
+    await client.getPullRequest(sessionId)
+    await client.markPullRequestReady(sessionId)
+    await client.mergePullRequest(sessionId, 'squash')
+
+    const urls = fetchMock.mock.calls.map((call) => (call[0] as string).replace(/.*\/api/, '/api'))
+    expect(urls).toEqual([
+      `/api/sessions/${sessionId}/pr`,
+      `/api/sessions/${sessionId}/pr`,
+      `/api/sessions/${sessionId}/pr/ready`,
+      `/api/sessions/${sessionId}/pr/merge`,
+    ])
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).method).toBe('POST')
+    expect((fetchMock.mock.calls[3]?.[1] as RequestInit).method).toBe('POST')
+    expect(JSON.parse((fetchMock.mock.calls[3]?.[1] as RequestInit).body as string)).toEqual({
+      method: 'squash',
+    })
   })
 
   it('lists OpenCode providers', async () => {

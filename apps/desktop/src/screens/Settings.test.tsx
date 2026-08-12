@@ -148,7 +148,15 @@ describe('Settings', () => {
     expect(screen.getByRole('heading', { name: 'Account' })).toBeInTheDocument()
     const nav = screen.getByRole('navigation', { name: 'Settings' })
     const buttons = [...nav.querySelectorAll('button')].map((button) => button.textContent?.trim())
-    expect(buttons).toEqual(['Settings', 'Account', 'Agents', 'Servers', 'Appearance', 'Updates'])
+    expect(buttons).toEqual([
+      'Settings',
+      'Account',
+      'Git',
+      'Agents',
+      'Servers',
+      'Appearance',
+      'Updates',
+    ])
   })
 
   it('applies and persists a theme change', async () => {
@@ -156,6 +164,18 @@ describe('Settings', () => {
     await openCategory('Appearance')
     await userEvent.click(screen.getByRole('button', { name: 'Dark' }))
     expect(onSaveSettings).toHaveBeenCalledWith({ theme: 'dark' })
+  })
+
+  it('toggles git preferences from the Git category', async () => {
+    const { onSaveSettings } = renderSettings()
+    await openCategory('Git')
+
+    expect(screen.getByRole('heading', { name: 'Git' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('switch', { name: 'Open a draft automatically' }))
+
+    expect(onSaveSettings).toHaveBeenCalledWith({
+      git: expect.objectContaining({ autoOpenDraft: false, createAsDraft: true }),
+    })
   })
 
   it('auto-saves the commit identity after typing settles', async () => {

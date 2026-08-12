@@ -657,6 +657,8 @@ describe('pull requests', () => {
         created.push(options)
         return 'https://github.com/diego/dukebox/pull/1'
       },
+      markReady: async () => {},
+      mergePullRequest: async () => {},
       ...overrides,
     } as unknown as GitHubClient
 
@@ -719,13 +721,14 @@ describe('pull requests', () => {
     const container = await sandbox.get(session.id)
     await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
 
-    const url = await withGitHub.openPullRequest(session.id, 'Add a thing')
+    const pr = await withGitHub.openPullRequest(session.id, 'Add a thing')
 
-    expect(url).toContain('/pull/1')
+    expect(pr.url).toContain('/pull/1')
     expect(created[0]).toMatchObject({
       head: session.branch || expect.stringMatching(/^duke\//),
       base: 'main',
       title: 'Add a thing',
+      draft: true,
     })
 
     await withGitHub.stopAll()
@@ -770,9 +773,9 @@ describe('pull requests', () => {
     const { manager: afterRestart } = managerWithGitHub()
     await afterRestart.prompt(session.id, 'anything')
 
-    const url = await afterRestart.openPullRequest(session.id)
+    const pr = await afterRestart.openPullRequest(session.id)
 
-    expect(url).toContain('/pull/1')
+    expect(pr.url).toContain('/pull/1')
     await afterRestart.stopAll()
   })
 
@@ -792,9 +795,9 @@ describe('pull requests', () => {
     await db.update(sessions).set({ baseCommit: null }).where(eq(sessions.id, session.id))
 
     const { manager: afterRestart } = managerWithGitHub()
-    const url = await afterRestart.openPullRequest(session.id)
+    const pr = await afterRestart.openPullRequest(session.id)
 
-    expect(url).toContain('/pull/1')
+    expect(pr.url).toContain('/pull/1')
     await afterRestart.stopAll()
   })
 
@@ -909,9 +912,9 @@ describe('pull requests', () => {
       cwd: '/workspace/repo',
     })
 
-    const url = await withGitHub.openPullRequest(session.id)
+    const pr = await withGitHub.openPullRequest(session.id)
 
-    expect(url).toContain('/pull/1')
+    expect(pr.url).toContain('/pull/1')
     await withGitHub.stopAll()
   })
 
@@ -936,7 +939,14 @@ describe('pull requests', () => {
   it('reuses an existing pull request rather than opening a second', async () => {
     const created: unknown[] = []
     const { manager: withGitHub } = managerWithGitHub({
-      findPullRequest: async () => 'https://github.com/diego/dukebox/pull/7',
+      findPullRequest: async () => ({
+        url: 'https://github.com/diego/dukebox/pull/7',
+        title: 'Existing',
+        body: '',
+        isDraft: true,
+        state: 'open' as const,
+        mergeable: 'MERGEABLE' as const,
+      }),
       createPullRequest: async (options) => {
         created.push(options)
         return 'https://github.com/diego/dukebox/pull/99'
@@ -948,10 +958,89 @@ describe('pull requests', () => {
     await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
 
     // A follow-up turn should extend the same review, not start a new one.
-    const url = await withGitHub.openPullRequest(session.id)
+    const pr = await withGitHub.openPullRequest(session.id)
 
-    expect(url).toContain('/pull/7')
+    expect(pr.url).toContain('/pull/7')
     expect(created).toHaveLength(0)
+
+    await withGitHub.stopAll()
+  })
+
+  it('marks a draft ready for review', async () => {
+    const ready: string[] = []
+    const { manager: withGitHub } = managerWithGitHub({
+      findPullRequest: async () => ({
+        url: 'https://github.com/diego/dukebox/pull/1',
+        title: 'Add a thing',
+        body: '',
+        isDraft: true,
+        state: 'open',
+        mergeable: 'MERGEABLE',
+      }),
+      markReady: async (_repo, url) => {
+        ready.push(url)
+      },
+    })
+
+    const session = await startOn(withGitHub)
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+    await withGitHub.openPullRequest(session.id)
+
+    const marked = await withGitHub.markPullRequestReady(session.id)
+    expect(marked.isDraft).toBe(false)
+    expect(ready).toHaveLength(1)
+
+    await withGitHub.stopAll()
+  })
+
+  it('merges a pull request', async () => {
+    const merged: string[] = []
+    const { manager: withGitHub } = managerWithGitHub({
+      findPullRequest: async () => ({
+        url: 'https://github.com/diego/dukebox/pull/1',
+        title: 'Add a thing',
+        body: '',
+        isDraft: false,
+        state: 'open',
+        mergeable: 'MERGEABLE',
+      }),
+      mergePullRequest: async (options) => {
+        merged.push(options.url)
+      },
+    })
+
+    const session = await startOn(withGitHub)
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+    await withGitHub.openPullRequest(session.id)
+
+    const result = await withGitHub.mergePullRequest(session.id)
+    expect(result.state).toBe('merged')
+    expect(merged).toHaveLength(1)
+
+    await withGitHub.stopAll()
+  })
+
+  it('opens a draft when a coding turn ends with changes', async () => {
+    const { manager: withGitHub, created } = managerWithGitHub()
+    const session = await startOn(withGitHub)
+
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+
+    adapter.emit({ type: 'done', reason: 'completed' })
+    await waitForStatus(session.id, 'done')
+
+    expect(created).toHaveLength(1)
+    expect(created[0]).toMatchObject({ draft: true, base: 'main' })
+
+    const [row] = await db
+      .select({ prUrl: sessions.prUrl, prDraft: sessions.prDraft })
+      .from(sessions)
+      .where(eq(sessions.id, session.id))
+    expect(row?.prUrl).toContain('/pull/1')
+    expect(row?.prDraft).toBe(true)
 
     await withGitHub.stopAll()
   })
