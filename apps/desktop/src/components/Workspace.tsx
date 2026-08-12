@@ -4,6 +4,13 @@ import type { DukeboxClient } from '../lib/client.js'
 import type { TerminalState } from '../lib/useTerminals.js'
 import { Diff } from './Diff.js'
 import { EnvironmentReview } from './EnvironmentReview.js'
+import {
+  CommitIcon,
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  FileIcon,
+} from './icons.js'
 import { Terminal } from './Terminal.js'
 
 /**
@@ -103,7 +110,7 @@ export function Workspace({ session, files, environmentReview, ...terminalProps 
           aria-label={collapsed ? 'Expand workspace' : 'Collapse workspace'}
           className="grid size-6.5 place-items-center rounded-[calc(var(--radius)*0.6)] text-muted-foreground hover:bg-muted hover:text-foreground"
         >
-          <ChevronIcon flipped={collapsed} />
+          {collapsed ? <ChevronRightIcon size={13} /> : <ChevronLeftIcon size={13} />}
         </button>
       </header>
 
@@ -191,10 +198,10 @@ function Metrics({ session, files }: { session: SessionSummary | null; files: Fi
   return (
     <div className="flex flex-col px-2 pt-6 pb-3.5">
       <MetricLabel>Changes</MetricLabel>
-      <Metric icon={<FileIcon />} label="Files" value={String(changed)} />
+      <Metric icon={<FileIcon size={13} />} label="Files" value={String(changed)} />
 
       <MetricLabel>On {session.branch || session.baseBranch}</MetricLabel>
-      <Metric icon={<CommitIcon />} label="Turns" value={String(session.lastSeq)} />
+      <Metric icon={<CommitIcon size={13} />} label="Turns" value={String(session.lastSeq)} />
     </div>
   )
 }
@@ -258,7 +265,11 @@ function Panels({ session, files }: { session: SessionSummary | null; files: Fil
               aria-expanded={expanded}
               className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-[12.5px] hover:bg-muted"
             >
-              <RowChevron open={expanded} />
+              {expanded ? (
+                <ChevronDownIcon size={13} className="flex-none text-muted-foreground" />
+              ) : (
+                <ChevronRightIcon size={13} className="flex-none text-muted-foreground" />
+              )}
               {/* The name leads and the directory trails: the name is what
                   someone is looking for, and paths are too long to lead with. */}
               <span className="truncate font-medium">{basename(file.path)}</span>
@@ -421,80 +432,4 @@ function basename(path: string): string {
 function dirname(path: string): string {
   const cut = path.lastIndexOf('/')
   return cut === -1 ? '' : path.slice(0, cut)
-}
-
-function ChevronIcon({ flipped }: { flipped: boolean }) {
-  return (
-    <svg
-      className={`size-3.25 ${flipped ? 'rotate-180' : ''}`}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m10 4-4 4 4 4" />
-    </svg>
-  )
-}
-
-/**
- * The disclosure arrow on a file row.
- *
- * Points right when closed and down when open — the direction people read as
- * "there is more inside". `ChevronIcon` points left, because it collapses the
- * panel toward the edge of the window, which is a different gesture.
- */
-function RowChevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      className={`size-3.25 flex-none text-muted-foreground ${open ? 'rotate-90' : ''}`}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m6 4 4 4-4 4" />
-    </svg>
-  )
-}
-
-function FileIcon() {
-  return (
-    <svg
-      className="size-3.25"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M3 2.5h6.5L13 6v7.5H3z" />
-      <path d="M9.5 2.5V6H13" />
-    </svg>
-  )
-}
-
-function CommitIcon() {
-  return (
-    <svg
-      className="size-3.25"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <circle cx="8" cy="8" r="2.6" />
-      <path d="M2.5 8h2.9M10.6 8h2.9" />
-    </svg>
-  )
 }

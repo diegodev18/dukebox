@@ -1,7 +1,13 @@
-import type { ProjectSummary, SessionSummary } from '@dukebox/protocol'
+import {
+  DEFAULT_COMMIT_IDENTITY,
+  type ProjectSummary,
+  type SessionSummary,
+} from '@dukebox/protocol'
 import { useEffect, useMemo, useState } from 'react'
 import { DukeboxClient } from '../lib/client.js'
 import type { Connection } from '../lib/connection.js'
+import type { Settings } from '../lib/settings.js'
+import type { UseUpdate } from '../lib/useUpdate.js'
 import { AgentIcon, hasAgentIcon } from '../components/AgentIcon.js'
 import { Composer } from '../components/Composer.js'
 import { EnvironmentsPanel } from '../components/EnvironmentsPanel.js'
@@ -12,6 +18,7 @@ import { Transcript } from '../components/Transcript.js'
 import { Workspace } from '../components/Workspace.js'
 import { useSession, type LiveSession } from '../lib/useSession.js'
 import { NewSession } from './NewSession.js'
+import { Settings as SettingsScreen } from './Settings.js'
 
 /**
  * The session view.
@@ -22,12 +29,21 @@ import { NewSession } from './NewSession.js'
 
 interface Props {
   connection: Connection
+  settings: Settings
+  update: UseUpdate
+  onSaveSettings: (patch: Partial<Settings>) => void
+  onSwitchServer: (connection: Connection) => void
   onDisconnected: () => void
-  /** Asks the app to re-check its own update feed (from the account menu). */
-  onCheckForUpdates: () => void
 }
 
-export function Session({ connection, onDisconnected, onCheckForUpdates }: Props) {
+export function Session({
+  connection,
+  settings,
+  update,
+  onSaveSettings,
+  onSwitchServer,
+  onDisconnected,
+}: Props) {
   // Memoised because it is passed to effects: a new client every render would
   // re-run them forever.
   const client = useMemo(
@@ -40,6 +56,7 @@ export function Session({ connection, onDisconnected, onCheckForUpdates }: Props
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [setupProjectId, setSetupProjectId] = useState<string | null>(null)
   const [managingProjectId, setManagingProjectId] = useState<string | null>(null)
   // Only to name the environment a review session belongs to. The summary
@@ -123,8 +140,9 @@ export function Session({ connection, onDisconnected, onCheckForUpdates }: Props
 
   // New session has no diffs to show — drop the workspace column so the
   // composer centres in the whole main pane rather than in a squeezed middle.
-  // The environments panel is a form too, and wants the same width.
-  const composing = !loading && (creating || managingProjectId !== null || current === null)
+  // The environments panel and settings are forms too, and want the same width.
+  const composing =
+    !loading && (creating || managingProjectId !== null || settingsOpen || current === null)
 
   const onSessionCreated = (session: SessionSummary, project: ProjectSummary | null) => {
     // Added locally rather than refetched: the session exists but its
@@ -153,9 +171,17 @@ export function Session({ connection, onDisconnected, onCheckForUpdates }: Props
         projects={projects}
         sessions={sessions}
         selectedId={creating ? null : selected}
-        onCheckForUpdates={onCheckForUpdates}
+        identity={settings.commitIdentity ?? DEFAULT_COMMIT_IDENTITY}
+        onCheckForUpdates={() => update.check(true)}
+        onOpenSettings={() => {
+          setCreating(false)
+          setSetupProjectId(null)
+          setManagingProjectId(null)
+          setSettingsOpen(true)
+        }}
         onSelect={(sessionId) => {
           setCreating(false)
+          setSettingsOpen(false)
           setSetupProjectId(null)
           setManagingProjectId(null)
           setSelected(sessionId)
@@ -163,15 +189,18 @@ export function Session({ connection, onDisconnected, onCheckForUpdates }: Props
         onNewSession={() => {
           setSetupProjectId(null)
           setManagingProjectId(null)
+          setSettingsOpen(false)
           setCreating(true)
         }}
         onConfigureEnvironment={(projectId) => {
           setSetupProjectId(projectId)
           setManagingProjectId(null)
+          setSettingsOpen(false)
           setCreating(true)
         }}
         onManageEnvironments={(projectId) => {
           setCreating(false)
+          setSettingsOpen(false)
           setSetupProjectId(null)
           setManagingProjectId(projectId)
         }}
@@ -200,6 +229,17 @@ export function Session({ connection, onDisconnected, onCheckForUpdates }: Props
 
       {loading ? (
         <div />
+      ) : settingsOpen ? (
+        <SettingsScreen
+          client={client}
+          connection={connection}
+          settings={settings}
+          update={update}
+          onSaveSettings={onSaveSettings}
+          onSwitchServer={onSwitchServer}
+          onClose={() => setSettingsOpen(false)}
+          onDisconnected={onDisconnected}
+        />
       ) : managingProjectId ? (
         <EnvironmentsPanel client={client} projectId={managingProjectId} />
       ) : composing ? (
@@ -207,6 +247,7 @@ export function Session({ connection, onDisconnected, onCheckForUpdates }: Props
           client={client}
           connection={connection}
           projects={projects}
+          identity={settings.commitIdentity}
           onCreated={onSessionCreated}
           preferSetupProjectId={setupProjectId}
         />

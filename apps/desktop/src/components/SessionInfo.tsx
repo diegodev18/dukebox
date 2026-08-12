@@ -1,6 +1,7 @@
 import type { SessionSummary } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import type { Connection } from '../lib/connection.js'
+import { CloseIcon, ServerIcon } from './icons.js'
 
 /**
  * Where this session actually runs, on demand.
@@ -35,7 +36,7 @@ export function SessionInfo({
         onClick={() => setOpen(true)}
         className="grid size-6 flex-none place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground"
       >
-        <ServerIcon />
+        <ServerIcon size={15} />
       </button>
 
       {open && (
@@ -102,7 +103,7 @@ function SessionInfoDialog({
             aria-label="Close"
             className="-mt-0.5 grid size-6 flex-none place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            <CloseIcon />
+            <CloseIcon size={14} />
           </button>
         </div>
 
@@ -154,39 +155,4 @@ function startedAt(timestamp: number): string {
     dateStyle: 'medium',
     timeStyle: 'short',
   })
-}
-
-function ServerIcon() {
-  return (
-    <svg
-      className="size-3.75"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="2.5" y="3" width="11" height="4.5" rx="1" />
-      <rect x="2.5" y="8.5" width="11" height="4.5" rx="1" />
-      <path d="M5 5.25h.01M5 10.75h.01" />
-    </svg>
-  )
-}
-
-function CloseIcon() {
-  return (
-    <svg
-      className="size-3.5"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
-    </svg>
-  )
 }

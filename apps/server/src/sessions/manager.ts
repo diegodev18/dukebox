@@ -9,6 +9,7 @@ import {
   parseSecretReference,
   projectConfig,
   resolveEnvironment,
+  type CommitIdentity,
   type ProjectConfig,
   type SessionPurpose,
   type SessionStatus,
@@ -98,6 +99,12 @@ export interface StartSessionOptions {
    * and the choice is verified to belong to the project before it is used.
    */
   environmentId?: string
+  /**
+   * Who this session's commits are authored as.
+   *
+   * Absent means the server's default identity.
+   */
+  commitIdentity?: CommitIdentity
 }
 
 /** What a running session holds while it is alive. */
@@ -198,16 +205,20 @@ export class SessionManager {
 
     // Deliberately not awaited: provisioning is slow, and its progress reaches
     // the client as events rather than as a blocked request.
-    void this.provision(session, project.repoFullName, prompt, options.model).catch(
-      async (error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error)
+    void this.provision(
+      session,
+      project.repoFullName,
+      prompt,
+      options.model,
+      options.commitIdentity,
+    ).catch(async (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error)
 
-        await this.deps.bus
-          .append(session.id, { type: 'error', message, fatal: true })
-          .catch(() => undefined)
-        await this.setStatus(session.id, 'failed', { errorMessage: message })
-      },
-    )
+      await this.deps.bus
+        .append(session.id, { type: 'error', message, fatal: true })
+        .catch(() => undefined)
+      await this.setStatus(session.id, 'failed', { errorMessage: message })
+    })
 
     return session
   }
@@ -217,6 +228,7 @@ export class SessionManager {
     repoFullName: string,
     prompt: string,
     model?: string,
+    commitIdentity?: CommitIdentity,
   ): Promise<void> {
     // Started before the container so the socket exists to be mounted. It
     // answers only for this session's repository, so an agent that asks for
@@ -224,7 +236,7 @@ export class SessionManager {
     const credentials = await this.startCredentialProxy(session.id, repoFullName)
 
     try {
-      await this.provisionWith(session, repoFullName, prompt, credentials, model)
+      await this.provisionWith(session, repoFullName, prompt, credentials, model, commitIdentity)
     } catch (error) {
       // The session never reached `running`, so `stop` would not find it and
       // the socket would be left listening for a session that failed.
@@ -239,6 +251,7 @@ export class SessionManager {
     prompt: string,
     credentials: CredentialProxy | undefined,
     model?: string,
+    commitIdentity?: CommitIdentity,
   ): Promise<void> {
     const purpose = (session.purpose as SessionPurpose) || 'coding'
     const config = await this.configFor(session.environmentId)
@@ -277,7 +290,7 @@ export class SessionManager {
 
     // Before anything can commit, so the agent's own commits carry it too
     // rather than only the ones Dukebox makes on its behalf.
-    await workspace.setCommitIdentity(DEFAULT_COMMIT_IDENTITY)
+    await workspace.setCommitIdentity(commitIdentity ?? DEFAULT_COMMIT_IDENTITY)
 
     const { branch } = await workspace.clone({
       url: this.deps.cloneUrl(repoFullName),

@@ -75,7 +75,7 @@ running `sudo duke update` on the machine, is how you update the server (see
 
 The desktop app checks for new versions when it launches and whenever you pick
 "Check for updates…" from the account menu at the foot of the sidebar. When a
-newer version exists, a banner appears across the top of the window; **Update &
+newer version exists, a toast appears in the corner of the window; **Update &
 restart** downloads, installs, and relaunches into the new build in one click,
 and "Later" defers it until the next check. Every bundle is signed, and the app
 refuses to install one whose signature does not verify against the public key

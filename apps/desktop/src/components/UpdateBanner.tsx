@@ -1,15 +1,16 @@
 import type { ReactNode } from 'react'
 import type { Update } from '../lib/updater.js'
 import type { UpdateState } from '../lib/useUpdate.js'
+import { DownloadIcon } from './icons.js'
 
 /**
- * The strip that tells the user a newer Dukebox exists.
+ * The update notification, as a toast.
  *
- * Drawn across the top of the window, above whatever screen the app is on —
- * an update is a property of the app, not of the server it happens to be
- * looking at, so pairing and session screens both get it. It is the whole
- * answer to "how do I update": when there is something to download the strip
- * carries the button that downloads and restarts into it.
+ * Drawn over the bottom-right corner of whatever screen the app is on — an
+ * update is a property of the app, not of the server it happens to look at,
+ * so pairing and session screens both get it. Being a toast rather than a
+ * strip means it never reshapes the layout: it appears on top, and disappears
+ * without leaving a gap.
  *
  * Most states render nothing. The exceptions are when there is something to
  * say, or something the user just asked for ("You're up to date") and deserves
@@ -43,20 +44,22 @@ export function UpdateBanner({
   if (state.status === 'checking' && !checked) return null
   if (state.status === 'available' && dismissed) return null
 
+  const controls = actions(state, onInstall, onRecheck, onDismiss)
+
   return (
     <div
       role="status"
       aria-live="polite"
-      className="flex items-center gap-2.5 border-b border-border bg-surface px-4.5 py-1.5 text-[12.5px]"
+      className="fixed right-4 bottom-4 z-50 flex w-80 items-start gap-3 rounded-[calc(var(--radius)*0.9)] border border-border bg-background p-3.5 shadow-lg"
     >
-      <UpdateIcon />
-      <p
-        title={state.status === 'available' ? (state.update.body ?? undefined) : undefined}
-        className="min-w-0 flex-1 truncate"
-      >
-        {copy(state)}
-      </p>
-      {actions(state, onInstall, onRecheck, onDismiss)}
+      <span className="mt-0.5 flex-none text-muted-foreground">
+        <DownloadIcon size={16} />
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <p className="text-[12.5px] leading-snug">{copy(state)}</p>
+        {controls && <div className="mt-2.5 flex items-center gap-1.5">{controls}</div>}
+      </div>
     </div>
   )
 }
@@ -105,7 +108,14 @@ function actions(
         </>
       )
     case 'downloading':
-      return <span className="flex-none text-muted-foreground">Downloading…</span>
+      return (
+        <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-primary"
+            style={{ width: `${percent(state.progress.received, state.progress.total)}%` }}
+          />
+        </div>
+      )
     case 'error':
       return (
         <>
@@ -139,23 +149,4 @@ function downloading(received: number, total: number | null): boolean {
 function percent(received: number, total: number | null): number {
   if (total === null || total === 0) return 0
   return Math.min(100, Math.round((received / total) * 100))
-}
-
-function UpdateIcon() {
-  return (
-    <svg
-      className="size-3.5 flex-none text-muted-foreground"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M8 3v6.5" />
-      <path d="M5.5 7 8 9.5 10.5 7" />
-      <path d="M3 12.5h10" />
-    </svg>
-  )
 }
