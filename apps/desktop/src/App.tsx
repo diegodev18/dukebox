@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { UpdateBanner } from '@/components/UpdateBanner'
 import { DukeboxClient } from '@/lib/client'
 import { activeConnection, removeConnection, type Connection } from '@/lib/connection'
+import type { Settings } from '@/lib/settings'
+import { useSettings } from '@/lib/useSettings'
 import { useUpdate } from '@/lib/useUpdate'
 import { Pairing } from '@/screens/Pairing'
 import { Session } from '@/screens/Session'
@@ -17,12 +19,29 @@ import { Session } from '@/screens/Session'
 type State = { kind: 'checking' } | { kind: 'unpaired' } | { kind: 'ready'; connection: Connection }
 
 export function App() {
+  // Settings gate the app's behaviour (theme, the launch update check), so the
+  // real UI waits for the store file rather than starting with defaults and
+  // correcting itself a frame later.
+  const { settings, save } = useSettings()
+
+  if (settings === null) return <div className="h-full" />
+
+  return <Loaded settings={settings} onSaveSettings={save} />
+}
+
+function Loaded({
+  settings,
+  onSaveSettings,
+}: {
+  settings: Settings
+  onSaveSettings: (patch: Partial<Settings>) => void
+}) {
   const [state, setState] = useState<State>({ kind: 'checking' })
 
   // Self-updates are app-level: whether an update exists does not depend on
   // which server this copy is paired to, so the check lives here rather than
-  // inside a screen.
-  const update = useUpdate()
+  // inside a screen. Whether it runs at launch is the setting that owns it.
+  const update = useUpdate(settings.checkForUpdatesOnLaunch)
 
   useEffect(() => {
     let cancelled = false
@@ -73,6 +92,12 @@ export function App() {
     }
   }, [])
 
+  // The settings panel picks an already-paired server as the active one. The
+  // connection object is in hand — the token was stored at pairing — so the
+  // switch is local; if the server has since revoked it, the session screen's
+  // first load fails and lands back on pairing.
+  const switchServer = (connection: Connection) => setState({ kind: 'ready', connection })
+
   // Which screen. `checking` is blank on purpose for the moment the check
   // takes — a spinner that flashes for 200ms is noise rather than feedback.
   let screen: React.ReactNode
@@ -84,14 +109,18 @@ export function App() {
     screen = (
       <Session
         connection={state.connection}
+        settings={settings}
+        update={update}
+        onSaveSettings={onSaveSettings}
+        onSwitchServer={switchServer}
         onDisconnected={() => setState({ kind: 'unpaired' })}
-        onCheckForUpdates={() => update.check(true)}
       />
     )
   }
 
-  // The update strip pushes the app down rather than covering it, so nothing
-  // below has to know it exists. Each screen keeps its own full-height layout.
+  // The update notification is a toast: it floats over the corner of whatever
+  // screen is up, so nothing below has to know it exists. Each screen keeps
+  // its own full-height layout.
   return (
     <div className="flex h-full flex-col">
       <UpdateBanner

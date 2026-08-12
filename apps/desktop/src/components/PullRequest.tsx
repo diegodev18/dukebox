@@ -2,6 +2,7 @@ import type { SessionSummary } from '@dukebox/protocol'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useState } from 'react'
 import type { DukeboxClient } from '@/lib/client'
+import { BranchIcon } from '@/components/icons'
 
 /**
  * Opening a pull request, and getting back to one already open.
@@ -73,7 +74,7 @@ export function PullRequest({ client, session, changedFiles, onOpened }: Props) 
         disabled={state.kind === 'opening'}
         className="flex items-center gap-1.5 rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12.5px] font-medium hover:bg-muted disabled:opacity-50"
       >
-        <BranchIcon />
+        <BranchIcon size={13} className="text-muted-foreground" />
         {state.kind === 'opening' ? 'Opening…' : 'Open pull request'}
       </button>
     </div>
@@ -86,28 +87,8 @@ function Link({ url }: { url: string }) {
       onClick={() => void openUrl(url).catch(() => undefined)}
       className="flex items-center gap-1.5 rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12.5px] font-medium hover:bg-muted"
     >
-      <BranchIcon />
+      <BranchIcon size={13} className="text-muted-foreground" />
       View pull request
     </button>
-  )
-}
-
-function BranchIcon() {
-  return (
-    <svg
-      className="size-3.25 text-muted-foreground"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="4.5" cy="3.5" r="1.75" />
-      <circle cx="4.5" cy="12.5" r="1.75" />
-      <circle cx="11.5" cy="6" r="1.75" />
-      <path d="M4.5 5.25v5.5M11.5 7.75c0 2-1.6 3-3.5 3.25" />
-    </svg>
   )
 }

@@ -74,7 +74,8 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
     }
 
     try {
-      const { baseBranch, prompt, purpose, model, environmentId, ...rest } = parsed.data
+      const { baseBranch, prompt, purpose, model, environmentId, commitIdentity, ...rest } =
+        parsed.data
 
       const session = await deps.sessions.start({
         ...rest,
@@ -88,6 +89,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
         // Likewise absent rather than undefined: the manager reads an absent
         // environment as "resolve one from the base branch".
         ...(environmentId ? { environmentId } : {}),
+        ...(commitIdentity ? { commitIdentity } : {}),
       })
 
       return c.json(toSummary(session), 202)

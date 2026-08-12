@@ -140,6 +140,13 @@ export class DukeboxClient {
     purpose?: 'coding' | 'environment_setup'
     /** Omitted lets the server resolve one from the base branch. */
     environmentId?: string
+    /**
+     * Who this session's commits are authored as.
+     *
+     * Omitted when the app has no configured identity, in which case the
+     * server uses its default.
+     */
+    commitIdentity?: { name: string; email: string }
   }): Promise<SessionSummary> {
     return this.request('/api/sessions', { method: 'POST', body: JSON.stringify(options) })
   }
@@ -279,6 +286,10 @@ export class DukeboxClient {
       method: 'PUT',
       body: JSON.stringify({ token }),
     })
+  }
+
+  async clearAgentCredentials(): Promise<void> {
+    await this.request('/api/agent-credentials', { method: 'DELETE' })
   }
 }
 

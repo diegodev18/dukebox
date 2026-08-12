@@ -203,6 +203,17 @@ export const createSessionRequest = z
      * the agent uses its own default.
      */
     model: z.string().min(1).optional(),
+    /**
+     * Who this session's commits are authored as.
+     *
+     * Set from the app's settings; absent means the server's default identity.
+     */
+    commitIdentity: z
+      .object({
+        name: z.string().min(1),
+        email: z.string().min(1),
+      })
+      .optional(),
     purpose: sessionPurpose.default('coding'),
     /** Required for coding sessions; ignored for environment_setup (server prompt). */
     prompt: z.string().optional(),

@@ -8,6 +8,7 @@ import type {
 import { useEffect, useRef, useState } from 'react'
 import { ThinkingOrb } from 'thinking-orbs'
 import { activityBlock, mapOrbState, orbStateForTool } from '@/lib/orbState'
+import { ChevronDownIcon, ChevronRightIcon, SetupIcon } from '@/components/icons'
 import { Markdown } from '@/components/Markdown'
 
 /**
@@ -163,7 +164,7 @@ function SetupPrompt({
         aria-label="Configure environment"
         className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-[13px] text-running hover:bg-muted/60"
       >
-        <SetupIcon />
+        <SetupIcon size={14} className="flex-none" />
         Configure environment
       </button>
 
@@ -194,26 +195,6 @@ function formatSetupDuration(
   return null
 }
 
-function SetupIcon() {
-  return (
-    <svg
-      className="size-3.5 flex-none"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="4" cy="4" r="1.5" />
-      <circle cx="12" cy="8" r="1.5" />
-      <circle cx="4" cy="12" r="1.5" />
-      <path d="M5.5 4h4.5a2 2 0 0 1 2 2v1.5M5.5 12h4.5a2 2 0 0 0 2-2V9.5" />
-    </svg>
-  )
-}
-
 /** Reasoning, collapsed. Available, but never the first thing read. */
 function Thinking({ text }: { text: string }) {
   const [open, setOpen] = useState(false)
@@ -225,7 +206,11 @@ function Thinking({ text }: { text: string }) {
         aria-expanded={open}
         className="flex items-center gap-1.5 hover:text-foreground"
       >
-        <Chevron open={open} />
+        {open ? (
+          <ChevronDownIcon size={13} className="flex-none text-muted-foreground" />
+        ) : (
+          <ChevronRightIcon size={13} className="flex-none text-muted-foreground" />
+        )}
         Thought for a moment
       </button>
 
@@ -256,7 +241,11 @@ function Tool({ block }: { block: ToolBlock }) {
         aria-expanded={open}
         className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left"
       >
-        <Chevron open={open} />
+        {open ? (
+          <ChevronDownIcon size={13} className="flex-none text-muted-foreground" />
+        ) : (
+          <ChevronRightIcon size={13} className="flex-none text-muted-foreground" />
+        )}
         <span className="font-medium">{block.name}</span>
         <span className="min-w-0 flex-1 truncate text-muted-foreground">
           {summarize(block.input)}
@@ -333,23 +322,6 @@ function Working({ blocks }: { blocks: Block[] }) {
     <div className="flex items-center">
       <ThinkingOrb state={state} size={20} theme="auto" />
     </div>
-  )
-}
-
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      className={`size-3.25 flex-none text-muted-foreground ${open ? 'rotate-90' : ''}`}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m6 4 4 4-4 4" />
-    </svg>
   )
 }
 

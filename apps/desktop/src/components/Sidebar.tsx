@@ -1,11 +1,8 @@
-import {
-  DEFAULT_COMMIT_IDENTITY,
-  type ProjectSummary,
-  type SessionSummary,
-} from '@dukebox/protocol'
+import { type CommitIdentity, type ProjectSummary, type SessionSummary } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { filterProjects, filterSessions } from '@/lib/searchSessions'
 import { StatusDot } from '@/screens/Session'
+import { BranchIcon, PlusIcon, SearchIcon, SettingsIcon } from '@/components/icons'
 import { UserMenu } from '@/components/UserMenu'
 
 /**
@@ -20,7 +17,10 @@ interface Props {
   projects: ProjectSummary[]
   sessions: SessionSummary[]
   selectedId: string | null
+  /** Who commits are authored as — the identity from settings, if configured. */
+  identity: CommitIdentity
   onCheckForUpdates: () => void
+  onOpenSettings: () => void
   onSelect: (sessionId: string) => void
   onNewSession: () => void
   onConfigureEnvironment: (projectId: string) => void
@@ -32,7 +32,9 @@ export function Sidebar({
   projects,
   sessions,
   selectedId,
+  identity,
   onCheckForUpdates,
+  onOpenSettings,
   onSelect,
   onNewSession,
   onConfigureEnvironment,
@@ -62,10 +64,10 @@ export function Sidebar({
           <SearchField value={query} onChange={setQuery} onClose={closeSearch} />
         ) : (
           <>
-            <SidebarAction icon={<PlusIcon />} onClick={onNewSession}>
+            <SidebarAction icon={<PlusIcon size={16} />} onClick={onNewSession}>
               New session
             </SidebarAction>
-            <SidebarAction icon={<SearchIcon />} onClick={() => setSearching(true)}>
+            <SidebarAction icon={<SearchIcon size={16} />} onClick={() => setSearching(true)}>
               Search
             </SidebarAction>
           </>
@@ -114,8 +116,22 @@ export function Sidebar({
       {/* Who the work is attributed to. Which server it runs on lives in the
           session header instead: that question is per session and only worth
           room when asked, not permanently at the foot of the sidebar. */}
-      <div className="border-t border-border">
-        <UserMenu user={DEFAULT_COMMIT_IDENTITY} onCheckForUpdates={onCheckForUpdates} />
+      <div className="flex items-stretch border-t border-border">
+        <div className="min-w-0 flex-1">
+          <UserMenu
+            user={identity}
+            onCheckForUpdates={onCheckForUpdates}
+            onOpenSettings={onOpenSettings}
+          />
+        </div>
+        <button
+          type="button"
+          aria-label="Settings"
+          onClick={onOpenSettings}
+          className="grid w-10 flex-none place-items-center self-stretch text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <SettingsIcon size={16} />
+        </button>
       </div>
 
       {menu && (
@@ -157,7 +173,7 @@ function SearchField({
   return (
     <div className="flex items-center gap-1.5 rounded-[calc(var(--radius)*0.7)] border border-border-strong bg-background px-2 py-1">
       <span className="text-muted-foreground">
-        <SearchIcon />
+        <SearchIcon size={14} />
       </span>
       <input
         ref={inputRef}
@@ -206,7 +222,7 @@ function ProjectGroup({
   return (
     <>
       <div className="flex items-center gap-2.5 px-4 py-1.5 text-[12.5px] text-muted-foreground">
-        <BranchIcon />
+        <BranchIcon size={13} className="flex-none opacity-70" />
         <span className="min-w-0 flex-1 truncate">{project.repoFullName}</span>
         {/* One affordance, two jobs: with nothing configured the useful action
             is to run setup, and once environments exist it is to manage the
@@ -347,59 +363,4 @@ function age(timestamp: number): string {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
   if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h`
   return `${Math.floor(seconds / 86_400)}d`
-}
-
-/* Drawn rather than typed: glyphs like ⌕ inherit the text size and render as
-   specks beside a 14px label. */
-
-function PlusIcon() {
-  return (
-    <svg
-      className="size-4"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M8 3.5v9M3.5 8h9" />
-    </svg>
-  )
-}
-
-function SearchIcon() {
-  return (
-    <svg
-      className="size-4"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <circle cx="7.2" cy="7.2" r="4.2" />
-      <path d="M10.4 10.4 13.5 13.5" />
-    </svg>
-  )
-}
-
-function BranchIcon() {
-  return (
-    <svg
-      className="size-3.25 flex-none opacity-70"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <circle cx="4.5" cy="4" r="1.6" />
-      <circle cx="4.5" cy="12" r="1.6" />
-      <circle cx="11.5" cy="6.5" r="1.6" />
-      <path d="M4.5 5.6v4.8M6.1 6.5h2.6a1.2 1.2 0 0 1 1.2 1.2v.5" />
-    </svg>
-  )
 }

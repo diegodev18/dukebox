@@ -43,6 +43,22 @@ describe('useUpdate', () => {
     expect(result.current.state).toMatchObject({ status: 'available', update })
   })
 
+  it('stays silent at launch when the launch check is turned off', async () => {
+    checked.mockResolvedValue(update)
+    const { result } = renderHook(() => useUpdate(false))
+
+    await flush()
+
+    expect(checked).not.toHaveBeenCalled()
+    expect(result.current.checked).toBe(false)
+
+    // The manual check still works — the preference disables the phone home,
+    // not the ability to ask.
+    await act(async () => result.current.check(true))
+    expect(checked).toHaveBeenCalledOnce()
+    expect(result.current.state).toMatchObject({ status: 'available', update })
+  })
+
   it('reports up to date when the feed has nothing', async () => {
     checked.mockResolvedValue(null)
     const { result } = renderHook(() => useUpdate())
