@@ -113,12 +113,22 @@ server. Run it over SSH:
 ```bash
 sudo duke update            # download, verify, migrate, swap, restart
 sudo duke update --check    # only report whether an update exists
+sudo duke update --from-git # build and install from main (no release needed)
+sudo duke update --from-git some-branch
 sudo duke rollback          # restore the previous release if something is wrong
 ```
 
 `duke update` restarts the service and rolls back automatically if the new
 release fails to start. Re-running `install.sh` does the same thing and also
 applies any unit-file changes.
+
+`duke update --from-git` is for operators who want `main` (or any other branch,
+tag, or commit) without waiting for a `server-v*` release. It clones the ref
+onto the machine, builds the same self-contained bundle the release workflow
+publishes, then swaps it in with the same migrate / restart / rollback path.
+The install still looks like a release (a `VERSION` file, `duke rollback`
+works), so later `duke update` calls can move back onto a published release.
+Override the remote with `DUKEBOX_REPO_URL` if you are tracking a fork.
 
 > **Already had a server before this release?** A server installed the old way
 > is a git checkout that builds in place; it has no `duke` command and no
@@ -163,6 +173,7 @@ that talk to systemd — need `sudo`:
 duke version                          # installed release version
 duke status                           # version, service state, transport, devices
 duke update [--check]                 # update to the latest release
+duke update --from-git [ref]          # build and install from git (default: main)
 duke rollback                         # restore the previous release
 duke restart                          # restart the control plane
 duke config show                      # effective configuration
@@ -239,12 +250,15 @@ swaps it in:
 
 ```bash
 sudo duke update
+sudo duke update --from-git   # track main without a release
 ```
 
-That is also what re-running `install.sh` does. Re-running the installer is
-the better habit when a release also changes the systemd unit or the compose
-stack, since it reapplies those files. There is nothing left to build on the
-server: it installs the release bundle, not the source tree.
+That is also what re-running `install.sh` does (for the release path). Re-running
+the installer is the better habit when a release also changes the systemd unit
+or the compose stack, since it reapplies those files. There is nothing left to
+build on the server for a release install: it installs the release bundle, not
+the source tree. `--from-git` is the exception — it builds the bundle on the
+machine from a git ref, then installs it the same way.
 
 ### The desktop app
 

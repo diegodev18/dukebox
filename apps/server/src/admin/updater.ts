@@ -16,13 +16,22 @@ export interface CommandResult {
   stderr: string
 }
 
+export interface RunCommandOptions {
+  env?: NodeJS.ProcessEnv
+  cwd?: string
+}
+
 export async function runCommand(
   command: string,
   args: string[],
-  env?: NodeJS.ProcessEnv,
+  options: RunCommandOptions = {},
 ): Promise<CommandResult> {
   try {
-    const { stdout, stderr } = await execFileAsync(command, args, { env: env ?? process.env })
+    const { stdout, stderr } = await execFileAsync(command, args, {
+      env: options.env ?? process.env,
+      cwd: options.cwd,
+      maxBuffer: 32 * 1024 * 1024,
+    })
     return { code: 0, stdout, stderr }
   } catch (error) {
     const e = error as { code?: number; stdout?: string; stderr?: string }
@@ -50,6 +59,17 @@ export interface UpdateResult {
   message: string
 }
 
+export interface InstallStagingOptions {
+  installRoot: string
+  stagingDir: string
+  configPath: string
+  service: string
+  serviceUser: string
+  successMessage: string
+  log: (line: string) => void
+  run?: typeof runCommand
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export async function downloadFile(
@@ -62,6 +82,79 @@ export async function downloadFile(
     throw new Error(`could not download ${url}: the server returned ${response.status}`)
   }
   await pipeline(Readable.fromWeb(response.body as never), createWriteStream(dest))
+}
+
+/**
+ * Run migrations from a staged bundle, swap it into `installRoot`, and restart
+ * the service — rolling back automatically if the new code fails to come up.
+ *
+ * Shared by `performUpdate` (GitHub release tarball) and `performGitUpdate`
+ * (bundle built on the machine from a git ref).
+ */
+export async function installStaging(options: InstallStagingOptions): Promise<UpdateResult> {
+  const run = options.run ?? runCommand
+  const { installRoot, stagingDir, configPath, service, serviceUser, successMessage, log } = options
+
+  try {
+    // Run the new code's migrations against the live database before anything
+    // is swapped. A migration that fails here aborts the update with the old
+    // release still in place; running it after the swap would leave a broken
+    // server behind until the operator rolls back.
+    log('Applying database migrations')
+    const cliPath = join(stagingDir, 'dist', 'cli.js')
+    await chmod(cliPath, 0o755)
+    const migrate = await run(process.execPath, [cliPath, 'db:migrate'], {
+      env: {
+        ...process.env,
+        DUKEBOX_CONFIG: configPath,
+      },
+    })
+    if (migrate.code !== 0) {
+      return {
+        ok: false,
+        message: `migrations failed: ${migrate.stderr.trim() || migrate.stdout.trim()}`,
+      }
+    }
+
+    const backupDir = `${installRoot}.prev`
+    await rm(backupDir, { recursive: true, force: true })
+
+    log('Swapping release in')
+    await rename(installRoot, backupDir)
+    await rename(stagingDir, installRoot)
+
+    const chown = await run('chown', ['-R', `${serviceUser}:${serviceUser}`, installRoot])
+    if (chown.code !== 0) {
+      // Not worth rolling back over: ownership is cosmetic and fixed by the
+      // install. But it must be reported.
+      log(`warning: could not chown ${installRoot}: ${chown.stderr.trim()}`)
+    }
+
+    log('Restarting the service')
+    await run('systemctl', ['restart', service])
+
+    await sleep(3000)
+
+    const active = await run('systemctl', ['is-active', service])
+    if (active.code === 0 && active.stdout.trim() === 'active') {
+      return { ok: true, message: successMessage }
+    }
+
+    // The new release did not come up. Roll back before reporting.
+    log('The new release failed to start; rolling back')
+    await rm(installRoot, { recursive: true, force: true })
+    await rename(backupDir, installRoot)
+    await run('chown', ['-R', `${serviceUser}:${serviceUser}`, installRoot])
+    await run('systemctl', ['restart', service])
+    await sleep(3000)
+
+    return {
+      ok: false,
+      message: `the new release did not start (systemctl is-active reported "${active.stdout.trim() || 'inactive'}"); rolled back. See: journalctl -u ${service} -n 50`,
+    }
+  } finally {
+    await rm(stagingDir, { recursive: true, force: true })
+  }
 }
 
 /**
@@ -118,63 +211,15 @@ export async function performUpdate(options: PerformUpdateOptions): Promise<Upda
       return { ok: false, message: `extraction failed: ${extract.stderr.trim()}` }
     }
 
-    // Run the new code's migrations against the live database before anything
-    // is swapped. A migration that fails here aborts the update with the old
-    // release still in place; running it after the swap would leave a broken
-    // server behind until the operator rolls back.
-    log('Applying database migrations')
-    const cliPath = join(stagingDir, 'dist', 'cli.js')
-    await chmod(cliPath, 0o755)
-    const migrate = await runCommand(process.execPath, [cliPath, 'db:migrate'], {
-      ...process.env,
-      DUKEBOX_CONFIG: configPath,
+    return await installStaging({
+      installRoot,
+      stagingDir,
+      configPath,
+      service,
+      serviceUser,
+      successMessage: `updated to ${release.tagName}. The service restarted successfully.`,
+      log,
     })
-    if (migrate.code !== 0) {
-      return {
-        ok: false,
-        message: `migrations failed: ${migrate.stderr.trim() || migrate.stdout.trim()}`,
-      }
-    }
-
-    const backupDir = `${installRoot}.prev`
-    await rm(backupDir, { recursive: true, force: true })
-
-    log('Swapping release in')
-    await rename(installRoot, backupDir)
-    await rename(stagingDir, installRoot)
-
-    const chown = await runCommand('chown', ['-R', `${serviceUser}:${serviceUser}`, installRoot])
-    if (chown.code !== 0) {
-      // Not worth rolling back over: ownership is cosmetic and fixed by the
-      // install. But it must be reported.
-      log(`warning: could not chown ${installRoot}: ${chown.stderr.trim()}`)
-    }
-
-    log('Restarting the service')
-    await runCommand('systemctl', ['restart', service])
-
-    await sleep(3000)
-
-    const active = await runCommand('systemctl', ['is-active', service])
-    if (active.code === 0 && active.stdout.trim() === 'active') {
-      return {
-        ok: true,
-        message: `updated to ${release.tagName}. The service restarted successfully.`,
-      }
-    }
-
-    // The new release did not come up. Roll back before reporting.
-    log('The new release failed to start; rolling back')
-    await rm(installRoot, { recursive: true, force: true })
-    await rename(backupDir, installRoot)
-    await runCommand('chown', ['-R', `${serviceUser}:${serviceUser}`, installRoot])
-    await runCommand('systemctl', ['restart', service])
-    await sleep(3000)
-
-    return {
-      ok: false,
-      message: `the new release did not start (systemctl is-active reported "${active.stdout.trim() || 'inactive'}"); rolled back. See: journalctl -u ${service} -n 50`,
-    }
   } finally {
     await rm(tempDir, { recursive: true, force: true })
     await rm(stagingDir, { recursive: true, force: true })

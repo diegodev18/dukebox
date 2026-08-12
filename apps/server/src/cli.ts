@@ -9,6 +9,7 @@
  *   duke status                         report what the server can see
  *   duke version                        print the installed release version
  *   duke update [--check]               update to the latest server release
+ *   duke update --from-git [ref]        build and install from a git ref (default: main)
  *   duke rollback                       restore the previous release
  *   duke restart                        restart the control plane service
  *   duke config show                    print the effective configuration
@@ -36,6 +37,7 @@ import {
   selectServerAsset,
 } from './admin/update.js'
 import { performUpdate, runCommand } from './admin/updater.js'
+import { defaultRepoUrl, parseUpdateArgs, performGitUpdate } from './admin/gitUpdate.js'
 import {
   effectiveValues,
   fieldFor,
@@ -143,9 +145,7 @@ async function commandRollback(): Promise<void> {
 }
 
 async function commandUpdate(args: string[]): Promise<void> {
-  const flags = new Set(args.slice(1))
-  const checkOnly = flags.has('--check')
-  const force = flags.has('--force')
+  const { fromGit, ref, checkOnly, force } = parseUpdateArgs(args.slice(1))
 
   const installRoot = await findInstallRoot()
   if (!installRoot) {
@@ -156,11 +156,42 @@ async function commandUpdate(args: string[]): Promise<void> {
   }
 
   const currentVersion = await installedVersion(installRoot)
+
+  if (fromGit) {
+    if (checkOnly) {
+      console.log(`installed:  ${currentVersion}`)
+      console.log(`from-git:   ${defaultRepoUrl()} @ ${ref}`)
+      console.log('Pass without --check to clone, build, and install that ref.')
+      return
+    }
+
+    requireRoot('updating from git')
+    console.log(`installed:  ${currentVersion}`)
+    console.log(`from-git:   ${defaultRepoUrl()} @ ${ref}`)
+
+    const result = await performGitUpdate({
+      installRoot,
+      ref,
+      repoUrl: defaultRepoUrl(),
+      configPath: configPath(),
+      service: SERVICE,
+      serviceUser: SERVICE_USER,
+      log: (line) => console.log(line),
+    })
+
+    if (result.ok) console.log(`ok: ${result.message}`)
+    else {
+      console.error(`failed: ${result.message}`)
+      process.exitCode = 1
+    }
+    return
+  }
+
   const release = await fetchLatestServerRelease()
   if (!release) {
     throw new ConfigError(
       'no server release found on GitHub',
-      `Tag a release with ${RELEASE_TAG_PREFIX}<version> and push it.`,
+      `Tag a release with ${RELEASE_TAG_PREFIX}<version> and push it, or run: sudo duke update --from-git`,
     )
   }
 
@@ -182,7 +213,7 @@ async function commandUpdate(args: string[]): Promise<void> {
   if (!asset || !checksums) {
     throw new ConfigError(
       `no ${arch} asset (or SHA256SUMS) in ${release.tagName}`,
-      'The release workflow may still be running; wait and try again.',
+      'The release workflow may still be running; wait and try again. Or: sudo duke update --from-git',
     )
   }
 
@@ -419,7 +450,7 @@ async function main() {
 
     default:
       console.error(
-        'usage: duke <version | status | restart | update | rollback | config | pair new | device ls | device rm <id>>',
+        'usage: duke <version | status | restart | update [--from-git [ref]] | rollback | config | pair new | device ls | device rm <id>>',
       )
       process.exitCode = 1
   }
