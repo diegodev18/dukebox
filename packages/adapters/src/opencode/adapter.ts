@@ -10,6 +10,8 @@ import { OpenCodeMapper } from './mapper.js'
  * Each turn is a separate `opencode run --format json` process: the CLI exits
  * when the agent goes idle. The event iterator stays open across turns so a
  * follow-up `send` can start another run against the same OpenCode session.
+ * Stdin is not attached: `run` reads it to EOF before sending the prompt, so
+ * an open hijacked stream hangs the turn with no events.
  */
 
 export const OPENCODE_CAPABILITIES: AgentCapabilities = {
@@ -230,6 +232,11 @@ export class OpenCodeAdapter implements AgentAdapter {
 
     this.stream = await this.context.container.execStream(['opencode', ...args], {
       cwd: this.context.workingDir,
+      // `opencode run` reads stdin to EOF before it sends the prompt
+      // (`Bun.stdin.text()` whenever stdin is not a TTY). Leaving the
+      // hijacked stream open — which Claude Code needs — hangs the turn
+      // forever with the session stuck on "Running" and no events.
+      stdin: false,
     })
 
     this.consumeTurn(this.stream, turnId)

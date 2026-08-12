@@ -157,6 +157,15 @@ describe('Sandbox', () => {
       // already gone.
       await expect(collect(stream)).resolves.toContain('done')
     })
+
+    it('leaves stdin closed when asked, so a process that reads it does not hang', async () => {
+      const container = await createSession()
+      const stream = await container.execStream(['cat'], { stdin: false })
+
+      // `cat` with an attached stdin that never closes is the OpenCode hang:
+      // the process waits forever for EOF. Closed stdin makes it exit.
+      await expect(collect(stream)).resolves.toBe('')
+    })
   })
 
   describe('openTerminal', () => {

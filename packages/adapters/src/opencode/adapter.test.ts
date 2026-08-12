@@ -213,6 +213,22 @@ describe('OpenCodeAdapter', () => {
     expect(await collect(adapter)).toEqual([])
   })
 
+  it('does not attach stdin, so OpenCode does not wait for EOF before starting', async () => {
+    const execStream = vi.fn(async () => new PassThrough())
+    const exec = vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' }))
+    const adapter = new OpenCodeAdapter()
+
+    await adapter.start({
+      sessionId: 'session-1',
+      workingDir: '/workspace/repo',
+      container: { exec, execStream } as unknown as SessionContext['container'],
+    })
+
+    await adapter.send({ text: 'hello' })
+
+    expect(execStream.mock.calls[0]?.[1]).toEqual({ cwd: '/workspace/repo', stdin: false })
+  })
+
   it('invokes opencode run with the prompt and model', async () => {
     const execStream = vi.fn(async () => new PassThrough())
     const exec = vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' }))
@@ -238,7 +254,7 @@ describe('OpenCodeAdapter', () => {
         'anthropic/claude-sonnet-4-5',
         'hello',
       ],
-      { cwd: '/workspace/repo' },
+      { cwd: '/workspace/repo', stdin: false },
     )
   })
 
