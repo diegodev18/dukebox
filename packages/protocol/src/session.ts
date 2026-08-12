@@ -39,6 +39,32 @@ export function isTerminal(status: SessionStatus): boolean {
  * without `permissions` never shows an approval card, one without `thinking`
  * never shows a reasoning block. Without this, every new agent breaks the UI.
  */
+
+/**
+ * How an agent is allowed to act.
+ *
+ * `bypass` is unattended: the sandbox is the trust boundary. `plan` is
+ * read-only until the user approves. `auto` lets the agent's own classifier
+ * review actions. `acceptEdits` auto-approves file writes and still asks for
+ * the rest.
+ *
+ * Names are agent-agnostic; adapters map them onto native flags (Claude Code
+ * `bypassPermissions`, `plan`, `auto`, `acceptEdits`).
+ */
+export const permissionMode = z.enum(['bypass', 'plan', 'auto', 'acceptEdits'])
+
+export type PermissionMode = z.infer<typeof permissionMode>
+
+export const DEFAULT_PERMISSION_MODE: PermissionMode = 'bypass'
+
+/**
+ * `permission_request.action` when Claude Code wants to leave plan mode.
+ *
+ * Distinct from a generic tool name so the UI can offer "Implement" /
+ * "Keep planning" rather than Allow / Deny.
+ */
+export const EXIT_PLAN_MODE_ACTION = 'exit_plan_mode'
+
 export const agentCapabilities = z.object({
   /** Emits permission_request and waits for an answer. */
   permissions: z.boolean(),
@@ -50,6 +76,8 @@ export const agentCapabilities = z.object({
   mcp: z.boolean(),
   /** Can be interrupted mid-turn. */
   interrupt: z.boolean(),
+  /** Exposes a permission-mode picker and accepts set_permission_mode. */
+  permissionModes: z.boolean(),
 })
 
 export type AgentCapabilities = z.infer<typeof agentCapabilities>
@@ -109,6 +137,13 @@ export const sessionSummary = z.object({
    * project, so the app cannot read or write a session's config without it.
    */
   environmentId: z.string().uuid().nullable(),
+  /**
+   * How the agent is allowed to act, or null when it has no modes.
+   *
+   * Null hides the picker (OpenCode). Claude Code always carries a mode;
+   * absent on a pre-migration row is treated as `bypass` by the server.
+   */
+  permissionMode: permissionMode.nullable(),
 })
 
 export type SessionSummary = z.infer<typeof sessionSummary>

@@ -1,8 +1,16 @@
-import type { AgentCapabilities, AgentEvent } from '@dukebox/protocol'
+import {
+  DEFAULT_PERMISSION_MODE,
+  EXIT_PLAN_MODE_ACTION,
+  type AgentCapabilities,
+  type AgentEvent,
+  type PermissionMode,
+} from '@dukebox/protocol'
+import { randomUUID } from 'node:crypto'
 import type { Duplex } from 'node:stream'
 import { JsonlReader } from '../jsonl.js'
 import type { AgentAdapter, SessionContext, UserMessage } from '../types.js'
 import { ClaudeCodeMapper } from './mapper.js'
+import { toClaudePermissionMode } from './modes.js'
 
 /**
  * Claude Code, driven headless inside a session container.
@@ -13,13 +21,15 @@ import { ClaudeCodeMapper } from './mapper.js'
  */
 
 export const CLAUDE_CODE_CAPABILITIES: AgentCapabilities = {
-  // Sessions run with --permission-mode bypassPermissions, so the agent acts
-  // without asking. The container is the boundary that makes that safe.
-  permissions: false,
+  // Permission prompts reach the desktop via --permission-prompt-tool stdio.
+  // bypass still auto-approves ordinary tools; the channel is what makes plan
+  // mode and ask-rules answerable.
+  permissions: true,
   thinking: true,
   resume: true,
   mcp: true,
   interrupt: true,
+  permissionModes: true,
 }
 
 /** Build the argument vector for a session. */
@@ -33,12 +43,16 @@ export function buildArgs(context: SessionContext): string[] {
     // Without this, stream-json omits the tool calls and results that the
     // whole UI is built around.
     '--verbose',
-    // acceptEdits only covers file edits; Bash would still prompt, and a
-    // headless session has nobody to answer. The container's hardening — no
-    // privileges, dropped capabilities, no docker socket — is what makes
-    // running unattended safe.
     '--permission-mode',
-    'bypassPermissions',
+    toClaudePermissionMode(context.permissionMode),
+    // Lets the session start in plan or auto and still switch to bypass later
+    // without restarting the process.
+    '--allow-dangerously-skip-permissions',
+    // Always on so a mid-session switch into plan can still prompt for
+    // ExitPlanMode. In bypass the CLI auto-approves ordinary tools and this
+    // channel stays quiet.
+    '--permission-prompt-tool',
+    'stdio',
   ]
 
   if (context.model) {
@@ -81,6 +95,27 @@ export function encodeUserMessage(message: UserMessage): string {
   })}\n`
 }
 
+export function encodeSetPermissionMode(mode: PermissionMode, requestId: string): string {
+  return `${JSON.stringify({
+    type: 'control_request',
+    request_id: requestId,
+    request: { subtype: 'set_permission_mode', mode: toClaudePermissionMode(mode) },
+  })}\n`
+}
+
+export function encodePermissionResponse(requestId: string, allow: boolean): string {
+  return `${JSON.stringify({
+    type: 'control_response',
+    response: {
+      subtype: 'success',
+      request_id: requestId,
+      response: allow
+        ? { behavior: 'allow', updatedInput: {} }
+        : { behavior: 'deny', message: 'User denied permission' },
+    },
+  })}\n`
+}
+
 export class ClaudeCodeAdapter implements AgentAdapter {
   readonly id = 'claude-code'
   readonly capabilities = CLAUDE_CODE_CAPABILITIES
@@ -92,6 +127,8 @@ export class ClaudeCodeAdapter implements AgentAdapter {
   private ended = false
   /** Whether the agent reported the turn's end itself. */
   private sawDone = false
+  private requestedMode: PermissionMode = DEFAULT_PERMISSION_MODE
+  private pendingPermissions = new Map<string, string>()
 
   agentSessionId(): string | undefined {
     return this.mapper.agentSessionId
@@ -100,10 +137,13 @@ export class ClaudeCodeAdapter implements AgentAdapter {
   async start(context: SessionContext): Promise<void> {
     if (this.stream) throw new Error('adapter already started')
 
+    this.requestedMode = context.permissionMode ?? DEFAULT_PERMISSION_MODE
+
     this.stream = await context.container.execStream(['claude', ...buildArgs(context)], {
       cwd: context.workingDir,
     })
 
+    this.emit({ type: 'permission_mode', mode: this.requestedMode })
     this.consume(this.stream)
   }
 
@@ -126,7 +166,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
     stream.on('data', (chunk: Buffer) => {
       for (const message of reader.push(chunk.toString())) {
-        for (const event of this.mapper.map(message)) this.emit(event)
+        this.dispatchMapped(this.mapper.map(message))
       }
     })
 
@@ -137,7 +177,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
     stream.on('end', () => {
       for (const message of reader.flush()) {
-        for (const event of this.mapper.map(message)) this.emit(event)
+        this.dispatchMapped(this.mapper.map(message))
       }
 
       // A stream that ends without a result message means the process died.
@@ -152,10 +192,33 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     })
   }
 
+  private dispatchMapped(events: AgentEvent[]): void {
+    for (const event of events) {
+      if (event.type === 'permission_request') {
+        this.pendingPermissions.set(event.id, event.action)
+      }
+
+      if (
+        event.type === 'permission_mode' &&
+        this.requestedMode === 'auto' &&
+        event.mode !== 'auto'
+      ) {
+        this.emit({
+          type: 'error',
+          message: 'Claude Code could not enable auto mode for this model.',
+          fatal: false,
+        })
+      }
+
+      this.emit(event)
+    }
+  }
+
   private emit(event: AgentEvent): void {
     if (this.ended) return
 
     if (event.type === 'done') this.sawDone = true
+    if (event.type === 'permission_mode') this.requestedMode = event.mode
 
     const waiting = this.waiting
     if (waiting) {
@@ -178,15 +241,33 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     }
   }
 
-  async send(message: UserMessage): Promise<void> {
+  private write(line: string): void {
     if (!this.stream) throw new Error('adapter not started')
-    this.stream.write(encodeUserMessage(message))
+    this.stream.write(line)
   }
 
-  async respondToPermission(): Promise<void> {
-    // Sessions run in bypassPermissions mode, so the agent never asks.
-    // Accepting the call rather than throwing means callers need no special
-    // case.
+  async send(message: UserMessage): Promise<void> {
+    this.write(encodeUserMessage(message))
+  }
+
+  async respondToPermission(id: string, allow: boolean): Promise<void> {
+    if (!this.stream) return
+
+    const action = this.pendingPermissions.get(id)
+    this.pendingPermissions.delete(id)
+    this.write(encodePermissionResponse(id, allow))
+
+    if (allow && action === EXIT_PLAN_MODE_ACTION) {
+      await this.setPermissionMode('auto')
+    }
+  }
+
+  async setPermissionMode(mode: PermissionMode): Promise<void> {
+    if (!this.stream) return
+
+    this.requestedMode = mode
+    this.write(encodeSetPermissionMode(mode, randomUUID()))
+    this.emit({ type: 'permission_mode', mode })
   }
 
   async interrupt(): Promise<void> {

@@ -13,6 +13,8 @@ import {
   type ProjectConfig,
   type SessionPurpose,
   type SessionStatus,
+  type PermissionMode,
+  DEFAULT_PERMISSION_MODE,
 } from '@dukebox/protocol'
 import {
   CONTAINER_SOCKET_DIR,
@@ -90,6 +92,13 @@ export interface StartSessionOptions {
   baseBranch?: string
   /** Passed through to the adapter; absent means the agent's default. */
   model?: string
+  /**
+   * How the agent is allowed to act.
+   *
+   * Ignored by agents without permission modes. Absent means bypass for
+   * Claude Code.
+   */
+  permissionMode?: PermissionMode
   purpose?: SessionPurpose
   /** Required for coding sessions; ignored for environment_setup. */
   prompt?: string
@@ -130,6 +139,29 @@ export function createAgentAdapter(agentId: string): AgentAdapter {
   throw new SessionError(`no adapter for agent: ${agentId}`)
 }
 
+function storedPermissionMode(agentId: string, requested?: PermissionMode): string | null {
+  if (agentId !== 'claude-code') return null
+  return requested ?? DEFAULT_PERMISSION_MODE
+}
+
+function permissionModeContext(
+  session: Session,
+  override?: PermissionMode,
+): { permissionMode: PermissionMode } | Record<string, never> {
+  const candidate = override ?? session.permissionMode
+  if (
+    candidate === 'bypass' ||
+    candidate === 'plan' ||
+    candidate === 'auto' ||
+    candidate === 'acceptEdits'
+  ) {
+    return { permissionMode: candidate }
+  }
+
+  if (session.agentId === 'claude-code') return { permissionMode: DEFAULT_PERMISSION_MODE }
+  return {}
+}
+
 export class SessionManager {
   private readonly running = new Map<string, RunningSession>()
 
@@ -154,6 +186,16 @@ export class SessionManager {
     // Announced from here because this is the one place a session's state
     // changes. A client that has to poll for this shows whatever was true when
     // it loaded, which for a running session is wrong within seconds.
+    if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
+  }
+
+  private async persistPermissionMode(sessionId: string, mode: PermissionMode): Promise<void> {
+    const [updated] = await this.deps.db
+      .update(sessions)
+      .set({ permissionMode: mode, updatedAt: new Date() })
+      .where(eq(sessions.id, sessionId))
+      .returning()
+
     if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
   }
 
@@ -204,6 +246,7 @@ export class SessionManager {
         baseBranch,
         environmentId,
         title: purpose === 'environment_setup' ? 'Configure environment' : prompt.slice(0, 80),
+        permissionMode: storedPermissionMode(options.agentId, options.permissionMode),
       })
       .returning()
 
@@ -217,6 +260,7 @@ export class SessionManager {
       prompt,
       options.model,
       options.commitIdentity,
+      options.permissionMode,
     ).catch(async (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error)
 
@@ -235,6 +279,7 @@ export class SessionManager {
     prompt: string,
     model?: string,
     commitIdentity?: CommitIdentity,
+    permissionMode?: PermissionMode,
   ): Promise<void> {
     // Started before the container so the socket exists to be mounted. It
     // answers only for this session's repository, so an agent that asks for
@@ -242,7 +287,15 @@ export class SessionManager {
     const credentials = await this.startCredentialProxy(session.id, repoFullName)
 
     try {
-      await this.provisionWith(session, repoFullName, prompt, credentials, model, commitIdentity)
+      await this.provisionWith(
+        session,
+        repoFullName,
+        prompt,
+        credentials,
+        model,
+        commitIdentity,
+        permissionMode,
+      )
     } catch (error) {
       // The session never reached `running`, so `stop` would not find it and
       // the socket would be left listening for a session that failed.
@@ -258,6 +311,7 @@ export class SessionManager {
     credentials: CredentialProxy | undefined,
     model?: string,
     commitIdentity?: CommitIdentity,
+    permissionMode?: PermissionMode,
   ): Promise<void> {
     const purpose = (session.purpose as SessionPurpose) || 'coding'
     const config = await this.configFor(session.environmentId)
@@ -333,6 +387,7 @@ export class SessionManager {
       ...(config.instructions && purpose === 'coding' ? { instructions: config.instructions } : {}),
       ...(model ? { model } : {}),
       ...(session.agentSessionId ? { resumeFrom: session.agentSessionId } : {}),
+      ...permissionModeContext(session, permissionMode),
     })
 
     this.running.set(session.id, {
@@ -368,6 +423,10 @@ export class SessionManager {
     try {
       for await (const event of adapter.events()) {
         await this.deps.bus.append(sessionId, event)
+
+        if (event.type === 'permission_mode') {
+          await this.persistPermissionMode(sessionId, event.mode)
+        }
 
         if (event.type === 'done') {
           await this.onTurnEnd(sessionId, event.reason)
@@ -858,6 +917,7 @@ export class SessionManager {
       // Hands the agent its own prior session, so it answers with the
       // conversation rather than from nothing.
       ...(session.agentSessionId ? { resumeFrom: session.agentSessionId } : {}),
+      ...permissionModeContext(session),
     })
 
     const running: RunningSession = {
@@ -906,6 +966,13 @@ export class SessionManager {
     if (!running) throw new SessionError('that session is not running')
 
     await running.adapter.respondToPermission(id, allow)
+  }
+
+  async setPermissionMode(sessionId: string, mode: PermissionMode): Promise<void> {
+    const running = this.running.get(sessionId)
+    if (!running) throw new SessionError('that session is not running')
+
+    await running.adapter.setPermissionMode(mode)
   }
 
   /**

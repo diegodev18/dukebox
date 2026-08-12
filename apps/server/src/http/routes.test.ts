@@ -415,6 +415,22 @@ describe('POST /api/sessions', () => {
     expect(sessionManager.start).toHaveBeenCalledWith(expect.objectContaining({ model: 'opus' }))
   })
 
+  it('passes the permission mode through when given', async () => {
+    const project = await createProject()
+    vi.mocked(sessionManager.start).mockResolvedValueOnce(await createSession(project.id))
+
+    await post('/api/sessions', {
+      projectId: project.id,
+      agentId: 'claude-code',
+      permissionMode: 'plan',
+      prompt: 'x',
+    })
+
+    expect(sessionManager.start).toHaveBeenCalledWith(
+      expect.objectContaining({ permissionMode: 'plan' }),
+    )
+  })
+
   it('passes the commit identity through when given', async () => {
     const project = await createProject()
     vi.mocked(sessionManager.start).mockResolvedValueOnce(await createSession(project.id))
@@ -481,6 +497,39 @@ describe('GET /api/sessions', () => {
     }
 
     expect(body.sessions.map((session) => session.title)).toEqual(['Second', 'First'])
+  })
+
+  it('reports bypass for a Claude Code session with no stored mode', async () => {
+    const project = await createProject()
+    await createSession(project.id)
+
+    const body = (await (await request('/api/sessions')).json()) as {
+      sessions: { permissionMode: string | null }[]
+    }
+
+    expect(body.sessions[0]?.permissionMode).toBe('bypass')
+  })
+
+  it('reports the stored permission mode', async () => {
+    const project = await createProject()
+    await createSession(project.id, { permissionMode: 'plan' })
+
+    const body = (await (await request('/api/sessions')).json()) as {
+      sessions: { permissionMode: string | null }[]
+    }
+
+    expect(body.sessions[0]?.permissionMode).toBe('plan')
+  })
+
+  it('hides permission mode for an agent that has none', async () => {
+    const project = await createProject()
+    await createSession(project.id, { agentId: 'opencode' })
+
+    const body = (await (await request('/api/sessions')).json()) as {
+      sessions: { permissionMode: string | null }[]
+    }
+
+    expect(body.sessions[0]?.permissionMode).toBeNull()
   })
 
   it('reports no pull request until one is opened', async () => {

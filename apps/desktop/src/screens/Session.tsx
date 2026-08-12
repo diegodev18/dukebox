@@ -400,6 +400,12 @@ function SessionColumn({
         running={live.transcript.running}
         disabled={live.status === 'offline'}
         error={live.error}
+        {...(session.permissionMode
+          ? {
+              permissionMode: live.transcript.permissionMode ?? session.permissionMode,
+              onPermissionModeChange: live.setPermissionMode,
+            }
+          : {})}
         {...(session.purpose === 'environment_setup'
           ? { placeholder: 'Add context for the setup agent…' }
           : {})}

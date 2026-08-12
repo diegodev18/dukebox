@@ -266,4 +266,20 @@ describe('session metadata', () => {
     expect(transcript.agentId).toBe('claude-code')
     expect(transcript.model).toBe('claude-opus-4')
   })
+
+  it('records the permission mode without adding a block', () => {
+    const transcript = fold(at(1, { type: 'permission_mode', mode: 'plan' }))
+
+    expect(transcript.permissionMode).toBe('plan')
+    expect(transcript.blocks).toHaveLength(0)
+  })
+
+  it('replaces the permission mode when it changes', () => {
+    const transcript = fold(
+      at(1, { type: 'permission_mode', mode: 'plan' }),
+      at(2, { type: 'permission_mode', mode: 'auto' }),
+    )
+
+    expect(transcript.permissionMode).toBe('auto')
+  })
 })

@@ -181,6 +181,29 @@ export const rateLimitMessage = z
   .passthrough()
 
 /**
+ * A control-channel request from the CLI, typically `can_use_tool`.
+ *
+ * Arrives when `--permission-prompt-tool stdio` is set and a tool is not
+ * auto-approved. `request_id` is what the matching `control_response` must
+ * carry.
+ */
+export const controlRequestMessage = z
+  .object({
+    type: z.literal('control_request'),
+    request_id: z.string(),
+    request: z
+      .object({
+        subtype: z.string(),
+        tool_name: z.string().optional(),
+        input: z.unknown().optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough()
+
+export type ControlRequestMessage = z.infer<typeof controlRequestMessage>
+
+/**
  * Every message carries a `type`; nothing else is guaranteed.
  *
  * Deliberately not a union of the schemas above. A union with a permissive

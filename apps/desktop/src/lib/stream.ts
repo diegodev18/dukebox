@@ -1,4 +1,9 @@
-import { serverMessage, type ClientCommand, type ServerMessage } from '@dukebox/protocol'
+import {
+  serverMessage,
+  type ClientCommand,
+  type PermissionMode,
+  type ServerMessage,
+} from '@dukebox/protocol'
 import { socketUrl, type ServerAddress } from '@/lib/client'
 
 /**
@@ -139,6 +144,10 @@ export class SessionStream {
 
   answerPermission(sessionId: string, id: string, allow: boolean): void {
     this.send({ type: 'permission_response', sessionId, id, allow })
+  }
+
+  setPermissionMode(sessionId: string, mode: PermissionMode): void {
+    this.send({ type: 'set_permission_mode', sessionId, mode })
   }
 
   openTerminal(sessionId: string, cols: number, rows: number): void {

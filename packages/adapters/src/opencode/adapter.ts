@@ -1,4 +1,4 @@
-import type { AgentCapabilities, AgentEvent } from '@dukebox/protocol'
+import type { AgentCapabilities, AgentEvent, PermissionMode } from '@dukebox/protocol'
 import type { Duplex } from 'node:stream'
 import { JsonlReader } from '../jsonl.js'
 import type { AgentAdapter, SessionContext, UserMessage } from '../types.js'
@@ -20,6 +20,7 @@ export const OPENCODE_CAPABILITIES: AgentCapabilities = {
   resume: true,
   mcp: true,
   interrupt: true,
+  permissionModes: false,
 }
 
 export const OPENCODE_INSTRUCTIONS_PATH = '/tmp/dukebox-instructions.md'
@@ -270,6 +271,11 @@ export class OpenCodeAdapter implements AgentAdapter {
     if (!this.stream) return
     this.interrupted = true
     this.stream.destroy()
+  }
+
+  async setPermissionMode(_mode: PermissionMode): Promise<void> {
+    // OpenCode has no permission modes. Accepting the call rather than
+    // throwing means callers need no special case.
   }
 
   async *events(): AsyncIterable<AgentEvent> {

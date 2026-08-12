@@ -263,6 +263,7 @@ describe('NewSession OpenCode', () => {
         }),
       ),
     )
+    expect(client.startSession.mock.calls[0][0]).not.toHaveProperty('permissionMode')
   })
 
   it('hides the model picker until a provider exists and blocks starting', async () => {
@@ -280,5 +281,54 @@ describe('NewSession OpenCode', () => {
     await userEvent.type(screen.getByLabelText(/what should it do/i), 'do a thing')
     expect(screen.getByRole('button', { name: /start session/i })).toBeDisabled()
     expect(client.startSession).not.toHaveBeenCalled()
+  })
+})
+
+describe('NewSession permission mode', () => {
+  it('offers Plan, Auto, Accept edits, and Bypass for Claude Code', async () => {
+    renderScreen(makeClient())
+
+    const modes = await openPicker('Permission mode')
+    expect(within(modes).getByRole('option', { name: 'Plan' })).toBeInTheDocument()
+    expect(within(modes).getByRole('option', { name: 'Auto' })).toBeInTheDocument()
+    expect(within(modes).getByRole('option', { name: 'Accept edits' })).toBeInTheDocument()
+    expect(within(modes).getByRole('option', { name: 'Bypass' })).toBeInTheDocument()
+  })
+
+  it('sends the selected mode when starting a Claude Code session', async () => {
+    const client = makeClient()
+    renderScreen(client)
+
+    const modes = await openPicker('Permission mode')
+    await userEvent.click(within(modes).getByRole('option', { name: 'Plan' }))
+    await userEvent.type(screen.getByLabelText(/what should it do/i), 'do a thing')
+    await userEvent.click(screen.getByRole('button', { name: /start session/i }))
+
+    await waitFor(() =>
+      expect(client.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({ permissionMode: 'plan' }),
+      ),
+    )
+  })
+
+  it('hides the mode picker for OpenCode', async () => {
+    const client = makeClient({
+      listOpencodeProviders: vi.fn().mockResolvedValue([
+        {
+          id: 'openai',
+          kind: 'openai',
+          name: 'OpenAI',
+          models: [{ id: 'gpt-5.2', label: 'GPT-5.2' }],
+        },
+      ]),
+    })
+    renderScreen(client)
+
+    const agents = await openPicker('Agent')
+    await userEvent.click(within(agents).getByRole('option', { name: /OpenCode/ }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Permission mode' })).not.toBeInTheDocument(),
+    )
   })
 })

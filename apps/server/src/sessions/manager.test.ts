@@ -1,6 +1,6 @@
 import type { AgentAdapter, SessionContext, UserMessage } from '@dukebox/adapters'
 import { environments, projects, sessions } from '@dukebox/db'
-import type { AgentEvent } from '@dukebox/protocol'
+import type { AgentEvent, PermissionMode } from '@dukebox/protocol'
 import { Sandbox } from '@dukebox/sandbox'
 import { and, eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -30,9 +30,11 @@ class FakeAdapter implements AgentAdapter {
     resume: true,
     mcp: false,
     interrupt: true,
+    permissionModes: false,
   }
 
   readonly prompts: UserMessage[] = []
+  readonly permissionModes: PermissionMode[] = []
   started: SessionContext | undefined
   stopped = false
   interrupted = false
@@ -53,6 +55,10 @@ class FakeAdapter implements AgentAdapter {
 
   async interrupt(): Promise<void> {
     this.interrupted = true
+  }
+
+  async setPermissionMode(mode: PermissionMode): Promise<void> {
+    this.permissionModes.push(mode)
   }
 
   agentSessionId(): string | undefined {
@@ -1004,6 +1010,67 @@ describe('project environment on coding sessions', () => {
       env: { DATABASE_URL: { secret: true } },
     })
   }, 120_000)
+})
+
+describe('permission mode', () => {
+  it('stores no mode for an agent that has none', async () => {
+    const session = await startSession()
+    expect(session.permissionMode).toBeNull()
+    await waitForSettled(session.id)
+  })
+
+  it('defaults Claude Code to bypass', async () => {
+    const project = await createTestProject()
+    const session = await manager.start({
+      projectId: project.id,
+      agentId: 'claude-code',
+      prompt: 'do a thing',
+    })
+    createdSessions.push(session.id)
+
+    expect(session.permissionMode).toBe('bypass')
+    await waitForSettled(session.id)
+  })
+
+  it('stores the requested mode on create', async () => {
+    const project = await createTestProject()
+    const session = await manager.start({
+      projectId: project.id,
+      agentId: 'claude-code',
+      prompt: 'do a thing',
+      permissionMode: 'plan',
+    })
+    createdSessions.push(session.id)
+
+    expect(session.permissionMode).toBe('plan')
+    await waitForSettled(session.id)
+
+    const [row] = await db.select().from(sessions).where(eq(sessions.id, session.id))
+    expect(row?.permissionMode).toBe('plan')
+  })
+
+  it('hands the stored mode to the adapter', async () => {
+    const project = await createTestProject()
+    const session = await manager.start({
+      projectId: project.id,
+      agentId: 'claude-code',
+      prompt: 'do a thing',
+      permissionMode: 'auto',
+    })
+    createdSessions.push(session.id)
+    await waitForStatus(session.id, 'running')
+
+    expect(adapter.started?.permissionMode).toBe('auto')
+  })
+
+  it('forwards a mid-session change to the adapter', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+
+    await manager.setPermissionMode(session.id, 'plan')
+
+    expect(adapter.permissionModes).toEqual(['plan'])
+  })
 })
 
 describe('environment resolution', () => {

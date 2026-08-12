@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { environmentProposal } from './config.js'
-import { sessionPurpose, sessionSummary } from './session.js'
+import { permissionMode, sessionPurpose, sessionSummary } from './session.js'
 import { MAX_BRANCH_PATTERN_LENGTH } from './branchPattern.js'
 
 /**
@@ -203,6 +203,14 @@ export const createSessionRequest = z
      * the agent uses its own default.
      */
     model: z.string().min(1).optional(),
+    /**
+     * How the agent is allowed to act.
+     *
+     * Passed through to adapters that expose permission modes (Claude Code).
+     * Ignored by the rest. Absent means the agent's default — bypass for
+     * Claude Code, nothing for OpenCode.
+     */
+    permissionMode: permissionMode.optional(),
     /**
      * Who this session's commits are authored as.
      *

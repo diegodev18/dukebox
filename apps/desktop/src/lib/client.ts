@@ -14,6 +14,7 @@ import type {
   SessionSummary,
   UpdateEnvironmentRequest,
   UpsertOpencodeProviderRequest,
+  PermissionMode,
 } from '@dukebox/protocol'
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 
@@ -141,6 +142,7 @@ export class DukeboxClient {
     prompt?: string
     baseBranch?: string
     model?: string
+    permissionMode?: PermissionMode
     purpose?: 'coding' | 'environment_setup'
     /** Omitted lets the server resolve one from the base branch. */
     environmentId?: string

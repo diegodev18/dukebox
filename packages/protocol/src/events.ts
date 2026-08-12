@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { permissionMode } from './session.js'
 
 /**
  * The normalized event stream every agent is translated into.
@@ -77,6 +78,17 @@ export const permissionRequestEvent = z.object({
   detail: z.unknown(),
 })
 
+/**
+ * The agent's permission mode changed.
+ *
+ * Folded into transcript state rather than a block: it is chrome (the
+ * composer picker), not something to read in the conversation.
+ */
+export const permissionModeEvent = z.object({
+  type: z.literal('permission_mode'),
+  mode: permissionMode,
+})
+
 /** Token and cost accounting for the turn. */
 export const usageEvent = z.object({
   type: z.literal('usage'),
@@ -140,6 +152,7 @@ export const agentEvent = z.discriminatedUnion('type', [
   toolResultEvent,
   fileDiffEvent,
   permissionRequestEvent,
+  permissionModeEvent,
   usageEvent,
   errorEvent,
   doneEvent,

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import type { PermissionMode } from '@dukebox/protocol'
+import { PermissionModePicker } from '@/components/RepoBranchPickers'
 
 /**
  * Where a person talks to the agent.
@@ -17,6 +19,8 @@ interface Props {
   placeholder?: string
   /** When a send is rejected, the draft comes back rather than vanishing. */
   error?: string | null
+  permissionMode?: PermissionMode | null
+  onPermissionModeChange?: (mode: PermissionMode) => void
 }
 
 export function Composer({
@@ -26,6 +30,8 @@ export function Composer({
   disabled,
   placeholder = 'Ask for a change…',
   error,
+  permissionMode,
+  onPermissionModeChange,
 }: Props) {
   const [text, setText] = useState('')
   const field = useRef<HTMLTextAreaElement>(null)
@@ -81,7 +87,16 @@ export function Composer({
         />
 
         <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
-          <p className="text-[11.5px] text-muted-foreground">↵ Send · ⇧↵ Newline</p>
+          <div className="flex min-w-0 items-center gap-2">
+            {permissionMode && onPermissionModeChange ? (
+              <PermissionModePicker
+                value={permissionMode}
+                onChange={onPermissionModeChange}
+                {...(disabled ? { disabled: true } : {})}
+              />
+            ) : null}
+            <p className="text-[11.5px] text-muted-foreground">↵ Send · ⇧↵ Newline</p>
+          </div>
           {running ? (
             <button
               type="button"

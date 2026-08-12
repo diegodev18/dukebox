@@ -28,6 +28,7 @@ let server: ReturnType<typeof serve> | undefined
 let wss: ReturnType<typeof attachWebSocketServer> | undefined
 let port = 0
 const onPrompt = vi.fn(async () => {})
+const onSetPermissionMode = vi.fn(async () => {})
 
 /**
  * The PTYs handed to the registry, newest last.
@@ -85,6 +86,7 @@ beforeAll(async () => {
     db,
     bus,
     onPrompt,
+    onSetPermissionMode,
     terminals,
     auditTerminal,
   })
@@ -94,6 +96,7 @@ beforeEach(async () => {
   await resetDatabase()
   await redis.flushdb()
   onPrompt.mockClear()
+  onSetPermissionMode.mockClear()
   auditTerminal.mockClear()
   fakeTerminals = []
 })
@@ -364,6 +367,7 @@ describe('session updates', () => {
       projectId: '00000000-0000-4000-8000-000000000001',
       agentId: 'claude-code',
       status: 'running',
+      purpose: 'coding',
       title: 'A session',
       branch: 'duke/abc',
       baseBranch: 'main',
@@ -373,6 +377,7 @@ describe('session updates', () => {
       lastSeq: 5,
       pullRequestUrl: null,
       environmentId: null,
+      permissionMode: 'bypass',
     })
 
     await client.waitFor(() => client.sessionUpdates().length > 0)
@@ -396,6 +401,7 @@ describe('session updates', () => {
       projectId: '00000000-0000-4000-8000-000000000001',
       agentId: 'claude-code',
       status: 'done',
+      purpose: 'coding',
       title: 'Another session',
       branch: 'duke/def',
       baseBranch: 'main',
@@ -405,6 +411,7 @@ describe('session updates', () => {
       lastSeq: 1,
       pullRequestUrl: null,
       environmentId: null,
+      permissionMode: 'bypass',
     })
 
     await client.waitFor(() => client.sessionUpdates().length > 0)
@@ -560,6 +567,17 @@ describe('commands', () => {
     await client.waitFor(() => onPrompt.mock.calls.length === 1)
 
     expect(onPrompt).toHaveBeenCalledWith(sessionId, 'hello', undefined)
+    client.close()
+  })
+
+  it('forwards a permission mode change to the session', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({ type: 'set_permission_mode', sessionId, mode: 'plan' })
+    await client.waitFor(() => onSetPermissionMode.mock.calls.length === 1)
+
+    expect(onSetPermissionMode).toHaveBeenCalledWith(sessionId, 'plan')
     client.close()
   })
 

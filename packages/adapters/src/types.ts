@@ -1,4 +1,4 @@
-import type { AgentCapabilities, AgentEvent } from '@dukebox/protocol'
+import type { AgentCapabilities, AgentEvent, PermissionMode } from '@dukebox/protocol'
 import type { SessionContainer } from '@dukebox/sandbox'
 
 /**
@@ -35,6 +35,13 @@ export interface SessionContext {
    * produced it — the control plane stores it without interpreting it.
    */
   resumeFrom?: string
+  /**
+   * How the agent is allowed to act.
+   *
+   * Adapters that expose permission modes pass this through; others ignore it.
+   * Absent means the agent's own default.
+   */
+  permissionMode?: PermissionMode
 }
 
 export interface UserMessage {
@@ -68,6 +75,14 @@ export interface AgentAdapter {
 
   /** Interrupt the current turn. No-op when `capabilities.interrupt` is false. */
   interrupt(): Promise<void>
+
+  /**
+   * Change how the agent is allowed to act.
+   *
+   * No-op when `capabilities.permissionModes` is false, so callers need no
+   * special case.
+   */
+  setPermissionMode(mode: PermissionMode): Promise<void>
 
   /**
    * The normalized event stream.

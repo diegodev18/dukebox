@@ -3,6 +3,28 @@ import { clientCommand, serverMessage } from './commands.js'
 
 const sessionId = '11111111-1111-4111-8111-111111111111'
 
+describe('permission mode', () => {
+  it('parses set_permission_mode', () => {
+    const result = clientCommand.safeParse({
+      type: 'set_permission_mode',
+      sessionId,
+      mode: 'plan',
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects an unknown mode', () => {
+    const result = clientCommand.safeParse({
+      type: 'set_permission_mode',
+      sessionId,
+      mode: 'dontAsk',
+    })
+
+    expect(result.success).toBe(false)
+  })
+})
+
 describe('terminal commands', () => {
   it('parses terminal_open with a size', () => {
     const result = clientCommand.safeParse({

@@ -3,6 +3,7 @@ import {
   clientCommand,
   type ClientCommand,
   type EnvelopedEvent,
+  type PermissionMode,
   type ServerMessage,
 } from '@dukebox/protocol'
 import type { IncomingMessage, Server } from 'node:http'
@@ -27,6 +28,7 @@ export interface WebSocketDeps {
   onPrompt?: (sessionId: string, text: string, images?: string[]) => Promise<void>
   onInterrupt?: (sessionId: string) => Promise<void>
   onPermissionResponse?: (sessionId: string, id: string, allow: boolean) => Promise<void>
+  onSetPermissionMode?: (sessionId: string, mode: PermissionMode) => Promise<void>
   /** Live terminals. Absent on a server without sessions. */
   terminals?: TerminalRegistry
   /** Records that a person opened or closed a shell. Never records I/O. */
@@ -104,6 +106,10 @@ class Connection {
       case 'permission_response':
         return this.forward(command.sessionId, () =>
           this.deps.onPermissionResponse?.(command.sessionId, command.id, command.allow),
+        )
+      case 'set_permission_mode':
+        return this.forward(command.sessionId, () =>
+          this.deps.onSetPermissionMode?.(command.sessionId, command.mode),
         )
       case 'terminal_open':
         return this.openTerminal(command.sessionId, command.cols, command.rows)

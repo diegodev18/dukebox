@@ -74,8 +74,16 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
     }
 
     try {
-      const { baseBranch, prompt, purpose, model, environmentId, commitIdentity, ...rest } =
-        parsed.data
+      const {
+        baseBranch,
+        prompt,
+        purpose,
+        model,
+        environmentId,
+        commitIdentity,
+        permissionMode,
+        ...rest
+      } = parsed.data
 
       const session = await deps.sessions.start({
         ...rest,
@@ -86,6 +94,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
         // an absent base branch as "use the project's default".
         ...(baseBranch ? { baseBranch } : {}),
         ...(model ? { model } : {}),
+        ...(permissionMode ? { permissionMode } : {}),
         // Likewise absent rather than undefined: the manager reads an absent
         // environment as "resolve one from the base branch".
         ...(environmentId ? { environmentId } : {}),

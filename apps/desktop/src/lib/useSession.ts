@@ -2,6 +2,7 @@ import {
   answerPermission,
   applyEvent,
   emptyTranscript,
+  type PermissionMode,
   type SessionSummary,
   type Transcript,
 } from '@dukebox/protocol'
@@ -36,6 +37,7 @@ export interface LiveSession {
   send: (text: string) => void
   interrupt: () => void
   respond: (id: string, allow: boolean) => void
+  setPermissionMode: (mode: PermissionMode) => void
   /** The shells open in this session's container. */
   terminals: TerminalState
   openTerminal: (cols: number, rows: number) => void
@@ -168,6 +170,14 @@ export function useSession(
     [sessionId],
   )
 
+  const setPermissionMode = useCallback(
+    (mode: PermissionMode) => {
+      if (!sessionId) return
+      streamRef.current?.setPermissionMode(sessionId, mode)
+    },
+    [sessionId],
+  )
+
   const openTerminal = useCallback(
     (cols: number, rows: number) => {
       if (sessionId) streamRef.current?.openTerminal(sessionId, cols, rows)
@@ -227,6 +237,7 @@ export function useSession(
     send,
     interrupt,
     respond,
+    setPermissionMode,
     terminals,
     openTerminal,
     attachTerminal,

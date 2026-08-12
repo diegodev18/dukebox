@@ -43,6 +43,13 @@
       "when": 1786044482759,
       "tag": "0005_environments",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786550000000,
+      "tag": "0006_permission_mode",
+      "breakpoints": true
     }
   ]
 }
