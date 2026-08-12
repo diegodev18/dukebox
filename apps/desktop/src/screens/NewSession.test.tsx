@@ -166,6 +166,17 @@ describe('NewSession environment picker', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/sandbox unavailable/i)
   })
 
+  it('returns to the prompt from configure environment', async () => {
+    const client = makeClient({ listEnvironments: vi.fn().mockResolvedValue([]) })
+    renderScreen(client, { environmentCount: 0 })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Configure environment' }))
+    expect(screen.getByRole('heading', { name: 'Configure environment' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(screen.getByLabelText(/what should it do/i)).toBeInTheDocument()
+  })
+
   it('prefills the branch pattern from the current branch', async () => {
     const client = makeClient({ listEnvironments: vi.fn().mockResolvedValue([]) })
     renderScreen(client, { environmentCount: 0 })

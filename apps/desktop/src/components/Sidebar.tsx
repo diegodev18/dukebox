@@ -26,6 +26,8 @@ interface Props {
   onConfigureEnvironment: (projectId: string) => void
   onManageEnvironments: (projectId: string) => void
   onArchive: (sessionId: string) => void
+  /** Set when an archive request failed; the row stays put. */
+  archiveError?: string | null
 }
 
 export function Sidebar({
@@ -40,6 +42,7 @@ export function Sidebar({
   onConfigureEnvironment,
   onManageEnvironments,
   onArchive,
+  archiveError,
 }: Props) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [searching, setSearching] = useState(false)
@@ -112,6 +115,12 @@ export function Sidebar({
           </>
         )}
       </div>
+
+      {archiveError && (
+        <p role="alert" className="px-4 py-2 text-[12.5px] text-destructive">
+          {archiveError}
+        </p>
+      )}
 
       {/* Who the work is attributed to. Which server it runs on lives in the
           session header instead: that question is per session and only worth
@@ -284,6 +293,7 @@ function SessionContextMenu({
   const ref = useRef<HTMLDivElement>(null)
   const dismiss = useRef(onDismiss)
   const archive = useRef(onArchive)
+  const [confirming, setConfirming] = useState(false)
   dismiss.current = onDismiss
   archive.current = onArchive
 
@@ -314,14 +324,36 @@ function SessionContextMenu({
       style={{ left: x, top: y }}
       className="fixed z-50 min-w-36 rounded-[calc(var(--radius)*0.7)] border border-border bg-background py-1 shadow-md"
     >
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => archive.current()}
-        className="flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-muted"
-      >
-        Archive
-      </button>
+      {confirming ? (
+        <>
+          <p className="px-3 py-1.5 text-[12px] text-muted-foreground">Archive this session?</p>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => archive.current()}
+            className="flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-muted"
+          >
+            Archive
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => dismiss.current()}
+            className="flex w-full items-center px-3 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted"
+          >
+            Cancel
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => setConfirming(true)}
+          className="flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-muted"
+        >
+          Archive
+        </button>
+      )}
     </div>
   )
 }

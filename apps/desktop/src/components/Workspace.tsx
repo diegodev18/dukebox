@@ -1,8 +1,8 @@
 import type { FileChange, SessionSummary } from '@dukebox/protocol'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { DukeboxClient } from '../lib/client.js'
 import type { TerminalState } from '../lib/useTerminals.js'
-import { Diff } from './Diff.js'
+import { Diff, changeCounts } from './Diff.js'
 import { EnvironmentReview } from './EnvironmentReview.js'
 import {
   CommitIcon,
@@ -105,6 +105,7 @@ export function Workspace({ session, files, environmentReview, ...terminalProps 
         {!collapsed && <span className="text-[12.5px] font-medium">Workspace</span>}
         <span className="flex-1" />
         <button
+          type="button"
           onClick={() => setCollapsed((value) => !value)}
           aria-expanded={!collapsed}
           aria-label={collapsed ? 'Expand workspace' : 'Collapse workspace'}
@@ -115,7 +116,14 @@ export function Workspace({ session, files, environmentReview, ...terminalProps 
       </header>
 
       {collapsed ? (
-        <Metrics session={session} files={files} />
+        <Metrics
+          session={session}
+          files={files}
+          onExpand={() => {
+            setCollapsed(false)
+            setTab('files')
+          }}
+        />
       ) : (
         <>
           <TabBar tabs={tabs} active={tab} onSelect={setTab} />
@@ -187,7 +195,15 @@ function TabBar({
  * caption to mean anything, and stacking the two doubles the height for no
  * more information than a line gives.
  */
-function Metrics({ session, files }: { session: SessionSummary | null; files: FileChange[] }) {
+function Metrics({
+  session,
+  files,
+  onExpand,
+}: {
+  session: SessionSummary | null
+  files: FileChange[]
+  onExpand: () => void
+}) {
   if (!session) return <div />
 
   // Counted from the live stream rather than the session summary, which only
@@ -198,10 +214,20 @@ function Metrics({ session, files }: { session: SessionSummary | null; files: Fi
   return (
     <div className="flex flex-col px-2 pt-6 pb-3.5">
       <MetricLabel>Changes</MetricLabel>
-      <Metric icon={<FileIcon size={13} />} label="Files" value={String(changed)} />
+      <Metric
+        icon={<FileIcon size={13} />}
+        label="Files"
+        value={String(changed)}
+        onClick={onExpand}
+      />
 
       <MetricLabel>On {session.branch || session.baseBranch}</MetricLabel>
-      <Metric icon={<CommitIcon size={13} />} label="Turns" value={String(session.lastSeq)} />
+      <Metric
+        icon={<CommitIcon size={13} />}
+        label="Events"
+        value={String(session.lastSeq)}
+        onClick={onExpand}
+      />
     </div>
   )
 }
@@ -214,9 +240,23 @@ function MetricLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function Metric({
+  icon,
+  label,
+  value,
+  onClick,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  onClick: () => void
+}) {
   return (
-    <button className="flex w-full min-w-0 items-center gap-2.5 rounded-[calc(var(--radius)*0.6)] px-2.5 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full min-w-0 items-center gap-2.5 rounded-[calc(var(--radius)*0.6)] px-2.5 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
+    >
       <span className="opacity-75">{icon}</span>
       {label}
       <span className="min-w-3 flex-1" />
@@ -236,6 +276,27 @@ function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; 
  */
 function Panels({ session, files }: { session: SessionSummary | null; files: FileChange[] }) {
   const [open, setOpen] = useState<string | null>(null)
+  const autoOpened = useRef(false)
+
+  // Open the first file when the list goes from empty to having something.
+  // Later files arriving must not steal the file someone is already reading.
+  useEffect(() => {
+    if (files.length === 0) {
+      autoOpened.current = false
+      setOpen(null)
+      return
+    }
+
+    if (!autoOpened.current) {
+      autoOpened.current = true
+      setOpen(files[0]!.path)
+      return
+    }
+
+    setOpen((current) =>
+      current && files.some((file) => file.path === current) ? current : files[0]!.path,
+    )
+  }, [files])
 
   if (!session) {
     return (
@@ -413,7 +474,7 @@ function TerminalPanel({
   )
 }
 
-/** Whether a file was created, deleted, or edited. */
+/** Whether a file was created, deleted, or edited — plus how much. */
 function Badge({ file }: { file: FileChange }) {
   const [label, tone] =
     file.before === null
@@ -422,7 +483,20 @@ function Badge({ file }: { file: FileChange }) {
         ? ['deleted', 'text-removed']
         : ['edited', 'text-muted-foreground']
 
-  return <span className={`flex-none text-[11.5px] ${tone}`}>{label}</span>
+  const { added, removed } = changeCounts(file.before, file.after)
+
+  return (
+    <span className={`flex-none text-[11.5px] ${tone}`}>
+      {label}
+      {(added > 0 || removed > 0) && (
+        <span className="ml-1.5 font-mono tabular-nums">
+          {added > 0 && <span className="text-added">+{added}</span>}
+          {added > 0 && removed > 0 && ' '}
+          {removed > 0 && <span className="text-removed">−{removed}</span>}
+        </span>
+      )}
+    </span>
+  )
 }
 
 function basename(path: string): string {
