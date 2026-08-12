@@ -1,5 +1,5 @@
 import type { FileChange, SessionSummary } from '@dukebox/protocol'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { DukeboxClient } from '@/lib/client'
 import type { TerminalState } from '@/lib/useTerminals'
 import { Diff, changeCounts } from '@/components/Diff'
@@ -396,6 +396,7 @@ function Metric({
 function Panels({ session, files }: { session: SessionSummary | null; files: FileChange[] }) {
   const [open, setOpen] = useState<string | null>(null)
   const autoOpened = useRef(false)
+  const panel = useRef<HTMLDivElement>(null)
 
   // Open the first file when the list goes from empty to having something.
   // Later files arriving must not steal the file someone is already reading.
@@ -417,6 +418,19 @@ function Panels({ session, files }: { session: SessionSummary | null; files: Fil
     )
   }, [files])
 
+  // Sticky headers need the *visible* panel width. `100%` is the scrolled
+  // content, so a long line makes the name as wide as the diff and sticky
+  // left does nothing. `clientWidth` is the viewport of this scroller.
+  useLayoutEffect(() => {
+    const el = panel.current
+    if (!el) return
+    const sync = () => el.style.setProperty('--workspace-files-width', `${el.clientWidth}px`)
+    sync()
+    const observer = new ResizeObserver(sync)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [session, files.length])
+
   if (!session) {
     return (
       <p className="px-4 py-4 text-[12.5px] text-muted-foreground">
@@ -436,9 +450,9 @@ function Panels({ session, files }: { session: SessionSummary | null; files: Fil
   return (
     // One scroller for the list: a per-file `overflow-x` hid the horizontal
     // bar under the last hunk, so a tall diff had to be scrolled to the
-    // bottom before a long line could be read. The file header sticks to the
-    // panel so the name does not pan away; line numbers travel with the code.
-    <div className="min-h-0 flex-1 overflow-auto [container-type:inline-size]">
+    // bottom before a long line could be read. File names and skip hunks
+    // pin to `--workspace-files-width`; line numbers travel with the code.
+    <div ref={panel} className="min-h-0 flex-1 overflow-auto">
       {files.map((file) => {
         const expanded = open === file.path
 
@@ -449,7 +463,7 @@ function Panels({ session, files }: { session: SessionSummary | null; files: Fil
               onClick={() => setOpen(expanded ? null : file.path)}
               aria-expanded={expanded}
               aria-label={basename(file.path)}
-              className="sticky top-0 left-0 z-10 flex w-[100cqi] min-w-0 items-center gap-2 bg-surface px-3 py-2 text-left text-[12.5px] hover:bg-muted"
+              className="sticky top-0 left-0 z-10 box-border flex w-[var(--workspace-files-width)] min-w-0 items-center gap-2 bg-surface px-3 py-2 text-left text-[12.5px] hover:bg-muted"
             >
               {expanded ? (
                 <ChevronDownIcon size={13} className="flex-none text-muted-foreground" />
