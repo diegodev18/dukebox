@@ -23,6 +23,7 @@ const summary = {
   pullRequestUrl: null,
   environmentId: null,
   permissionMode: 'bypass',
+  remoteControlUrl: null,
 } as const
 
 describe('permissionMode', () => {
@@ -48,7 +49,7 @@ describe('permissionMode', () => {
 })
 
 describe('agentCapabilities', () => {
-  it('requires permissionModes so the UI can hide the picker', () => {
+  it('requires permissionModes and remoteControl so the UI can hide those controls', () => {
     const without = {
       permissions: true,
       thinking: true,
@@ -58,9 +59,10 @@ describe('agentCapabilities', () => {
     }
 
     expect(agentCapabilities.safeParse(without).success).toBe(false)
-    expect(agentCapabilities.parse({ ...without, permissionModes: true }).permissionModes).toBe(
-      true,
-    )
+    expect(
+      agentCapabilities.parse({ ...without, permissionModes: true, remoteControl: false })
+        .permissionModes,
+    ).toBe(true)
   })
 })
 
@@ -76,5 +78,18 @@ describe('sessionSummary', () => {
   it('rejects a summary that omits the field', () => {
     const { permissionMode: _omitted, ...rest } = summary
     expect(sessionSummary.safeParse(rest).success).toBe(false)
+  })
+
+  it('carries a remote control URL', () => {
+    expect(
+      sessionSummary.parse({
+        ...summary,
+        remoteControlUrl: 'https://claude.ai/code/session_01ABC',
+      }).remoteControlUrl,
+    ).toBe('https://claude.ai/code/session_01ABC')
+  })
+
+  it('allows a null remote control URL when it is off', () => {
+    expect(sessionSummary.parse(summary).remoteControlUrl).toBeNull()
   })
 })

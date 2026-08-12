@@ -212,6 +212,12 @@ export const createSessionRequest = z
      */
     permissionMode: permissionMode.optional(),
     /**
+     * Register the session with Claude Code Remote Control at start.
+     *
+     * Ignored by agents that cannot enable it. Absent means off.
+     */
+    remoteControl: z.boolean().optional(),
+    /**
      * Who this session's commits are authored as.
      *
      * Set from the app's settings; absent means the server's default identity.

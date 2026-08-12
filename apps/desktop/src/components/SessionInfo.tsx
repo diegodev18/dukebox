@@ -2,6 +2,7 @@ import type { SessionSummary } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import type { Connection } from '@/lib/connection'
 import { CloseIcon, ServerIcon } from '@/components/icons'
+import { openUrl } from '@tauri-apps/plugin-opener'
 
 /**
  * Where this session actually runs, on demand.
@@ -128,6 +129,20 @@ function SessionInfoDialog({
             <span className="font-mono text-[11.5px] break-all">{session.baseBranch}</span>
           </Row>
           <Row label="Agent">{session.agentId}</Row>
+          {session.remoteControlUrl ? (
+            <Row label="Remote">
+              <a
+                href={session.remoteControlUrl}
+                className="break-all text-foreground underline-offset-2 hover:underline"
+                onClick={(event) => {
+                  event.preventDefault()
+                  void openUrl(session.remoteControlUrl!).catch(() => undefined)
+                }}
+              >
+                {session.remoteControlUrl}
+              </a>
+            </Row>
+          ) : null}
           <Row label="Started">{startedAt(session.createdAt)}</Row>
         </dl>
       </div>

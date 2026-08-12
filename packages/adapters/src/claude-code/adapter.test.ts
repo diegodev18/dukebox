@@ -7,6 +7,7 @@ import {
   ClaudeCodeAdapter,
   encodePermissionResponse,
   encodeSetPermissionMode,
+  encodeSetRemoteControl,
   encodeUserMessage,
 } from './adapter.js'
 
@@ -98,6 +99,10 @@ describe('buildArgs', () => {
   it('omits --model when none was chosen', () => {
     expect(buildArgs(contextWith())).not.toContain('--model')
   })
+
+  it('does not pass --remote-control, which conflicts with --print', () => {
+    expect(buildArgs(contextWith({ remoteControl: true }))).not.toContain('--remote-control')
+  })
 })
 
 describe('encodeUserMessage', () => {
@@ -168,6 +173,7 @@ describe('ClaudeCodeAdapter', () => {
     expect(adapter.capabilities.thinking).toBe(true)
     expect(adapter.capabilities.permissions).toBe(true)
     expect(adapter.capabilities.permissionModes).toBe(true)
+    expect(adapter.capabilities.remoteControl).toBe(true)
   })
 
   it('yields events parsed from the process output', async () => {
@@ -399,6 +405,138 @@ describe('ClaudeCodeAdapter', () => {
       type: 'control_request',
       request_id: 'pm-1',
       request: { subtype: 'set_permission_mode', mode: 'auto' },
+    })
+  })
+
+  it('encodes a remote control toggle as a control_request', () => {
+    expect(JSON.parse(encodeSetRemoteControl(true, 'rc-1', 'Fix the demux bug'))).toEqual({
+      type: 'control_request',
+      request_id: 'rc-1',
+      request: { subtype: 'remote_control', enabled: true, name: 'Fix the demux bug' },
+    })
+  })
+
+  it('omits the remote control name when none was given', () => {
+    expect(JSON.parse(encodeSetRemoteControl(false, 'rc-2'))).toEqual({
+      type: 'control_request',
+      request_id: 'rc-2',
+      request: { subtype: 'remote_control', enabled: false },
+    })
+  })
+
+  it('enables Remote Control at start when the context asks for it', async () => {
+    const stream = new PassThrough()
+    const written: string[] = []
+    stream.write = ((chunk: string) => {
+      written.push(String(chunk))
+      return true
+    }) as typeof stream.write
+
+    const adapter = new ClaudeCodeAdapter()
+    await adapter.start(
+      contextWith({
+        remoteControl: true,
+        remoteControlName: 'A session',
+        container: {
+          execStream: async () => stream,
+        } as SessionContext['container'],
+      }),
+    )
+
+    expect(JSON.parse(written[0] ?? '{}').request).toEqual({
+      subtype: 'remote_control',
+      enabled: true,
+      name: 'A session',
+    })
+
+    await adapter.stop()
+  })
+
+  it('asks Claude to enable Remote Control and reports the session URL', async () => {
+    const { adapter, stream } = adapterWithStream()
+    const written: string[] = []
+    stream.write = ((chunk: string) => {
+      written.push(String(chunk))
+      return true
+    }) as typeof stream.write
+
+    const events: AgentEvent[] = []
+    const collecting = (async () => {
+      for await (const event of adapter.events()) events.push(event)
+    })()
+
+    await adapter.setRemoteControl(true, 'A session')
+
+    const sent = JSON.parse(written[0] ?? '{}') as {
+      request_id: string
+      request: { subtype: string; enabled: boolean; name?: string }
+    }
+    expect(sent.request).toEqual({ subtype: 'remote_control', enabled: true, name: 'A session' })
+
+    // Restore the real write so the control_response can be parsed.
+    stream.write = PassThrough.prototype.write.bind(stream)
+    stream.write(
+      `${JSON.stringify({
+        type: 'control_response',
+        response: {
+          subtype: 'success',
+          request_id: sent.request_id,
+          response: { session_url: 'https://claude.ai/code/session_01ABC' },
+        },
+      })}\n`,
+    )
+
+    await adapter.stop()
+    await collecting
+
+    expect(events).toContainEqual({ type: 'remote_control', enabled: true })
+    expect(events).toContainEqual({
+      type: 'remote_control',
+      enabled: true,
+      url: 'https://claude.ai/code/session_01ABC',
+    })
+  })
+
+  it('reports a Remote Control failure without ending the session', async () => {
+    const { adapter, stream } = adapterWithStream()
+    const written: string[] = []
+    stream.write = ((chunk: string) => {
+      written.push(String(chunk))
+      return true
+    }) as typeof stream.write
+
+    const events: AgentEvent[] = []
+    const collecting = (async () => {
+      for await (const event of adapter.events()) events.push(event)
+    })()
+
+    await adapter.setRemoteControl(true)
+    const sent = JSON.parse(written[0] ?? '{}') as { request_id: string }
+
+    stream.write = PassThrough.prototype.write.bind(stream)
+    stream.write(
+      `${JSON.stringify({
+        type: 'control_response',
+        response: {
+          subtype: 'error',
+          request_id: sent.request_id,
+          error: 'Remote Control requires a claude.ai subscription',
+        },
+      })}\n`,
+    )
+
+    await adapter.stop()
+    await collecting
+
+    expect(events).toContainEqual({
+      type: 'remote_control',
+      enabled: false,
+      error: 'Remote Control requires a claude.ai subscription',
+    })
+    expect(events).toContainEqual({
+      type: 'error',
+      message: 'Remote Control requires a claude.ai subscription',
+      fatal: false,
     })
   })
 

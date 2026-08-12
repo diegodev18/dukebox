@@ -82,6 +82,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
         environmentId,
         commitIdentity,
         permissionMode,
+        remoteControl,
         ...rest
       } = parsed.data
 
@@ -95,6 +96,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
         ...(baseBranch ? { baseBranch } : {}),
         ...(model ? { model } : {}),
         ...(permissionMode ? { permissionMode } : {}),
+        ...(remoteControl ? { remoteControl: true } : {}),
         // Likewise absent rather than undefined: the manager reads an absent
         // environment as "resolve one from the base branch".
         ...(environmentId ? { environmentId } : {}),

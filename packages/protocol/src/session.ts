@@ -78,6 +78,11 @@ export const agentCapabilities = z.object({
   interrupt: z.boolean(),
   /** Exposes a permission-mode picker and accepts set_permission_mode. */
   permissionModes: z.boolean(),
+  /**
+   * Can register the session with claude.ai Remote Control so it is
+   * steerable from the Claude app or browser.
+   */
+  remoteControl: z.boolean(),
 })
 
 export type AgentCapabilities = z.infer<typeof agentCapabilities>
@@ -144,6 +149,14 @@ export const sessionSummary = z.object({
    * absent on a pre-migration row is treated as `bypass` by the server.
    */
   permissionMode: permissionMode.nullable(),
+  /**
+   * claude.ai URL for this session's Remote Control, or null when off or
+   * when the agent cannot enable it.
+   *
+   * The enable control itself is shown from the agent id (Claude Code);
+   * this field is the link to open once connected.
+   */
+  remoteControlUrl: z.string().url().nullable(),
 })
 
 export type SessionSummary = z.infer<typeof sessionSummary>

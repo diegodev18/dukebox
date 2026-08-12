@@ -10,6 +10,7 @@ import { AgentIcon } from '@/components/AgentIcon'
 import { Composer } from '@/components/Composer'
 import { Transcript } from '@/components/Transcript'
 import { PullRequest } from '@/components/PullRequest'
+import { RemoteControl } from '@/components/RemoteControl'
 import { Workspace } from '@/components/Workspace'
 import {
   applyTerminalMessage,
@@ -393,6 +394,7 @@ function Preview() {
     pullRequestUrl: null,
     environmentId: null,
     permissionMode: 'plan',
+    remoteControlUrl: null,
   } as SessionSummary
 
   const setupSession = {
@@ -411,6 +413,7 @@ function Preview() {
     pullRequestUrl: null,
     environmentId: null,
     permissionMode: 'bypass',
+    remoteControlUrl: null,
   } as SessionSummary
 
   const activeSession = view === 'setup' ? setupSession : codingSession
@@ -476,6 +479,14 @@ function Preview() {
             <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
               <h1 className="truncate font-medium">{activeSession.title}</h1>
               <span className="flex-1" />
+              {view === 'coding' && (
+                <RemoteControl
+                  session={codingSession}
+                  enabled
+                  url="https://claude.ai/code/session_01ABC"
+                  onChange={(enabled) => console.log('remote', enabled)}
+                />
+              )}
               {view === 'coding' && (
                 <PullRequest
                   client={fakeClient}

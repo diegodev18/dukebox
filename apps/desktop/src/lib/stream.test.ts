@@ -353,6 +353,17 @@ describe('commands', () => {
       { type: 'set_permission_mode', sessionId: SESSION, mode: 'plan' },
     ])
   })
+
+  it('toggles remote control', () => {
+    const { stream, socket } = setup()
+    stream.connect()
+    socket().open()
+    stream.setRemoteControl(SESSION, true)
+
+    expect(socket().commands()).toEqual([
+      { type: 'set_remote_control', sessionId: SESSION, enabled: true },
+    ])
+  })
 })
 
 describe('bad input', () => {

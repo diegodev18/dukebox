@@ -42,6 +42,15 @@ export interface SessionContext {
    * Absent means the agent's own default.
    */
   permissionMode?: PermissionMode
+  /**
+   * Register the session with Claude Code Remote Control at start.
+   *
+   * Adapters that cannot enable it ignore this. When true, the session is
+   * listed at claude.ai/code and in the Claude app.
+   */
+  remoteControl?: boolean
+  /** Title shown in the claude.ai session list. Ignored unless remoteControl is on. */
+  remoteControlName?: string
 }
 
 export interface UserMessage {
@@ -83,6 +92,14 @@ export interface AgentAdapter {
    * special case.
    */
   setPermissionMode(mode: PermissionMode): Promise<void>
+
+  /**
+   * Turn Remote Control on or off.
+   *
+   * No-op when `capabilities.remoteControl` is false, so callers need no
+   * special case. `name` is the title shown in the claude.ai session list.
+   */
+  setRemoteControl(enabled: boolean, name?: string): Promise<void>
 
   /**
    * The normalized event stream.

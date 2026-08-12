@@ -99,6 +99,12 @@ export interface StartSessionOptions {
    * Claude Code.
    */
   permissionMode?: PermissionMode
+  /**
+   * Register the session with Claude Code Remote Control at start.
+   *
+   * Ignored by agents that cannot enable it. Absent means off.
+   */
+  remoteControl?: boolean
   purpose?: SessionPurpose
   /** Required for coding sessions; ignored for environment_setup. */
   prompt?: string
@@ -162,6 +168,19 @@ function permissionModeContext(
   return {}
 }
 
+function remoteControlContext(
+  session: Session,
+  override?: boolean,
+): { remoteControl: true; remoteControlName?: string } | Record<string, never> {
+  const enabled = override ?? Boolean(session.remoteControlUrl)
+  if (!enabled || session.agentId !== 'claude-code') return {}
+
+  return {
+    remoteControl: true,
+    ...(session.title ? { remoteControlName: session.title } : {}),
+  }
+}
+
 export class SessionManager {
   private readonly running = new Map<string, RunningSession>()
 
@@ -193,6 +212,16 @@ export class SessionManager {
     const [updated] = await this.deps.db
       .update(sessions)
       .set({ permissionMode: mode, updatedAt: new Date() })
+      .where(eq(sessions.id, sessionId))
+      .returning()
+
+    if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
+  }
+
+  private async persistRemoteControlUrl(sessionId: string, url: string | null): Promise<void> {
+    const [updated] = await this.deps.db
+      .update(sessions)
+      .set({ remoteControlUrl: url, updatedAt: new Date() })
       .where(eq(sessions.id, sessionId))
       .returning()
 
@@ -261,6 +290,7 @@ export class SessionManager {
       options.model,
       options.commitIdentity,
       options.permissionMode,
+      options.remoteControl,
     ).catch(async (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error)
 
@@ -280,6 +310,7 @@ export class SessionManager {
     model?: string,
     commitIdentity?: CommitIdentity,
     permissionMode?: PermissionMode,
+    remoteControl?: boolean,
   ): Promise<void> {
     // Started before the container so the socket exists to be mounted. It
     // answers only for this session's repository, so an agent that asks for
@@ -295,6 +326,7 @@ export class SessionManager {
         model,
         commitIdentity,
         permissionMode,
+        remoteControl,
       )
     } catch (error) {
       // The session never reached `running`, so `stop` would not find it and
@@ -312,6 +344,7 @@ export class SessionManager {
     model?: string,
     commitIdentity?: CommitIdentity,
     permissionMode?: PermissionMode,
+    remoteControl?: boolean,
   ): Promise<void> {
     const purpose = (session.purpose as SessionPurpose) || 'coding'
     const config = await this.configFor(session.environmentId)
@@ -388,6 +421,7 @@ export class SessionManager {
       ...(model ? { model } : {}),
       ...(session.agentSessionId ? { resumeFrom: session.agentSessionId } : {}),
       ...permissionModeContext(session, permissionMode),
+      ...remoteControlContext(session, remoteControl),
     })
 
     this.running.set(session.id, {
@@ -426,6 +460,14 @@ export class SessionManager {
 
         if (event.type === 'permission_mode') {
           await this.persistPermissionMode(sessionId, event.mode)
+        }
+
+        if (event.type === 'remote_control') {
+          if (!event.enabled) {
+            await this.persistRemoteControlUrl(sessionId, null)
+          } else if (event.url) {
+            await this.persistRemoteControlUrl(sessionId, event.url)
+          }
         }
 
         if (event.type === 'done') {
@@ -918,6 +960,7 @@ export class SessionManager {
       // conversation rather than from nothing.
       ...(session.agentSessionId ? { resumeFrom: session.agentSessionId } : {}),
       ...permissionModeContext(session),
+      ...remoteControlContext(session),
     })
 
     const running: RunningSession = {
@@ -973,6 +1016,12 @@ export class SessionManager {
     if (!running) throw new SessionError('that session is not running')
 
     await running.adapter.setPermissionMode(mode)
+  }
+
+  async setRemoteControl(sessionId: string, enabled: boolean): Promise<void> {
+    const running = this.running.get(sessionId) ?? (await this.resume(sessionId))
+    const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
+    await running.adapter.setRemoteControl(enabled, session?.title)
   }
 
   /**

@@ -29,6 +29,7 @@ export interface WebSocketDeps {
   onInterrupt?: (sessionId: string) => Promise<void>
   onPermissionResponse?: (sessionId: string, id: string, allow: boolean) => Promise<void>
   onSetPermissionMode?: (sessionId: string, mode: PermissionMode) => Promise<void>
+  onSetRemoteControl?: (sessionId: string, enabled: boolean) => Promise<void>
   /** Live terminals. Absent on a server without sessions. */
   terminals?: TerminalRegistry
   /** Records that a person opened or closed a shell. Never records I/O. */
@@ -110,6 +111,10 @@ class Connection {
       case 'set_permission_mode':
         return this.forward(command.sessionId, () =>
           this.deps.onSetPermissionMode?.(command.sessionId, command.mode),
+        )
+      case 'set_remote_control':
+        return this.forward(command.sessionId, () =>
+          this.deps.onSetRemoteControl?.(command.sessionId, command.enabled),
         )
       case 'terminal_open':
         return this.openTerminal(command.sessionId, command.cols, command.rows)

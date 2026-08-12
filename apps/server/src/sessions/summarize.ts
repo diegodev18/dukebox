@@ -30,6 +30,7 @@ export function toSummary(session: Session): SessionSummary {
     pullRequestUrl: session.prUrl,
     environmentId: session.environmentId,
     permissionMode: parsePermissionMode(session.permissionMode, session.agentId),
+    remoteControlUrl: session.remoteControlUrl,
   }
 }
 

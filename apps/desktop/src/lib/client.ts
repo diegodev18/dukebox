@@ -143,6 +143,12 @@ export class DukeboxClient {
     baseBranch?: string
     model?: string
     permissionMode?: PermissionMode
+    /**
+     * Register the session with Claude Code Remote Control at start.
+     *
+     * Omitted when the agent cannot enable it, or when the user left it off.
+     */
+    remoteControl?: boolean
     purpose?: 'coding' | 'environment_setup'
     /** Omitted lets the server resolve one from the base branch. */
     environmentId?: string

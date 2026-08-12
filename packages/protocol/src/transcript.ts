@@ -87,6 +87,13 @@ export interface Transcript {
   model?: string
   /** How the agent is allowed to act, once it has said so. */
   permissionMode?: PermissionMode
+  /**
+   * Claude Code Remote Control, once the adapter has reported it.
+   *
+   * Absent until the first `remote_control` event. `enabled` without `url`
+   * is the connecting state.
+   */
+  remoteControl?: { enabled: boolean; url?: string; error?: string }
   /** True between the first event of a turn and its `done`. */
   running: boolean
   /** Highest seq folded in. What a reconnect resumes from. */
@@ -222,6 +229,15 @@ function fold(draft: Transcript, event: AgentEvent, seq: number): void {
 
     case 'permission_mode': {
       draft.permissionMode = event.mode
+      return
+    }
+
+    case 'remote_control': {
+      draft.remoteControl = {
+        enabled: event.enabled,
+        ...(event.url ? { url: event.url } : {}),
+        ...(event.error ? { error: event.error } : {}),
+      }
       return
     }
 

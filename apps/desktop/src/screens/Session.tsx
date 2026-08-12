@@ -12,6 +12,7 @@ import { AgentIcon, hasAgentIcon } from '@/components/AgentIcon'
 import { Composer } from '@/components/Composer'
 import { EnvironmentsPanel } from '@/components/EnvironmentsPanel'
 import { PullRequest } from '@/components/PullRequest'
+import { RemoteControl } from '@/components/RemoteControl'
 import { SessionInfo } from '@/components/SessionInfo'
 import { Sidebar } from '@/components/Sidebar'
 import { Transcript } from '@/components/Transcript'
@@ -360,6 +361,21 @@ function SessionColumn({
         <h1 className="truncate font-medium">{session.title}</h1>
         <SessionInfo session={session} connection={connection} />
         <span className="flex-1" />
+
+        <RemoteControl
+          session={session}
+          enabled={live.transcript.remoteControl?.enabled ?? Boolean(session.remoteControlUrl)}
+          url={live.transcript.remoteControl?.url ?? session.remoteControlUrl}
+          connecting={
+            live.transcript.remoteControl?.enabled === true &&
+            !(live.transcript.remoteControl?.url ?? session.remoteControlUrl)
+          }
+          {...(live.transcript.remoteControl?.error
+            ? { error: live.transcript.remoteControl.error }
+            : {})}
+          disabled={live.status === 'offline'}
+          onChange={live.setRemoteControl}
+        />
 
         {session.purpose !== 'environment_setup' && (
           <PullRequest

@@ -23,6 +23,7 @@ export const OPENCODE_CAPABILITIES: AgentCapabilities = {
   mcp: true,
   interrupt: true,
   permissionModes: false,
+  remoteControl: false,
 }
 
 export const OPENCODE_INSTRUCTIONS_PATH = '/tmp/dukebox-instructions.md'
@@ -283,6 +284,10 @@ export class OpenCodeAdapter implements AgentAdapter {
   async setPermissionMode(_mode: PermissionMode): Promise<void> {
     // OpenCode has no permission modes. Accepting the call rather than
     // throwing means callers need no special case.
+  }
+
+  async setRemoteControl(_enabled: boolean, _name?: string): Promise<void> {
+    // OpenCode has no Remote Control. Same no-op contract as permission modes.
   }
 
   async *events(): AsyncIterable<AgentEvent> {

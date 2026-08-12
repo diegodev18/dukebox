@@ -67,3 +67,24 @@ export const CloseIcon = icon(Cancel01Icon)
 export const DownloadIcon = icon(Download01Icon)
 /** Sending a prompt. */
 export const SendIcon = icon(ArrowUp01Icon)
+
+/** Claude Code Remote Control — continue the session from phone or browser. */
+export function PhoneIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <rect x="7" y="2.5" width="10" height="19" rx="2" />
+      <path d="M11 18.5h2" />
+    </svg>
+  )
+}

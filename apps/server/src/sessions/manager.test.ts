@@ -31,6 +31,7 @@ class FakeAdapter implements AgentAdapter {
     mcp: false,
     interrupt: true,
     permissionModes: false,
+    remoteControl: false,
   }
 
   readonly prompts: UserMessage[] = []
@@ -59,6 +60,12 @@ class FakeAdapter implements AgentAdapter {
 
   async setPermissionMode(mode: PermissionMode): Promise<void> {
     this.permissionModes.push(mode)
+  }
+
+  readonly remoteControl: { enabled: boolean; name?: string }[] = []
+
+  async setRemoteControl(enabled: boolean, name?: string): Promise<void> {
+    this.remoteControl.push({ enabled, ...(name ? { name } : {}) })
   }
 
   agentSessionId(): string | undefined {
@@ -1070,6 +1077,30 @@ describe('permission mode', () => {
     await manager.setPermissionMode(session.id, 'plan')
 
     expect(adapter.permissionModes).toEqual(['plan'])
+  })
+
+  it('hands remote control through to the adapter at start', async () => {
+    const project = await createTestProject()
+    const session = await manager.start({
+      projectId: project.id,
+      agentId: 'claude-code',
+      prompt: 'do a thing',
+      remoteControl: true,
+    })
+    createdSessions.push(session.id)
+    await waitForStatus(session.id, 'running')
+
+    expect(adapter.started?.remoteControl).toBe(true)
+    expect(adapter.started?.remoteControlName).toBe(session.title)
+  })
+
+  it('forwards a mid-session remote control change to the adapter', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+
+    await manager.setRemoteControl(session.id, true)
+
+    expect(adapter.remoteControl).toEqual([{ enabled: true, name: session.title }])
   })
 })
 

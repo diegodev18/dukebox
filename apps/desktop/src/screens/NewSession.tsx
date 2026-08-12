@@ -15,6 +15,7 @@ import {
   DEFAULT_MODEL,
   DEFAULT_PERMISSION_MODE,
   agentHasPermissionModes,
+  agentHasRemoteControl,
 } from '@/components/AgentIcon'
 import { modelsForProvider } from '@/components/OpenCodeProviders'
 import { SendIcon } from '@/components/icons'
@@ -101,6 +102,7 @@ export function NewSession({
   const [agentId, setAgentId] = useState<string>(initialAgent)
   const [model, setModel] = useState<string>(DEFAULT_MODEL)
   const [permissionMode, setPermissionMode] = useState(DEFAULT_PERMISSION_MODE)
+  const [remoteControl, setRemoteControl] = useState(false)
   const [opencodeProviders, setOpencodeProviders] = useState<OpencodeProvider[]>([])
   const [opencodeProvidersStatus, setOpencodeProvidersStatus] = useState<
     'loading' | 'loaded' | 'failed'
@@ -385,6 +387,7 @@ export function NewSession({
             purpose: 'environment_setup',
             environmentId: environment.id,
             ...(agentHasPermissionModes(agentId) ? { permissionMode } : {}),
+            ...(agentHasRemoteControl(agentId) && remoteControl ? { remoteControl: true } : {}),
             ...(identity ? { commitIdentity: identity } : {}),
           })
         } catch (error) {
@@ -407,6 +410,7 @@ export function NewSession({
         purpose: 'coding',
         ...(environmentId ? { environmentId } : {}),
         ...(agentHasPermissionModes(agentId) ? { permissionMode } : {}),
+        ...(agentHasRemoteControl(agentId) && remoteControl ? { remoteControl: true } : {}),
         ...(identity ? { commitIdentity: identity } : {}),
       })
 
@@ -479,6 +483,28 @@ export function NewSession({
               onChange={setPermissionMode}
               disabled={busy}
             />
+          )}
+          {agentHasRemoteControl(agentId) && (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={remoteControl}
+              aria-label="Remote control"
+              disabled={busy}
+              onClick={() => setRemoteControl((current) => !current)}
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[13px] hover:bg-muted disabled:opacity-40 ${
+                remoteControl ? 'text-foreground' : 'text-muted-foreground'
+              }`}
+            >
+              Remote control
+              <span
+                className={`rounded px-1 text-[11px] ${
+                  remoteControl ? 'bg-muted text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                {remoteControl ? 'On' : 'Off'}
+              </span>
+            </button>
           )}
           <InstancePicker instances={instances} value={connection.deviceId} disabled={busy} />
         </div>

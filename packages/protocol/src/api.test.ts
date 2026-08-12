@@ -52,6 +52,25 @@ describe('createSessionRequest', () => {
     })
     expect(parsed.permissionMode).toBeUndefined()
   })
+
+  it('accepts remote control at start', () => {
+    const parsed = createSessionRequest.parse({
+      projectId: '00000000-0000-4000-8000-000000000001',
+      agentId: 'claude-code',
+      prompt: 'fix it',
+      remoteControl: true,
+    })
+    expect(parsed.remoteControl).toBe(true)
+  })
+
+  it('omits remote control when the caller did not ask', () => {
+    const parsed = createSessionRequest.parse({
+      projectId: '00000000-0000-4000-8000-000000000001',
+      agentId: 'claude-code',
+      prompt: 'fix it',
+    })
+    expect(parsed.remoteControl).toBeUndefined()
+  })
 })
 
 describe('environment schemas', () => {

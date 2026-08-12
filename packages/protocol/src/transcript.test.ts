@@ -282,4 +282,33 @@ describe('session metadata', () => {
 
     expect(transcript.permissionMode).toBe('auto')
   })
+
+  it('records remote control without adding a block', () => {
+    const transcript = fold(
+      at(1, {
+        type: 'remote_control',
+        enabled: true,
+        url: 'https://claude.ai/code/session_01ABC',
+      }),
+    )
+
+    expect(transcript.remoteControl).toEqual({
+      enabled: true,
+      url: 'https://claude.ai/code/session_01ABC',
+    })
+    expect(transcript.blocks).toHaveLength(0)
+  })
+
+  it('clears the remote control URL when it is turned off', () => {
+    const transcript = fold(
+      at(1, {
+        type: 'remote_control',
+        enabled: true,
+        url: 'https://claude.ai/code/session_01ABC',
+      }),
+      at(2, { type: 'remote_control', enabled: false }),
+    )
+
+    expect(transcript.remoteControl).toEqual({ enabled: false })
+  })
 })

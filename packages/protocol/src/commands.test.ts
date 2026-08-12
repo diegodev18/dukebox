@@ -25,6 +25,27 @@ describe('permission mode', () => {
   })
 })
 
+describe('remote control', () => {
+  it('parses set_remote_control', () => {
+    const result = clientCommand.safeParse({
+      type: 'set_remote_control',
+      sessionId,
+      enabled: true,
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects a set_remote_control without enabled', () => {
+    const result = clientCommand.safeParse({
+      type: 'set_remote_control',
+      sessionId,
+    })
+
+    expect(result.success).toBe(false)
+  })
+})
+
 describe('terminal commands', () => {
   it('parses terminal_open with a size', () => {
     const result = clientCommand.safeParse({

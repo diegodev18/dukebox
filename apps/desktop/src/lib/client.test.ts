@@ -148,6 +148,19 @@ describe('DukeboxClient', () => {
     expect(JSON.parse(init.body as string).permissionMode).toBe('plan')
   })
 
+  it('forwards remote control when the caller asks', async () => {
+    const fetchMock = respondWith({ id: 's1' })
+    await client.startSession({
+      projectId: 'p1',
+      agentId: 'claude-code',
+      prompt: 'go',
+      remoteControl: true,
+    })
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string).remoteControl).toBe(true)
+  })
+
   it('archives a session', async () => {
     const fetchMock = respondWith({ archived: true })
     await client.archiveSession('00000000-0000-4000-8000-000000000001')

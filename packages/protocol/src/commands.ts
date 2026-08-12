@@ -62,6 +62,18 @@ export const setPermissionModeCommand = z.object({
 })
 
 /**
+ * Turn Claude Code Remote Control on or off for a running session.
+ *
+ * No-op when the agent cannot enable it. Enabling registers the session
+ * with claude.ai; the URL arrives as a `remote_control` event.
+ */
+export const setRemoteControlCommand = z.object({
+  type: z.literal('set_remote_control'),
+  sessionId: z.string().uuid(),
+  enabled: z.boolean(),
+})
+
+/**
  * Terminal size in character cells.
  *
  * A PTY with zero rows or columns is not a degenerate terminal, it is an
@@ -133,6 +145,7 @@ export const clientCommand = z.discriminatedUnion('type', [
   permissionResponseCommand,
   interruptCommand,
   setPermissionModeCommand,
+  setRemoteControlCommand,
   terminalOpenCommand,
   terminalAttachCommand,
   terminalDetachCommand,

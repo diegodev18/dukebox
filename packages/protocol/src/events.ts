@@ -89,6 +89,20 @@ export const permissionModeEvent = z.object({
   mode: permissionMode,
 })
 
+/**
+ * Claude Code Remote Control connected or disconnected.
+ *
+ * Chrome, like permission_mode: the header shows a link, the conversation
+ * does not grow a block. `url` is the claude.ai session once connected;
+ * `error` is why enabling failed.
+ */
+export const remoteControlEvent = z.object({
+  type: z.literal('remote_control'),
+  enabled: z.boolean(),
+  url: z.string().url().optional(),
+  error: z.string().optional(),
+})
+
 /** Token and cost accounting for the turn. */
 export const usageEvent = z.object({
   type: z.literal('usage'),
@@ -153,6 +167,7 @@ export const agentEvent = z.discriminatedUnion('type', [
   fileDiffEvent,
   permissionRequestEvent,
   permissionModeEvent,
+  remoteControlEvent,
   usageEvent,
   errorEvent,
   doneEvent,

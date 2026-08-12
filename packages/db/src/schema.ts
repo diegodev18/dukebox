@@ -290,6 +290,14 @@ export const sessions = pgTable(
     permissionMode: text('permission_mode'),
 
     /**
+     * claude.ai URL for this session's Remote Control, once connected.
+     *
+     * Null when off, unsupported, or not yet connected. Cleared when Remote
+     * Control is turned off.
+     */
+    remoteControlUrl: text('remote_control_url'),
+
+    /**
      * Highest seq assigned so far. The source of truth for numbering: a new
      * event takes `last_seq + 1` under a row lock, which keeps sequences gap
      * free even with concurrent writers.

@@ -431,6 +431,22 @@ describe('POST /api/sessions', () => {
     )
   })
 
+  it('passes remote control through when given', async () => {
+    const project = await createProject()
+    vi.mocked(sessionManager.start).mockResolvedValueOnce(await createSession(project.id))
+
+    await post('/api/sessions', {
+      projectId: project.id,
+      agentId: 'claude-code',
+      remoteControl: true,
+      prompt: 'x',
+    })
+
+    expect(sessionManager.start).toHaveBeenCalledWith(
+      expect.objectContaining({ remoteControl: true }),
+    )
+  })
+
   it('passes the commit identity through when given', async () => {
     const project = await createProject()
     vi.mocked(sessionManager.start).mockResolvedValueOnce(await createSession(project.id))
@@ -530,6 +546,28 @@ describe('GET /api/sessions', () => {
     }
 
     expect(body.sessions[0]?.permissionMode).toBeNull()
+  })
+
+  it('reports a null remote control URL until one is connected', async () => {
+    const project = await createProject()
+    await createSession(project.id)
+
+    const body = (await (await request('/api/sessions')).json()) as {
+      sessions: { remoteControlUrl: string | null }[]
+    }
+
+    expect(body.sessions[0]?.remoteControlUrl).toBeNull()
+  })
+
+  it('reports the stored remote control URL', async () => {
+    const project = await createProject()
+    await createSession(project.id, { remoteControlUrl: 'https://claude.ai/code/session_01ABC' })
+
+    const body = (await (await request('/api/sessions')).json()) as {
+      sessions: { remoteControlUrl: string | null }[]
+    }
+
+    expect(body.sessions[0]?.remoteControlUrl).toBe('https://claude.ai/code/session_01ABC')
   })
 
   it('reports no pull request until one is opened', async () => {

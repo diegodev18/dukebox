@@ -38,6 +38,7 @@ export interface LiveSession {
   interrupt: () => void
   respond: (id: string, allow: boolean) => void
   setPermissionMode: (mode: PermissionMode) => void
+  setRemoteControl: (enabled: boolean) => void
   /** The shells open in this session's container. */
   terminals: TerminalState
   openTerminal: (cols: number, rows: number) => void
@@ -178,6 +179,14 @@ export function useSession(
     [sessionId],
   )
 
+  const setRemoteControl = useCallback(
+    (enabled: boolean) => {
+      if (!sessionId) return
+      streamRef.current?.setRemoteControl(sessionId, enabled)
+    },
+    [sessionId],
+  )
+
   const openTerminal = useCallback(
     (cols: number, rows: number) => {
       if (sessionId) streamRef.current?.openTerminal(sessionId, cols, rows)
@@ -238,6 +247,7 @@ export function useSession(
     interrupt,
     respond,
     setPermissionMode,
+    setRemoteControl,
     terminals,
     openTerminal,
     attachTerminal,

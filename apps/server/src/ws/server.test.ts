@@ -29,6 +29,7 @@ let wss: ReturnType<typeof attachWebSocketServer> | undefined
 let port = 0
 const onPrompt = vi.fn(async () => {})
 const onSetPermissionMode = vi.fn(async () => {})
+const onSetRemoteControl = vi.fn(async () => {})
 
 /**
  * The PTYs handed to the registry, newest last.
@@ -87,6 +88,7 @@ beforeAll(async () => {
     bus,
     onPrompt,
     onSetPermissionMode,
+    onSetRemoteControl,
     terminals,
     auditTerminal,
   })
@@ -97,6 +99,7 @@ beforeEach(async () => {
   await redis.flushdb()
   onPrompt.mockClear()
   onSetPermissionMode.mockClear()
+  onSetRemoteControl.mockClear()
   auditTerminal.mockClear()
   fakeTerminals = []
 })
@@ -378,6 +381,7 @@ describe('session updates', () => {
       pullRequestUrl: null,
       environmentId: null,
       permissionMode: 'bypass',
+      remoteControlUrl: null,
     })
 
     await client.waitFor(() => client.sessionUpdates().length > 0)
@@ -412,6 +416,7 @@ describe('session updates', () => {
       pullRequestUrl: null,
       environmentId: null,
       permissionMode: 'bypass',
+      remoteControlUrl: null,
     })
 
     await client.waitFor(() => client.sessionUpdates().length > 0)
@@ -578,6 +583,17 @@ describe('commands', () => {
     await client.waitFor(() => onSetPermissionMode.mock.calls.length === 1)
 
     expect(onSetPermissionMode).toHaveBeenCalledWith(sessionId, 'plan')
+    client.close()
+  })
+
+  it('forwards a remote control change to the session', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({ type: 'set_remote_control', sessionId, enabled: true })
+    await client.waitFor(() => onSetRemoteControl.mock.calls.length === 1)
+
+    expect(onSetRemoteControl).toHaveBeenCalledWith(sessionId, true)
     client.close()
   })
 

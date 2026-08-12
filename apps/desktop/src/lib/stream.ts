@@ -150,6 +150,10 @@ export class SessionStream {
     this.send({ type: 'set_permission_mode', sessionId, mode })
   }
 
+  setRemoteControl(sessionId: string, enabled: boolean): void {
+    this.send({ type: 'set_remote_control', sessionId, enabled })
+  }
+
   openTerminal(sessionId: string, cols: number, rows: number): void {
     this.send({ type: 'terminal_open', sessionId, cols, rows })
   }

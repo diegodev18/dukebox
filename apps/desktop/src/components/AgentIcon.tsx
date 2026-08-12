@@ -57,6 +57,10 @@ export function agentHasPermissionModes(agentId: string): boolean {
   return agentId === 'claude-code'
 }
 
+export function agentHasRemoteControl(agentId: string): boolean {
+  return agentId === 'claude-code'
+}
+
 /** Human name for a model id, when one is known. */
 export function modelLabel(modelId: string): string | undefined {
   return AVAILABLE_MODELS.find((model) => model.id === modelId)?.label

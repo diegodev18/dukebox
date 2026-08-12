@@ -30,6 +30,9 @@ export const CLAUDE_CODE_CAPABILITIES: AgentCapabilities = {
   mcp: true,
   interrupt: true,
   permissionModes: true,
+  // control_request subtype remote_control registers the print-mode session
+  // with claude.ai so it can be steered from the Claude app or browser.
+  remoteControl: true,
 }
 
 /** Build the argument vector for a session. */
@@ -103,6 +106,18 @@ export function encodeSetPermissionMode(mode: PermissionMode, requestId: string)
   })}\n`
 }
 
+export function encodeSetRemoteControl(enabled: boolean, requestId: string, name?: string): string {
+  return `${JSON.stringify({
+    type: 'control_request',
+    request_id: requestId,
+    request: {
+      subtype: 'remote_control',
+      enabled,
+      ...(name ? { name } : {}),
+    },
+  })}\n`
+}
+
 export function encodePermissionResponse(requestId: string, allow: boolean): string {
   return `${JSON.stringify({
     type: 'control_response',
@@ -129,6 +144,9 @@ export class ClaudeCodeAdapter implements AgentAdapter {
   private sawDone = false
   private requestedMode: PermissionMode = DEFAULT_PERMISSION_MODE
   private pendingPermissions = new Map<string, string>()
+  /** request_id of an in-flight remote_control control_request, if any. */
+  private pendingRemoteControlId: string | undefined
+  private requestedRemoteControl = false
 
   agentSessionId(): string | undefined {
     return this.mapper.agentSessionId
@@ -145,6 +163,10 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
     this.emit({ type: 'permission_mode', mode: this.requestedMode })
     this.consume(this.stream)
+
+    if (context.remoteControl) {
+      await this.setRemoteControl(true, context.remoteControlName)
+    }
   }
 
   /**
@@ -166,6 +188,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
     stream.on('data', (chunk: Buffer) => {
       for (const message of reader.push(chunk.toString())) {
+        this.handleControlResponse(message)
         this.dispatchMapped(this.mapper.map(message))
       }
     })
@@ -177,6 +200,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
     stream.on('end', () => {
       for (const message of reader.flush()) {
+        this.handleControlResponse(message)
         this.dispatchMapped(this.mapper.map(message))
       }
 
@@ -270,6 +294,62 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     this.emit({ type: 'permission_mode', mode })
   }
 
+  async setRemoteControl(enabled: boolean, name?: string): Promise<void> {
+    if (!this.stream) return
+
+    this.requestedRemoteControl = enabled
+    const requestId = randomUUID()
+    this.pendingRemoteControlId = requestId
+    this.write(encodeSetRemoteControl(enabled, requestId, name))
+    this.emit({ type: 'remote_control', enabled })
+  }
+
+  /**
+   * Match a control_response to an in-flight remote_control request.
+   *
+   * The URL lives on the success payload; a disable reply is empty. Errors
+   * are reported both as remote_control chrome and as a transcript error so
+   * the failure is readable, not just a button that did nothing.
+   */
+  private handleControlResponse(raw: unknown): void {
+    if (!raw || typeof raw !== 'object') return
+
+    const message = raw as Record<string, unknown>
+    if (message.type !== 'control_response') return
+
+    const wrapped = message.response
+    if (!wrapped || typeof wrapped !== 'object') return
+
+    const response = wrapped as Record<string, unknown>
+    if (response.request_id !== this.pendingRemoteControlId) {
+      // A session_url on an unsolicited success is still the link we want:
+      // Claude Code may announce Remote Control on its own after --resume.
+      const unsolicited = sessionUrlFrom(response)
+      if (unsolicited) this.emit({ type: 'remote_control', enabled: true, url: unsolicited })
+      return
+    }
+
+    this.pendingRemoteControlId = undefined
+
+    if (response.subtype === 'error') {
+      const error =
+        typeof response.error === 'string' && response.error.length > 0
+          ? response.error
+          : 'Remote Control failed'
+      this.requestedRemoteControl = false
+      this.emit({ type: 'remote_control', enabled: false, error })
+      this.emit({ type: 'error', message: error, fatal: false })
+      return
+    }
+
+    const url = sessionUrlFrom(response)
+    this.emit({
+      type: 'remote_control',
+      enabled: this.requestedRemoteControl,
+      ...(url ? { url } : {}),
+    })
+  }
+
   async interrupt(): Promise<void> {
     if (!this.stream) return
     this.stream.write(`${JSON.stringify({ type: 'control_request', request: 'interrupt' })}\n`)
@@ -298,4 +378,20 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     this.stream?.end()
     this.finish()
   }
+}
+
+/** Pull a session_url out of a control_response payload, however nested. */
+function sessionUrlFrom(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined
+
+  const record = value as Record<string, unknown>
+  if (typeof record.session_url === 'string' && record.session_url.length > 0) {
+    return record.session_url
+  }
+
+  if (record.response && typeof record.response === 'object') {
+    return sessionUrlFrom(record.response)
+  }
+
+  return undefined
 }

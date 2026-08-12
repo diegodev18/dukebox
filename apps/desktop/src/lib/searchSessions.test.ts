@@ -27,6 +27,7 @@ const session = (
   pullRequestUrl: null,
   environmentId: null,
   permissionMode: 'bypass',
+  remoteControlUrl: null,
   ...overrides,
 })
 

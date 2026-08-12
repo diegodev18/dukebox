@@ -390,3 +390,63 @@ describe('NewSession permission mode', () => {
     )
   })
 })
+
+describe('NewSession remote control', () => {
+  it('offers Remote control for Claude Code, off by default', async () => {
+    renderScreen(makeClient())
+
+    const toggle = await screen.findByRole('switch', { name: 'Remote control' })
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('sends remoteControl when it is turned on', async () => {
+    const client = makeClient()
+    renderScreen(client)
+
+    const toggle = await screen.findByRole('switch', { name: 'Remote control' })
+    await waitFor(() => expect(toggle).toBeEnabled())
+    await userEvent.click(toggle)
+    await userEvent.type(screen.getByLabelText(/what should it do/i), 'do a thing')
+    await userEvent.click(screen.getByRole('button', { name: /start session/i }))
+
+    await waitFor(() =>
+      expect(client.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({ remoteControl: true }),
+      ),
+    )
+  })
+
+  it('omits remoteControl when it is left off', async () => {
+    const client = makeClient()
+    renderScreen(client)
+
+    const toggle = await screen.findByRole('switch', { name: 'Remote control' })
+    await waitFor(() => expect(toggle).toBeEnabled())
+    await userEvent.type(screen.getByLabelText(/what should it do/i), 'do a thing')
+    await userEvent.click(screen.getByRole('button', { name: /start session/i }))
+
+    await waitFor(() => expect(client.startSession).toHaveBeenCalled())
+    expect(client.startSession.mock.calls[0][0]).not.toHaveProperty('remoteControl')
+  })
+
+  it('hides Remote control for OpenCode', async () => {
+    const client = makeClient({
+      listOpencodeProviders: vi.fn().mockResolvedValue([
+        {
+          id: 'openai',
+          kind: 'openai',
+          name: 'OpenAI',
+          models: [{ id: 'gpt-5.2', label: 'GPT-5.2' }],
+        },
+      ]),
+    })
+    renderScreen(client)
+
+    const agents = await openPicker('Agent')
+    await userEvent.click(within(agents).getByRole('option', { name: /OpenCode/ }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('switch', { name: 'Remote control' })).not.toBeInTheDocument(),
+    )
+  })
+})

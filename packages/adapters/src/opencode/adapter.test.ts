@@ -90,6 +90,7 @@ describe('OpenCodeAdapter', () => {
     expect(adapter.capabilities.interrupt).toBe(true)
     expect(adapter.capabilities.permissions).toBe(false)
     expect(adapter.capabilities.permissionModes).toBe(false)
+    expect(adapter.capabilities.remoteControl).toBe(false)
   })
 
   it('yields events parsed from the process output', async () => {

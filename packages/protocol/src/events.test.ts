@@ -12,6 +12,11 @@ describe('agentEvent', () => {
       { type: 'file_diff', path: 'a.ts', before: 'old', after: 'new' },
       { type: 'permission_request', id: 'perm_1', action: 'write', detail: null },
       { type: 'permission_mode', mode: 'plan' },
+      {
+        type: 'remote_control',
+        enabled: true,
+        url: 'https://claude.ai/code/session_01ABC',
+      },
       { type: 'usage', inputTokens: 10, outputTokens: 20, costUsd: 0.01 },
       { type: 'error', message: 'boom', fatal: true },
       { type: 'done', reason: 'completed' },
@@ -59,6 +64,26 @@ describe('agentEvent', () => {
 
   it('rejects an unknown permission mode', () => {
     expect(agentEvent.safeParse({ type: 'permission_mode', mode: 'dontAsk' }).success).toBe(false)
+  })
+
+  it('accepts a remote control connection with a session URL', () => {
+    expect(
+      agentEvent.safeParse({
+        type: 'remote_control',
+        enabled: true,
+        url: 'https://claude.ai/code/session_01ABC',
+      }).success,
+    ).toBe(true)
+  })
+
+  it('accepts a remote control failure without a URL', () => {
+    expect(
+      agentEvent.safeParse({
+        type: 'remote_control',
+        enabled: false,
+        error: 'Remote Control requires a claude.ai subscription',
+      }).success,
+    ).toBe(true)
   })
 })
 
