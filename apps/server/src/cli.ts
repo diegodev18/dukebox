@@ -13,6 +13,9 @@
  *   duke image rebuild                  rebuild the session agent Docker image
  *   duke rollback                       restore the previous release
  *   duke restart                        restart the control plane service
+ *   duke logs [-f] [-n N]               control plane journal
+ *   duke logs session [id]              session event log (omit id to list)
+ *   duke logs docker [id]               agent container logs (omit id to list)
  *   duke config show                    print the effective configuration
  *   duke config get <section.key>       print one setting
  *   duke config set <section.key> <v>   change one setting (and restart)
@@ -23,13 +26,29 @@
  */
 import type { Database } from '@dukebox/db'
 import { createDatabase } from '@dukebox/db'
-import type { ServerConfig } from '@dukebox/protocol'
+import type { EnvelopedEvent, ServerConfig } from '@dukebox/protocol'
+import { Sandbox } from '@dukebox/sandbox'
 import { TailscaleTransport } from '@dukebox/transport'
+import Redis from 'ioredis'
 import { access, readFile, rename, rm } from 'node:fs/promises'
 import { DEFAULT_CONFIG_PATH, ConfigError, loadConfig } from './config.js'
 import { runMigrations } from './db/migrate.js'
+import { EventBus } from './events/bus.js'
 import { issuePairingCode, listDevices, revokeDevice } from './auth/pairing.js'
 import { findInstallRoot, installedVersion } from './admin/version.js'
+import {
+  dockerLogsArgs,
+  formatEvent,
+  formatSessionRow,
+  journalctlArgs,
+  listActiveSessions,
+  parseLogsArgs,
+  resolveSessionId,
+  runInherited,
+  takeLast,
+  untilInterrupted,
+  type LogsArgs,
+} from './admin/logs.js'
 import {
   archName,
   compareVersions,
@@ -81,6 +100,21 @@ async function withDatabase<T>(fn: (db: Database, config: ServerConfig) => Promi
     await runMigrations(db)
     return await fn(db, config)
   } finally {
+    await close()
+  }
+}
+
+/** Session event follow needs Redis; replay uses the same EventBus. */
+async function withEventBus<T>(fn: (db: Database, bus: EventBus) => Promise<T>): Promise<T> {
+  const config = await loadConfig(configPath())
+  const { db, close } = createDatabase(config.database.url, { max: 2 })
+  const redis = new Redis(config.redis.url)
+  const bus = new EventBus(db, redis)
+  try {
+    await runMigrations(db)
+    return await fn(db, bus)
+  } finally {
+    redis.disconnect()
     await close()
   }
 }
@@ -169,7 +203,7 @@ async function commandRollback(): Promise<void> {
   if (active.code === 0 && active.stdout.trim() === 'active') {
     console.log('rolled back to the previous release')
   } else {
-    console.error('rolled back, but the service did not start. See: journalctl -u dukebox -n 50')
+    console.error('rolled back, but the service did not start. See: duke logs')
     process.exitCode = 1
   }
 }
@@ -351,6 +385,151 @@ async function commandConfig(args: string[]): Promise<void> {
   }
 }
 
+function printEvent(event: EnvelopedEvent, json: boolean): void {
+  console.log(json ? JSON.stringify(event) : formatEvent(event))
+}
+
+async function commandLogs(args: string[]): Promise<void> {
+  let parsed: LogsArgs
+  try {
+    parsed = parseLogsArgs(args.slice(1))
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      console.error(error.message)
+      process.exitCode = 1
+      return
+    }
+    throw error
+  }
+
+  switch (parsed.target) {
+    case 'service': {
+      const code = await runInherited('journalctl', journalctlArgs(parsed, SERVICE))
+      if (code !== 0) process.exitCode = code
+      return
+    }
+    case 'session':
+      await commandSessionLogs(parsed)
+      return
+    case 'docker':
+      await commandDockerLogs(parsed)
+      return
+  }
+}
+
+async function commandSessionLogs(parsed: LogsArgs): Promise<void> {
+  if (!parsed.sessionId) {
+    if (parsed.follow) {
+      console.error('usage: duke logs session <id> -f')
+      process.exitCode = 1
+      return
+    }
+
+    await withDatabase(async (db) => {
+      const rows = await listActiveSessions(db)
+      if (rows.length === 0) {
+        console.log('No sessions. A desktop app creates them after pairing.')
+        return
+      }
+      for (const row of rows) console.log(formatSessionRow(row))
+    })
+    return
+  }
+
+  await withEventBus(async (db, bus) => {
+    const sessionId = await resolveSessionId(db, parsed.sessionId!)
+    const limit = parsed.linesSpecified ? parsed.lines : undefined
+
+    if (!parsed.follow) {
+      const events = takeLast(await bus.replay(sessionId, parsed.afterSeq), limit)
+      for (const event of events) printEvent(event, parsed.json)
+      return
+    }
+
+    // Subscribe first so events that land during replay are buffered, then
+    // drop anything replay already covered — the same handshake the WS path uses.
+    const buffered: EnvelopedEvent[] = []
+    let replaying = true
+    const unsubscribe = await bus.subscribe(sessionId, (event) => {
+      if (replaying) {
+        buffered.push(event)
+        return
+      }
+      printEvent(event, parsed.json)
+    })
+
+    try {
+      const replayed = takeLast(await bus.replay(sessionId, parsed.afterSeq), limit)
+      for (const event of replayed) printEvent(event, parsed.json)
+      const highestReplayed = replayed.at(-1)?.seq ?? parsed.afterSeq
+      replaying = false
+      for (const event of buffered) {
+        if (event.seq > highestReplayed) printEvent(event, parsed.json)
+      }
+      await untilInterrupted()
+    } finally {
+      await unsubscribe()
+    }
+  })
+}
+
+async function commandDockerLogs(parsed: LogsArgs): Promise<void> {
+  const sandbox = new Sandbox()
+
+  if (!parsed.sessionId) {
+    if (parsed.follow) {
+      console.error('usage: duke logs docker <id> -f')
+      process.exitCode = 1
+      return
+    }
+
+    let containers
+    try {
+      containers = await sandbox.list()
+    } catch (error) {
+      throw new ConfigError(
+        'cannot talk to Docker',
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+
+    if (containers.length === 0) {
+      console.log('No session containers.')
+      return
+    }
+
+    for (const container of containers) {
+      const running = await container.isRunning()
+      console.log(
+        `${container.sessionId}  ${(running ? 'running' : 'stopped').padEnd(7)}  ${container.id.slice(0, 12)}`,
+      )
+    }
+    return
+  }
+
+  await withDatabase(async (db) => {
+    const sessionId = await resolveSessionId(db, parsed.sessionId!)
+    let container
+    try {
+      container = await sandbox.get(sessionId)
+    } catch (error) {
+      throw new ConfigError(
+        'cannot talk to Docker',
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+    if (!container) {
+      throw new ConfigError(
+        `no container for session ${sessionId}`,
+        'The session may still be provisioning, or the container was removed.',
+      )
+    }
+
+    const code = await runInherited('docker', dockerLogsArgs(container.id, parsed))
+    if (code !== 0) process.exitCode = code
+  })
+}
+
 async function main() {
   const args = process.argv.slice(2)
   const [command, subcommand] = args
@@ -378,6 +557,10 @@ async function main() {
 
     case 'config':
       await commandConfig(args)
+      return
+
+    case 'logs':
+      await commandLogs(args)
       return
 
     case 'db:migrate':
@@ -484,7 +667,7 @@ async function main() {
 
     default:
       console.error(
-        'usage: duke <version | status | restart | update [--from-git [ref]] | image rebuild | rollback | config | pair new | device ls | device rm <id>>',
+        'usage: duke <version | status | restart | update [--from-git [ref]] | image rebuild | rollback | logs [session|docker] | config | pair new | device ls | device rm <id>>',
       )
       process.exitCode = 1
   }
