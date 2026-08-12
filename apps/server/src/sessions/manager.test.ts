@@ -1,8 +1,8 @@
 import type { AgentAdapter, SessionContext, UserMessage } from '@dukebox/adapters'
-import { projects, sessions } from '@dukebox/db'
+import { environments, projects, sessions } from '@dukebox/db'
 import type { AgentEvent } from '@dukebox/protocol'
 import { Sandbox } from '@dukebox/sandbox'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { EventBus } from '../events/bus.js'
 import type { GitHubClient } from '../github/client.js'
@@ -175,19 +175,24 @@ afterEach(async () => {
   createdSessions.length = 0
 })
 
-async function createProject(): Promise<string> {
-  const [project] = await db
-    .insert(projects)
-    .values({ repoFullName: `diego/repo-${Math.random().toString(36).slice(2)}` })
-    .returning()
+/**
+ * A test project, with a random repo name unless one is given.
+ *
+ * A caller-supplied name is what lets the cross-project guard tests build a
+ * second, distinguishable project rather than two indistinguishable random ones.
+ */
+async function createTestProject(
+  repoFullName = `diego/repo-${Math.random().toString(36).slice(2)}`,
+) {
+  const [project] = await db.insert(projects).values({ repoFullName }).returning()
 
-  return project!.id
+  return project!
 }
 
 /** Start a session and wait for it to reach a status. */
 async function startSession(prompt = 'do the thing') {
-  const projectId = await createProject()
-  const session = await manager.start({ projectId, agentId: 'fake', prompt })
+  const project = await createTestProject()
+  const session = await manager.start({ projectId: project.id, agentId: 'fake', prompt })
   createdSessions.push(session.id)
   return session
 }
@@ -207,6 +212,31 @@ async function waitForStatus(sessionId: string, status: string, timeoutMs = 90_0
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
   throw new Error(`session did not reach ${status} in time`)
+}
+
+/**
+ * Wait for provisioning to leave the database connection alone, whichever way
+ * it goes.
+ *
+ * `start()` kicks provisioning off in the background and returns immediately,
+ * so a test that only checks the row it inserted can finish — and the
+ * database pool can close in `afterAll` — while that background work is still
+ * mid-query. Used where a test does not care whether provisioning succeeds
+ * (some of these deliberately clone a branch that does not exist), only that
+ * it is done by the time the test returns.
+ */
+async function waitForSettled(sessionId: string, timeoutMs = 90_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const [row] = await db
+      .select({ status: sessions.status })
+      .from(sessions)
+      .where(eq(sessions.id, sessionId))
+
+    if (row?.status !== 'provisioning') return
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  throw new Error('session did not settle in time')
 }
 
 describe('start', () => {
@@ -304,8 +334,8 @@ describe('start', () => {
       createAdapter: () => adapter,
     })
 
-    const projectId = await createProject()
-    const session = await broken.start({ projectId, agentId: 'fake', prompt: 'x' })
+    const project = await createTestProject()
+    const session = await broken.start({ projectId: project.id, agentId: 'fake', prompt: 'x' })
     createdSessions.push(session.id)
 
     await waitForStatus(session.id, 'failed')
@@ -579,8 +609,12 @@ describe('terminals', () => {
       },
     })
 
-    const projectId = await createProject()
-    const session = await watched.start({ projectId, agentId: 'fake', prompt: 'do the thing' })
+    const project = await createTestProject()
+    const session = await watched.start({
+      projectId: project.id,
+      agentId: 'fake',
+      prompt: 'do the thing',
+    })
     createdSessions.push(session.id)
     await waitForStatus(session.id, 'running')
 
@@ -623,8 +657,12 @@ describe('pull requests', () => {
 
   /** Start a session on a manager other than the shared one. */
   async function startOn(target: SessionManager) {
-    const projectId = await createProject()
-    const session = await target.start({ projectId, agentId: 'fake', prompt: 'do the thing' })
+    const project = await createTestProject()
+    const session = await target.start({
+      projectId: project.id,
+      agentId: 'fake',
+      prompt: 'do the thing',
+    })
     createdSessions.push(session.id)
     await waitForStatus(session.id, 'running')
     return session
@@ -774,12 +812,12 @@ describe('pull requests', () => {
     // Without a container there is no workspace to resume into, and the two
     // send someone to different places: wait, or start over.
     const { manager: afterRestart } = managerWithGitHub()
-    const projectId = await createProject()
+    const project = await createTestProject()
 
     const [orphan] = await db
       .insert(sessions)
       .values({
-        projectId,
+        projectId: project.id,
         agentId: 'fake',
         title: 'Gone',
         baseBranch: 'main',
@@ -857,19 +895,20 @@ describe('pull requests', () => {
 
 describe('project environment on coding sessions', () => {
   it('runs saved setup commands and injects env before the agent starts', async () => {
-    const projectId = await createProject()
-    await db
-      .update(projects)
-      .set({
-        configOverride: {
-          setup: ['touch /tmp/dukebox-setup-ran', 'echo ok > /tmp/dukebox-setup-marker'],
-          env: { DUKEBOX_TEST_ENV: 'from-config' },
-        },
-      })
-      .where(eq(projects.id, projectId))
+    const project = await createTestProject()
+    await db.insert(environments).values({
+      projectId: project.id,
+      name: 'Default',
+      branchPattern: '**',
+      position: 0,
+      configOverride: {
+        setup: ['touch /tmp/dukebox-setup-ran', 'echo ok > /tmp/dukebox-setup-marker'],
+        env: { DUKEBOX_TEST_ENV: 'from-config' },
+      },
+    })
 
     const session = await manager.start({
-      projectId,
+      projectId: project.id,
       agentId: 'fake',
       prompt: 'use the environment',
     })
@@ -891,19 +930,20 @@ describe('project environment on coding sessions', () => {
   }, 120_000)
 
   it('fails the session when a setup command fails', async () => {
-    const projectId = await createProject()
-    await db
-      .update(projects)
-      .set({
-        configOverride: {
-          setup: ['false'],
-          env: {},
-        },
-      })
-      .where(eq(projects.id, projectId))
+    const project = await createTestProject()
+    await db.insert(environments).values({
+      projectId: project.id,
+      name: 'Default',
+      branchPattern: '**',
+      position: 0,
+      configOverride: {
+        setup: ['false'],
+        env: {},
+      },
+    })
 
     const session = await manager.start({
-      projectId,
+      projectId: project.id,
       agentId: 'fake',
       prompt: 'should not reach the agent',
     })
@@ -914,19 +954,23 @@ describe('project environment on coding sessions', () => {
   }, 120_000)
 
   it('skips project setup for environment_setup sessions', async () => {
-    const projectId = await createProject()
-    await db
-      .update(projects)
-      .set({
+    const project = await createTestProject()
+    const [environment] = await db
+      .insert(environments)
+      .values({
+        projectId: project.id,
+        name: 'Default',
+        branchPattern: '**',
+        position: 0,
         configOverride: {
           setup: ['touch /tmp/should-not-run'],
           env: {},
         },
       })
-      .where(eq(projects.id, projectId))
+      .returning()
 
     const session = await manager.start({
-      projectId,
+      projectId: project.id,
       agentId: 'fake',
       purpose: 'environment_setup',
     })
@@ -951,10 +995,117 @@ describe('project environment on coding sessions', () => {
     adapter.emit({ type: 'done', reason: 'completed' })
     await waitForStatus(session.id, 'done')
 
-    const [project] = await db.select().from(projects).where(eq(projects.id, projectId))
-    expect(project?.environmentDraft).toMatchObject({
+    const [updated] = await db
+      .select()
+      .from(environments)
+      .where(eq(environments.id, environment!.id))
+    expect(updated?.environmentDraft).toMatchObject({
       setup: ['pnpm install'],
       env: { DATABASE_URL: { secret: true } },
     })
   }, 120_000)
+})
+
+describe('environment resolution', () => {
+  it('resolves the environment from the base branch when none is given', async () => {
+    const project = await createTestProject()
+
+    await db.insert(environments).values([
+      { projectId: project.id, name: 'Catch all', branchPattern: '**', position: 1 },
+      { projectId: project.id, name: 'Refactors', branchPattern: 'refact/*', position: 0 },
+    ])
+
+    const session = await manager.start({
+      projectId: project.id,
+      agentId: 'claude-code',
+      baseBranch: 'refact/auth',
+      prompt: 'tidy this up',
+    })
+    createdSessions.push(session.id)
+    // Waited for so the background provisioning this starts is done, not
+    // still in flight, when the test (and its database connection) ends.
+    // `refact/auth` does not exist on the seeded origin, so this settles as
+    // failed — which is fine, since only the resolved environment is checked.
+    await waitForSettled(session.id)
+
+    const [row] = await db.select().from(sessions).where(eq(sessions.id, session.id))
+    const [resolved] = await db
+      .select()
+      .from(environments)
+      .where(eq(environments.id, row!.environmentId!))
+
+    expect(resolved!.name).toBe('Refactors')
+  })
+
+  it('leaves the environment null when no pattern matches', async () => {
+    const project = await createTestProject()
+
+    await db
+      .insert(environments)
+      .values({ projectId: project.id, name: 'Refactors', branchPattern: 'refact/*', position: 0 })
+
+    const session = await manager.start({
+      projectId: project.id,
+      agentId: 'claude-code',
+      baseBranch: 'main',
+      prompt: 'do a thing',
+    })
+    createdSessions.push(session.id)
+    await waitForSettled(session.id)
+
+    const [row] = await db.select().from(sessions).where(eq(sessions.id, session.id))
+    expect(row!.environmentId).toBeNull()
+  })
+
+  it('honours an explicit environment id belonging to the project', async () => {
+    const project = await createTestProject()
+
+    const [chosen] = await db
+      .insert(environments)
+      .values([
+        { projectId: project.id, name: 'Catch all', branchPattern: '**', position: 0 },
+        { projectId: project.id, name: 'Manual', branchPattern: 'never/*', position: 1 },
+      ])
+      .returning()
+
+    const [manual] = await db
+      .select()
+      .from(environments)
+      .where(and(eq(environments.projectId, project.id), eq(environments.name, 'Manual')))
+
+    const session = await manager.start({
+      projectId: project.id,
+      agentId: 'claude-code',
+      baseBranch: 'main',
+      prompt: 'do a thing',
+      environmentId: manual!.id,
+    })
+    createdSessions.push(session.id)
+    await waitForSettled(session.id)
+
+    const [row] = await db.select().from(sessions).where(eq(sessions.id, session.id))
+    // The explicit choice wins over what the branch would have resolved to.
+    expect(row!.environmentId).toBe(manual!.id)
+    expect(row!.environmentId).not.toBe(chosen!.id)
+  })
+
+  it('rejects an environment id from another project', async () => {
+    const project = await createTestProject()
+    const other = await createTestProject('acme/other-repo')
+
+    const [foreign] = await db
+      .insert(environments)
+      .values({ projectId: other.id, name: 'Theirs', branchPattern: '**', position: 0 })
+      .returning()
+
+    await expect(
+      manager.start({
+        projectId: project.id,
+        agentId: 'claude-code',
+        baseBranch: 'main',
+        prompt: 'do a thing',
+        environmentId: foreign!.id,
+      }),
+    ).rejects.toThrow(/environment/i)
+  })
 })

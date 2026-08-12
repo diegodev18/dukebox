@@ -1,5 +1,5 @@
 import { ClaudeCodeAdapter, type AgentAdapter } from '@dukebox/adapters'
-import { projects, sessions, type Database, type Session } from '@dukebox/db'
+import { environments, projects, sessions, type Database, type Session } from '@dukebox/db'
 import {
   DEFAULT_COMMIT_IDENTITY,
   defaultProjectConfig,
@@ -8,6 +8,7 @@ import {
   mergeProjectConfig,
   parseSecretReference,
   projectConfig,
+  resolveEnvironment,
   type ProjectConfig,
   type SessionPurpose,
   type SessionStatus,
@@ -23,7 +24,7 @@ import {
   type SessionContainer,
   type TerminalHandle,
 } from '@dukebox/sandbox'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { connect } from 'node:net'
 import { join } from 'node:path'
 import type { EventBus } from '../events/bus.js'
@@ -90,6 +91,13 @@ export interface StartSessionOptions {
   purpose?: SessionPurpose
   /** Required for coding sessions; ignored for environment_setup. */
   prompt?: string
+  /**
+   * Which environment to run in.
+   *
+   * Absent means resolve from the base branch. Present means the caller chose,
+   * and the choice is verified to belong to the project before it is used.
+   */
+  environmentId?: string
 }
 
 /** What a running session holds while it is alive. */
@@ -161,6 +169,15 @@ export class SessionManager {
 
     const baseBranch = options.baseBranch ?? project.defaultBranch
 
+    // Resolved once, here, and persisted on the row. A session resumed weeks
+    // later must run in the environment it started with, even if patterns
+    // changed or the list was reordered in the meantime.
+    const environmentId = await this.resolveEnvironmentId(
+      project.id,
+      baseBranch,
+      options.environmentId,
+    )
+
     const [session] = await this.deps.db
       .insert(sessions)
       .values({
@@ -172,6 +189,7 @@ export class SessionManager {
         // exist first so the client has something to subscribe to.
         branch: '',
         baseBranch,
+        environmentId,
         title: purpose === 'environment_setup' ? 'Configure environment' : prompt.slice(0, 80),
       })
       .returning()
@@ -223,7 +241,7 @@ export class SessionManager {
     model?: string,
   ): Promise<void> {
     const purpose = (session.purpose as SessionPurpose) || 'coding'
-    const config = await this.configFor(session.projectId)
+    const config = await this.configFor(session.environmentId)
 
     // Set on the container rather than only on setup commands: the agent
     // process needs its own credentials, and it is started later by exec.
@@ -398,10 +416,17 @@ export class SessionManager {
 
       const proposal = parseEnvironmentProposalJson(result.stdout)
 
+      // The draft belongs to the environment the session runs in. A setup
+      // session started from the app always has one; without it there is
+      // nowhere to put the proposal, so it is reported rather than dropped.
+      if (!session.environmentId) {
+        throw new Error('session has no environment to store the proposal on')
+      }
+
       await this.deps.db
-        .update(projects)
+        .update(environments)
         .set({ environmentDraft: proposal, updatedAt: new Date() })
-        .where(eq(projects.id, session.projectId))
+        .where(eq(environments.id, session.environmentId))
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       await this.deps.bus
@@ -415,17 +440,59 @@ export class SessionManager {
   }
 
   /**
-   * Effective project config: defaults merged with the server-stored override.
+   * Which environment a new session runs in.
+   *
+   * An explicit choice is verified against the project: an id from another
+   * project would otherwise inject that project's config and secrets into this
+   * one. Without a choice, the base branch decides, and no match is null —
+   * the base image, not an error.
    */
-  private async configFor(projectId: string): Promise<ProjectConfig> {
-    const [project] = await this.deps.db
-      .select({ configOverride: projects.configOverride })
-      .from(projects)
-      .where(eq(projects.id, projectId))
+  private async resolveEnvironmentId(
+    projectId: string,
+    baseBranch: string,
+    requested?: string,
+  ): Promise<string | null> {
+    if (requested) {
+      const [owned] = await this.deps.db
+        .select({ id: environments.id })
+        .from(environments)
+        .where(and(eq(environments.id, requested), eq(environments.projectId, projectId)))
 
-    if (!project?.configOverride) return defaultProjectConfig()
+      if (!owned) {
+        throw new SessionError(`environment does not belong to this project: ${requested}`)
+      }
 
-    const parsed = projectConfig.partial().safeParse(project.configOverride)
+      return owned.id
+    }
+
+    const rows = await this.deps.db
+      .select({
+        id: environments.id,
+        branchPattern: environments.branchPattern,
+        position: environments.position,
+      })
+      .from(environments)
+      .where(eq(environments.projectId, projectId))
+
+    return resolveEnvironment(rows, baseBranch)?.id ?? null
+  }
+
+  /**
+   * Effective config: defaults merged with the environment's override.
+   *
+   * A null environment is the base image — no database read, no override.
+   */
+  private async configFor(environmentId: string | null): Promise<ProjectConfig> {
+    if (!environmentId) return defaultProjectConfig()
+
+    const [environment] = await this.deps.db
+      .select({ configOverride: environments.configOverride })
+      .from(environments)
+      .where(eq(environments.id, environmentId))
+
+    if (!environment?.configOverride) return defaultProjectConfig()
+
+    const parsed = projectConfig.partial().safeParse(environment.configOverride)
     if (!parsed.success) return defaultProjectConfig()
 
     return mergeProjectConfig(defaultProjectConfig(), parsed.data as Partial<ProjectConfig>)

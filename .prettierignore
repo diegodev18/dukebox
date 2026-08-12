@@ -5,3 +5,8 @@ target/
 coverage/
 .turbo/
 pnpm-lock.yaml
+
+# Agent working notes: briefs, reports, and progress ledgers written during
+# implementation. Machine-generated prose, not source, and `format:check` is a
+# CI gate that would otherwise fail on them.
+.superpowers/

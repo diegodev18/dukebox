@@ -100,6 +100,15 @@ export const sessionSummary = z.object({
    * refuse.
    */
   pullRequestUrl: z.string().url().nullable(),
+  /**
+   * The environment this session resolved to, or null for the base image.
+   *
+   * Null is a legitimate state, not an error: a coding session on a branch no
+   * pattern matches runs on `dukebox/base-node:latest`. It is carried here
+   * because the environment routes are keyed by environment rather than by
+   * project, so the app cannot read or write a session's config without it.
+   */
+  environmentId: z.string().uuid().nullable(),
 })
 
 export type SessionSummary = z.infer<typeof sessionSummary>

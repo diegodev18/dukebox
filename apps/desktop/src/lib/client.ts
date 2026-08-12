@@ -1,12 +1,15 @@
 import type {
   ApiError,
+  CreateEnvironmentRequest,
   EnvironmentProposal,
+  EnvironmentSummary,
   PairRedeemResponse,
   ProjectEnvironmentResponse,
   ProjectSummary,
   PutProjectEnvironmentRequest,
   RepositorySummary,
   SessionSummary,
+  UpdateEnvironmentRequest,
 } from '@dukebox/protocol'
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 
@@ -135,22 +138,84 @@ export class DukeboxClient {
     baseBranch?: string
     model?: string
     purpose?: 'coding' | 'environment_setup'
+    /** Omitted lets the server resolve one from the base branch. */
+    environmentId?: string
   }): Promise<SessionSummary> {
     return this.request('/api/sessions', { method: 'POST', body: JSON.stringify(options) })
   }
 
-  async getEnvironment(projectId: string): Promise<ProjectEnvironmentResponse> {
-    return this.request(`/api/projects/${encodeURIComponent(projectId)}/environment`)
+  async listEnvironments(projectId: string): Promise<EnvironmentSummary[]> {
+    const body = await this.request<{ environments: EnvironmentSummary[] }>(
+      `/api/projects/${encodeURIComponent(projectId)}/environments`,
+    )
+    return body.environments
+  }
+
+  async createEnvironment(
+    projectId: string,
+    request: CreateEnvironmentRequest,
+  ): Promise<EnvironmentSummary> {
+    const body = await this.request<{ environment: EnvironmentSummary }>(
+      `/api/projects/${encodeURIComponent(projectId)}/environments`,
+      { method: 'POST', body: JSON.stringify(request) },
+    )
+    return body.environment
+  }
+
+  async updateEnvironment(
+    environmentId: string,
+    request: UpdateEnvironmentRequest,
+  ): Promise<EnvironmentSummary> {
+    const body = await this.request<{ environment: EnvironmentSummary }>(
+      `/api/environments/${encodeURIComponent(environmentId)}`,
+      { method: 'PATCH', body: JSON.stringify(request) },
+    )
+    return body.environment
+  }
+
+  async deleteEnvironment(environmentId: string): Promise<void> {
+    await this.request(`/api/environments/${encodeURIComponent(environmentId)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async reorderEnvironments(projectId: string, ids: string[]): Promise<EnvironmentSummary[]> {
+    const body = await this.request<{ environments: EnvironmentSummary[] }>(
+      `/api/projects/${encodeURIComponent(projectId)}/environments/reorder`,
+      { method: 'POST', body: JSON.stringify({ ids }) },
+    )
+    return body.environments
+  }
+
+  /**
+   * A single environment's config, keyed by environment rather than project.
+   *
+   * `environmentId` is required rather than optional because the server
+   * answers 400 without it: a project has many environments now, and there is
+   * no sensible default among them. Making it a required argument is what
+   * stops a caller silently omitting it.
+   */
+  async getEnvironment(
+    projectId: string,
+    environmentId: string,
+  ): Promise<ProjectEnvironmentResponse> {
+    return this.request(
+      `/api/projects/${encodeURIComponent(projectId)}/environment?environmentId=${encodeURIComponent(environmentId)}`,
+    )
   }
 
   async putEnvironment(
     projectId: string,
+    environmentId: string,
     body: PutProjectEnvironmentRequest,
   ): Promise<ProjectEnvironmentResponse> {
-    return this.request(`/api/projects/${encodeURIComponent(projectId)}/environment`, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    })
+    return this.request(
+      `/api/projects/${encodeURIComponent(projectId)}/environment?environmentId=${encodeURIComponent(environmentId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      },
+    )
   }
 
   async getEnvironmentProposal(sessionId: string): Promise<EnvironmentProposal | null> {

@@ -6,8 +6,7 @@ const project = (
   overrides: Partial<ProjectSummary> & Pick<ProjectSummary, 'id' | 'repoFullName'>,
 ): ProjectSummary => ({
   defaultBranch: 'main',
-  hasSnapshot: false,
-  hasEnvironment: true,
+  environmentCount: 1,
   createdAt: 1,
   sessionCount: 1,
   ...overrides,

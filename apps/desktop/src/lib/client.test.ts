@@ -143,6 +143,37 @@ describe('DukeboxClient', () => {
     expect(url).toContain('/api/sessions/00000000-0000-4000-8000-000000000001/archive')
     expect(init.method).toBe('POST')
   })
+
+  /**
+   * The environment routes are keyed by environment, not by project, and the
+   * server answers 400 without `?environmentId=`. These assert the query
+   * string reaches the wire: the server's own tests pass the parameter, so
+   * nothing else in the suite notices when a desktop caller stops sending it.
+   */
+  it('names the environment when reading its config', async () => {
+    const fetchMock = respondWith({ config: null, draft: null, secretNames: [] })
+    await client.getEnvironment(
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-0000000000e1',
+    )
+
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toContain('/api/projects/00000000-0000-4000-8000-000000000001/environment')
+    expect(url).toContain('environmentId=00000000-0000-4000-8000-0000000000e1')
+  })
+
+  it('names the environment when saving its config', async () => {
+    const fetchMock = respondWith({ config: null, draft: null, secretNames: [] })
+    await client.putEnvironment(
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-0000000000e1',
+      { setup: [], secretEnv: [], literalEnv: {}, secrets: {} },
+    )
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toContain('environmentId=00000000-0000-4000-8000-0000000000e1')
+    expect(init.method).toBe('PUT')
+  })
 })
 
 describe('reachable', () => {

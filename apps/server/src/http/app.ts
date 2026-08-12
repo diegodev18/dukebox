@@ -12,6 +12,7 @@ import type { EventBus } from '../events/bus.js'
 import type { GitHubClient } from '../github/client.js'
 import type { SecretStore } from '../secrets/store.js'
 import type { SessionManager } from '../sessions/manager.js'
+import { environmentRoutes } from './environments.js'
 import { projectRoutes } from './projects.js'
 import { secretRoutes } from './secrets.js'
 import { sessionRoutes } from './sessions.js'
@@ -171,6 +172,7 @@ export function createApp(context: AppContext) {
         sessions: context.features.sessions,
       }),
     )
+    app.route('/api', environmentRoutes({ db: context.db }))
     app.route('/api', secretRoutes({ db: context.db, secrets: context.features.secrets }))
   }
 

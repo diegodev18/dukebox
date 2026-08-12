@@ -31,6 +31,9 @@ export interface EnvironmentReviewTab {
   client: DukeboxClient
   projectId: string
   sessionId: string
+  /** Null when the session resolved to no environment; the form says so. */
+  environmentId: string | null
+  environmentName: string | null
   onSaved: () => void
 }
 
@@ -118,6 +121,8 @@ export function Workspace({ session, files, environmentReview, ...terminalProps 
               client={environmentReview.client}
               projectId={environmentReview.projectId}
               sessionId={environmentReview.sessionId}
+              environmentId={environmentReview.environmentId}
+              environmentName={environmentReview.environmentName}
               onSaved={environmentReview.onSaved}
             />
           ) : null}

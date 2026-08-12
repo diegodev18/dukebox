@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { environmentProposal } from './config.js'
 import { sessionPurpose, sessionSummary } from './session.js'
+import { MAX_BRANCH_PATTERN_LENGTH } from './branchPattern.js'
 
 /**
  * The REST surface between the desktop app and the control plane.
@@ -38,15 +39,13 @@ export const projectSummary = z.object({
   id: z.string().uuid(),
   repoFullName: z.string(),
   defaultBranch: z.string(),
-  /** Image built after the project's setup ran, when one exists. */
-  hasSnapshot: z.boolean(),
   /**
-   * Whether the project has a saved environment (`configOverride`).
+   * How many environments the project has.
    *
-   * Drives the desktop: without one, the user is steered into environment
-   * setup before a normal coding session.
+   * Zero means every session runs on the base image, which the desktop shows
+   * as a prompt to configure one rather than as an error.
    */
-  hasEnvironment: z.boolean(),
+  environmentCount: z.number().int().nonnegative(),
   createdAt: z.number().int().positive(),
   /** Sessions that have run for this project. */
   sessionCount: z.number().int().nonnegative(),
@@ -120,6 +119,66 @@ export const environmentProposalResponse = z.object({
 export type EnvironmentProposalResponse = z.infer<typeof environmentProposalResponse>
 
 // ---------------------------------------------------------------------------
+// Environments
+// ---------------------------------------------------------------------------
+
+export const environmentSummary = z.object({
+  id: z.string().uuid(),
+  projectId: z.string().uuid(),
+  name: z.string(),
+  /** Glob, or a regular expression behind a `re:` prefix. */
+  branchPattern: z.string(),
+  /** Tie-break when several patterns match a branch. Lower wins. */
+  position: z.number().int().nonnegative(),
+  /** Whether setup and env have been saved, as opposed to only the row existing. */
+  hasConfig: z.boolean(),
+  /** Image built after this environment's setup ran, when one exists. */
+  hasSnapshot: z.boolean(),
+  /** Whether a proposal is waiting to be reviewed. */
+  hasDraft: z.boolean(),
+})
+
+export type EnvironmentSummary = z.infer<typeof environmentSummary>
+
+const branchPatternField = z
+  .string()
+  .min(1, 'pattern cannot be empty')
+  // The full safety check (nested quantifiers, compilability) lives in
+  // validateBranchPattern and runs in the route. This bound is here so an
+  // obviously oversized pattern never reaches it.
+  .max(MAX_BRANCH_PATTERN_LENGTH, `pattern cannot exceed ${MAX_BRANCH_PATTERN_LENGTH} characters`)
+
+export const createEnvironmentRequest = z.object({
+  name: z.string().min(1, 'name cannot be empty').max(80),
+  branchPattern: branchPatternField,
+})
+
+export type CreateEnvironmentRequest = z.infer<typeof createEnvironmentRequest>
+
+export const updateEnvironmentRequest = z.object({
+  name: z.string().min(1).max(80).optional(),
+  branchPattern: branchPatternField.optional(),
+})
+
+export type UpdateEnvironmentRequest = z.infer<typeof updateEnvironmentRequest>
+
+/**
+ * The complete ordered list of ids.
+ *
+ * Sending the whole list rather than "move X to slot 3" keeps two concurrent
+ * clients from producing an order neither of them asked for.
+ */
+export const reorderEnvironmentsRequest = z.object({
+  ids: z.array(z.string().uuid()).min(1),
+})
+
+export type ReorderEnvironmentsRequest = z.infer<typeof reorderEnvironmentsRequest>
+
+export const listEnvironmentsResponse = z.object({
+  environments: z.array(environmentSummary),
+})
+
+// ---------------------------------------------------------------------------
 // Sessions
 // ---------------------------------------------------------------------------
 
@@ -129,6 +188,14 @@ export const createSessionRequest = z
     agentId: z.string().min(1),
     /** Defaults to the project's default branch. */
     baseBranch: z.string().optional(),
+    /**
+     * Which environment to run in.
+     *
+     * Optional: the server resolves one from the base branch when absent. The
+     * client proposes, the server decides — an id belonging to another project
+     * is rejected rather than honoured.
+     */
+    environmentId: z.string().uuid().optional(),
     /**
      * Model the agent should use for this session.
      *
