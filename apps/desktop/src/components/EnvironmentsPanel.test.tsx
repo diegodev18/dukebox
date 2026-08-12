@@ -176,6 +176,9 @@ describe('EnvironmentsPanel', () => {
     await waitFor(() => expect(screen.getByDisplayValue('Refactors')).toBeInTheDocument())
     await userEvent.click(screen.getAllByRole('button', { name: /delete/i })[0])
 
+    expect(client.deleteEnvironment).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: /confirm delete/i }))
+
     await waitFor(() => expect(client.deleteEnvironment).toHaveBeenCalledWith('env-1'))
     await waitFor(() => expect(screen.queryByDisplayValue('Refactors')).not.toBeInTheDocument())
   })
@@ -188,6 +191,7 @@ describe('EnvironmentsPanel', () => {
 
     await waitFor(() => expect(screen.getByDisplayValue('Refactors')).toBeInTheDocument())
     await userEvent.click(screen.getAllByRole('button', { name: /delete/i })[0])
+    await userEvent.click(screen.getByRole('button', { name: /confirm delete/i }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/environment is in use/i)
     // A row that vanishes on a failed delete looks like the delete worked.

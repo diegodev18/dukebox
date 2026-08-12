@@ -55,12 +55,55 @@ export function UserMenu({
   useEffect(() => {
     if (!open) return
 
+    const menu = root.current?.querySelector<HTMLElement>('[role="menu"]') ?? null
+
+    const items = () =>
+      Array.from(
+        menu?.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"]') ?? [],
+      )
+
+    const highlight = (index: number) => {
+      const list = items()
+      list.forEach((item, i) => {
+        if (i === index) item.setAttribute('data-highlighted', '')
+        else item.removeAttribute('data-highlighted')
+      })
+      list[index]?.focus()
+    }
+
+    highlight(0)
+
     const onPointerDown = (event: PointerEvent) => {
       if (root.current && !root.current.contains(event.target as Node)) setOpen(false)
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setOpen(false)
+        trigger.current?.focus()
+        return
+      }
+
+      const list = items()
+      if (list.length === 0) return
+
+      const current = list.findIndex((item) => item.hasAttribute('data-highlighted'))
+      const from =
+        current >= 0 ? current : list.findIndex((item) => item === document.activeElement)
+
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        const start = from >= 0 ? from : event.key === 'ArrowDown' ? -1 : 0
+        const delta = event.key === 'ArrowDown' ? 1 : -1
+        highlight((start + delta + list.length) % list.length)
+      } else if (event.key === 'Home') {
+        event.preventDefault()
+        highlight(0)
+      } else if (event.key === 'End') {
+        event.preventDefault()
+        highlight(list.length - 1)
+      }
     }
 
     document.addEventListener('pointerdown', onPointerDown, true)
@@ -116,7 +159,7 @@ export function UserMenu({
               // the whole interaction: picking the account already in use is
               // not a change, and there is nothing else to pick yet.
               onClick={() => setOpen(false)}
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] hover:bg-muted"
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] hover:bg-muted data-[highlighted]:bg-muted"
             >
               <Avatar name={candidate.name} />
               <span className="min-w-0 flex-1">
@@ -134,7 +177,7 @@ export function UserMenu({
               type="button"
               role="menuitem"
               onClick={() => openSettings('account')}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted data-[highlighted]:bg-muted"
             >
               <SettingsIcon size={14} className="flex-none text-muted-foreground" />
               Settings…
@@ -143,7 +186,7 @@ export function UserMenu({
               type="button"
               role="menuitem"
               onClick={() => openSettings('agents')}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted data-[highlighted]:bg-muted"
             >
               <span className="flex-none text-muted-foreground">
                 <AgentIcon agentId="opencode" className="size-3.5" />
@@ -154,7 +197,7 @@ export function UserMenu({
               type="button"
               role="menuitem"
               onClick={() => openSettings('servers')}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted data-[highlighted]:bg-muted"
             >
               <ServerIcon size={14} className="flex-none text-muted-foreground" />
               Servers…
@@ -166,7 +209,7 @@ export function UserMenu({
               type="button"
               role="menuitem"
               onClick={() => openSettings('updates')}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted data-[highlighted]:bg-muted"
             >
               <RefreshIcon size={14} className="flex-none text-muted-foreground" />
               Updates…

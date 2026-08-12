@@ -15,8 +15,8 @@ import { CheckIcon, ChevronDownIcon, FolderIcon, ServerIcon } from '@/components
  * Chip + searchable popover menus for picking a repository, branch, agent, or
  * model.
  *
- * Anchored under the chip that opened them. Escape and an outside click close
- * the menu; choosing a row closes it and reports the value.
+ * Anchored under the chip that opened them. Escape, an outside click, and
+ * choosing a row close the menu. Arrow keys move the highlight; Enter picks.
  */
 
 export function shortRepoName(fullName: string): string {
@@ -486,6 +486,28 @@ function PickerShell({
   useEffect(() => {
     if (!open) return
 
+    const options = () =>
+      Array.from(root.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])
+
+    const highlight = (index: number) => {
+      const items = options()
+      items.forEach((item, i) => {
+        if (i === index) item.setAttribute('data-highlighted', '')
+        else item.removeAttribute('data-highlighted')
+      })
+      items[index]?.scrollIntoView?.({ block: 'nearest' })
+    }
+
+    const highlightedIndex = () => {
+      const items = options()
+      const marked = items.findIndex((item) => item.hasAttribute('data-highlighted'))
+      if (marked >= 0) return marked
+      return items.findIndex((item) => item.getAttribute('aria-selected') === 'true')
+    }
+
+    const selected = highlightedIndex()
+    highlight(selected >= 0 ? selected : 0)
+
     const onPointerDown = (event: PointerEvent) => {
       if (root.current && !root.current.contains(event.target as Node)) {
         close.current(false)
@@ -493,7 +515,48 @@ function PickerShell({
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') close.current(false)
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        close.current(false)
+        return
+      }
+
+      // Arrow/Enter belong to the field the person is in, unless that field
+      // is this picker — a composer behind an open menu still needs Enter to
+      // send.
+      if (!root.current?.contains(event.target as Node)) return
+
+      const items = options()
+      if (items.length === 0) return
+
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        const current = highlightedIndex()
+        const from = current >= 0 ? current : event.key === 'ArrowDown' ? -1 : 0
+        const delta = event.key === 'ArrowDown' ? 1 : -1
+        highlight((from + delta + items.length) % items.length)
+        return
+      }
+
+      if (event.key === 'Home') {
+        event.preventDefault()
+        highlight(0)
+        return
+      }
+
+      if (event.key === 'End') {
+        event.preventDefault()
+        highlight(items.length - 1)
+        return
+      }
+
+      if (event.key === 'Enter') {
+        const current = highlightedIndex()
+        const item = items[current >= 0 ? current : 0]
+        if (!item) return
+        event.preventDefault()
+        item.click()
+      }
     }
 
     document.addEventListener('pointerdown', onPointerDown, true)
@@ -581,7 +644,7 @@ function PickerRow({
       role="option"
       aria-selected={selected}
       onClick={onSelect}
-      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted aria-selected:bg-muted"
+      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted aria-selected:bg-muted data-[highlighted]:bg-muted"
     >
       {icon && <span className="shrink-0 text-muted-foreground">{icon}</span>}
       <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>

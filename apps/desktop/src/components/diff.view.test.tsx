@@ -10,6 +10,7 @@ describe('Diff', () => {
 
     render(<Diff file={{ path: 'a.ts', before, after }} />)
 
+    expect(screen.getByText('CHANGED').closest('[data-selectable]')).not.toBeNull()
     expect(screen.queryByText('line 0')).not.toBeInTheDocument()
     await userEvent.click(screen.getAllByRole('button', { name: /unchanged line/ })[0]!)
     expect(screen.getByText('line 0')).toBeInTheDocument()

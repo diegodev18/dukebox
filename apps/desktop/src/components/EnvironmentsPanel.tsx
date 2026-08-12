@@ -25,6 +25,7 @@ export function EnvironmentsPanel({ client, projectId }: Props) {
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([])
   const [branches, setBranches] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -32,11 +33,15 @@ export function EnvironmentsPanel({ client, projectId }: Props) {
     client
       .listEnvironments(projectId)
       .then((found) => {
-        if (!cancelled) setEnvironments(found)
+        if (!cancelled) {
+          setEnvironments(found)
+          setLoading(false)
+        }
       })
       .catch((cause: unknown) => {
         if (cancelled) return
         setError(cause instanceof Error ? cause.message : 'Could not load environments.')
+        setLoading(false)
       })
 
     // Best-effort: the branch list only powers the match preview, so failing
@@ -164,8 +169,10 @@ export function EnvironmentsPanel({ client, projectId }: Props) {
       </ul>
 
       {environments.length === 0 && (
-        <p className="text-[12.5px] text-muted-foreground">
-          No environments yet. Sessions run on the base image.
+        <p role={loading ? 'status' : undefined} className="text-[12.5px] text-muted-foreground">
+          {loading
+            ? 'Loading environments…'
+            : 'No environments yet. Sessions run on the base image.'}
         </p>
       )}
 
@@ -197,6 +204,7 @@ function EnvironmentRow({
 }) {
   const [name, setName] = useState(environment.name)
   const [pattern, setPattern] = useState(environment.branchPattern)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   useEffect(() => {
     setName(environment.name)
@@ -239,14 +247,34 @@ function EnvironmentRow({
         >
           ↓
         </button>
-        <button
-          type="button"
-          aria-label={`Delete ${environment.name}`}
-          onClick={onDelete}
-          className="flex-none rounded-[calc(var(--radius)*0.6)] px-1.5 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-destructive"
-        >
-          Delete
-        </button>
+        {confirmingDelete ? (
+          <>
+            <button
+              type="button"
+              aria-label={`Confirm delete ${environment.name}`}
+              onClick={onDelete}
+              className="flex-none rounded-[calc(var(--radius)*0.6)] px-1.5 py-1 text-[12px] text-destructive hover:bg-muted"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(false)}
+              className="flex-none rounded-[calc(var(--radius)*0.6)] px-1.5 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            aria-label={`Delete ${environment.name}`}
+            onClick={() => setConfirmingDelete(true)}
+            className="flex-none rounded-[calc(var(--radius)*0.6)] px-1.5 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-destructive"
+          >
+            Delete
+          </button>
+        )}
       </div>
 
       <input

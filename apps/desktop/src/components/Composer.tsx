@@ -83,6 +83,8 @@ export function Composer({
           rows={1}
           placeholder={placeholder}
           aria-label="Message"
+          aria-invalid={Boolean(error)}
+          {...(error ? { 'aria-describedby': 'composer-error' } : {})}
           className="block w-full resize-none bg-transparent px-3.5 pt-3 pb-1.5 outline-none placeholder:text-muted-foreground disabled:opacity-50"
         />
 
@@ -117,6 +119,11 @@ export function Composer({
           )}
         </div>
       </div>
+      {error && (
+        <p id="composer-error" role="alert" className="measure mt-2 text-[12.5px] text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

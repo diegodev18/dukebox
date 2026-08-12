@@ -390,3 +390,18 @@ describe('NewSession permission mode', () => {
     )
   })
 })
+
+describe('NewSession loading', () => {
+  it('says repositories are loading while the list is in flight', () => {
+    const hang = () => new Promise(() => undefined)
+    const client = makeClient({
+      listRepositories: vi.fn(hang),
+      listBranches: vi.fn(hang),
+      listEnvironments: vi.fn(hang),
+      listOpencodeProviders: vi.fn(hang),
+    })
+    renderScreen(client)
+
+    expect(screen.getByRole('status')).toHaveTextContent(/loading repositories/i)
+  })
+})

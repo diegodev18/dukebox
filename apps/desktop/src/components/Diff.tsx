@@ -26,7 +26,7 @@ export function Diff({ file }: { file: FileChange }) {
   }
 
   return (
-    <div>
+    <div data-selectable>
       {simplified && (
         <p className="px-3 py-1.5 text-[12px] text-muted-foreground">
           Diff simplified (file too large)
@@ -67,6 +67,7 @@ function SkipHunk({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
+        aria-label={skipLabel(line.count)}
         className="block w-full px-1.5 py-0.5 text-left text-muted-foreground hover:bg-muted hover:text-foreground"
       >
         {skipLabel(line.count)}

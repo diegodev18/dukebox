@@ -1,7 +1,7 @@
 import { type CommitIdentity, type ProjectSummary, type SessionSummary } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { filterProjects, filterSessions } from '@/lib/searchSessions'
-import { StatusDot } from '@/screens/Session'
+import { StatusDot, statusLabel } from '@/screens/Session'
 import type { SettingsCategory } from '@/screens/Settings'
 import { BranchIcon, PlusIcon, SearchIcon, SettingsIcon } from '@/components/icons'
 import { UserMenu } from '@/components/UserMenu'
@@ -105,9 +105,8 @@ export function Sidebar({
                 }}
                 onConfigureEnvironment={() => onConfigureEnvironment(project.id)}
                 onManageEnvironments={() => onManageEnvironments(project.id)}
-                onContextMenu={(sessionId, event) => {
-                  event.preventDefault()
-                  setMenu({ sessionId, x: event.clientX, y: event.clientY })
+                onOpenMenu={(sessionId, x, y) => {
+                  setMenu({ sessionId, x, y })
                 }}
               />
             ))}
@@ -213,7 +212,7 @@ function ProjectGroup({
   onSelect,
   onConfigureEnvironment,
   onManageEnvironments,
-  onContextMenu,
+  onOpenMenu,
 }: {
   project: ProjectSummary
   sessions: SessionSummary[]
@@ -221,7 +220,7 @@ function ProjectGroup({
   onSelect: (sessionId: string) => void
   onConfigureEnvironment: () => void
   onManageEnvironments: () => void
-  onContextMenu: (sessionId: string, event: React.MouseEvent) => void
+  onOpenMenu: (sessionId: string, x: number, y: number) => void
 }) {
   return (
     <>
@@ -252,17 +251,46 @@ function ProjectGroup({
       </div>
 
       {sessions.map((session) => (
-        <button
-          key={session.id}
-          onClick={() => onSelect(session.id)}
-          onContextMenu={(event) => onContextMenu(session.id, event)}
-          aria-current={session.id === selectedId}
-          className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2.5 py-1.5 pr-4 pl-7.5 text-left text-[13.5px] text-muted-foreground hover:bg-muted hover:text-foreground aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
-        >
-          <StatusDot status={session.status} />
-          <span className="truncate">{session.title}</span>
-          <span className="text-[11.5px] tabular-nums opacity-75">{age(session.updatedAt)}</span>
-        </button>
+        <div key={session.id} className="group relative">
+          <button
+            type="button"
+            onClick={() => onSelect(session.id)}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              onOpenMenu(session.id, event.clientX, event.clientY)
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== 'Delete' && event.key !== 'Backspace') return
+              event.preventDefault()
+              const rect = event.currentTarget.getBoundingClientRect()
+              onOpenMenu(session.id, rect.left, rect.bottom)
+            }}
+            aria-current={session.id === selectedId}
+            aria-label={`${statusLabel(session.status)}, ${session.title}`}
+            className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2.5 py-1.5 pr-8 pl-7.5 text-left text-[13.5px] text-muted-foreground hover:bg-muted hover:text-foreground aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
+          >
+            <StatusDot status={session.status} />
+            <span className="truncate">{session.title}</span>
+            <span className="text-[11.5px] tabular-nums opacity-75">{age(session.updatedAt)}</span>
+          </button>
+          <button
+            type="button"
+            aria-label={`Session actions for ${session.title}`}
+            aria-haspopup="menu"
+            onClick={(event) => {
+              event.stopPropagation()
+              const rect = event.currentTarget.getBoundingClientRect()
+              onOpenMenu(session.id, rect.right, rect.bottom)
+            }}
+            className={`absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-[calc(var(--radius)*0.5)] text-[13px] text-muted-foreground hover:bg-border hover:text-foreground ${
+              session.id === selectedId
+                ? 'opacity-100'
+                : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+            }`}
+          >
+            ⋯
+          </button>
+        </div>
       ))}
     </>
   )
@@ -297,19 +325,56 @@ function SessionContextMenu({
       if (ref.current && !ref.current.contains(event.target as Node)) dismiss.current()
     }
 
+    const items = () =>
+      Array.from(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])
+
+    const highlight = (index: number) => {
+      const list = items()
+      list.forEach((item, i) => {
+        if (i === index) item.setAttribute('data-highlighted', '')
+        else item.removeAttribute('data-highlighted')
+      })
+      list[index]?.focus()
+    }
+
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') dismiss.current()
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        dismiss.current()
+        return
+      }
+
+      const list = items()
+      if (list.length === 0) return
+
+      const current = list.findIndex((item) => item.hasAttribute('data-highlighted'))
+      const from =
+        current >= 0 ? current : list.findIndex((item) => item === document.activeElement)
+
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        const start = from >= 0 ? from : event.key === 'ArrowDown' ? -1 : 0
+        const delta = event.key === 'ArrowDown' ? 1 : -1
+        highlight((start + delta + list.length) % list.length)
+      } else if (event.key === 'Home') {
+        event.preventDefault()
+        highlight(0)
+      } else if (event.key === 'End') {
+        event.preventDefault()
+        highlight(list.length - 1)
+      }
     }
 
     // Capture so a click that would also select another session still closes
     // this first, rather than leaving a menu stranded over a new selection.
     document.addEventListener('pointerdown', onPointerDown, true)
     document.addEventListener('keydown', onKeyDown)
+    highlight(0)
     return () => {
       document.removeEventListener('pointerdown', onPointerDown, true)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [])
+  }, [confirming])
 
   return (
     <div
@@ -326,7 +391,7 @@ function SessionContextMenu({
             type="button"
             role="menuitem"
             onClick={() => archive.current()}
-            className="flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-muted"
+            className="flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-muted data-[highlighted]:bg-muted"
           >
             Archive
           </button>
@@ -334,7 +399,7 @@ function SessionContextMenu({
             type="button"
             role="menuitem"
             onClick={() => dismiss.current()}
-            className="flex w-full items-center px-3 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted"
+            className="flex w-full items-center px-3 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted data-[highlighted]:bg-muted"
           >
             Cancel
           </button>
@@ -344,7 +409,7 @@ function SessionContextMenu({
           type="button"
           role="menuitem"
           onClick={() => setConfirming(true)}
-          className="flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-muted"
+          className="flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-muted data-[highlighted]:bg-muted"
         >
           Archive
         </button>
