@@ -55,6 +55,8 @@ interface Props {
   onCreated: (session: SessionSummary, project: ProjectSummary | null) => void
   /** Prefer starting environment setup for this project (e.g. from sidebar). */
   preferSetupProjectId?: string | null
+  /** Prefill this project without forcing setup (e.g. from the project menu). */
+  preferProjectId?: string | null
   /** Restore this agent after returning from provider settings. */
   preferAgentId?: string | null
   /** Open Settings → Agents to add or edit OpenCode providers. */
@@ -79,12 +81,12 @@ export function NewSession({
   gitPreferences,
   onCreated,
   preferSetupProjectId,
+  preferProjectId,
   preferAgentId,
   onConfigureProviders,
 }: Props) {
-  const preferred = preferSetupProjectId
-    ? projects.find((project) => project.id === preferSetupProjectId)
-    : undefined
+  const preferredId = preferSetupProjectId ?? preferProjectId
+  const preferred = preferredId ? projects.find((project) => project.id === preferredId) : undefined
 
   const initialAgent =
     preferAgentId && AVAILABLE_AGENTS.some((agent) => agent.id === preferAgentId)

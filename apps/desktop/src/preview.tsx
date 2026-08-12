@@ -376,7 +376,8 @@ function usePreviewTerminals() {
     },
     onTerminalResize: () => {},
     onCloseTerminal: (terminalId: string) => setState((current) => removeTab(current, terminalId)),
-    onDrainTerminal: (terminalId: string) => setState((current) => drainTab(current, terminalId)),
+    onDrainTerminal: (terminalId: string, count: number) =>
+      setState((current) => drainTab(current, terminalId, count)),
   }
 }
 

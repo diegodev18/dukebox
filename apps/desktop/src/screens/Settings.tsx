@@ -1,7 +1,10 @@
 import {
   DEFAULT_COMMIT_IDENTITY,
   DEFAULT_GIT_PREFERENCES,
+  type DeviceRole,
+  type DeviceSummary,
   type GitPreferences,
+  type PairingInvite,
 } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { ChevronLeftIcon } from '@/components/icons'
@@ -14,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { DukeboxClient } from '@/lib/client'
+import { DukeboxClient } from '@/lib/client'
 import {
   listConnections,
   removeConnection,
@@ -31,25 +34,34 @@ import type { UseUpdate } from '@/lib/useUpdate'
  * nav. The content column shows one section at a time — never nested deeper.
  */
 
-export type SettingsCategory = 'account' | 'git' | 'agents' | 'servers' | 'appearance' | 'updates'
+export type SettingsCategory =
+  'account' | 'git' | 'agents' | 'devices' | 'servers' | 'appearance' | 'updates'
 
-const CATEGORIES: { id: SettingsCategory; label: string }[] = [
+const CATEGORIES: { id: SettingsCategory; label: string; ownerOnly?: boolean }[] = [
   { id: 'account', label: 'Account' },
   { id: 'git', label: 'Git' },
-  { id: 'agents', label: 'Agents' },
+  { id: 'agents', label: 'Agents', ownerOnly: true },
+  { id: 'devices', label: 'Devices', ownerOnly: true },
   { id: 'servers', label: 'Servers' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'updates', label: 'Updates' },
 ]
 
+export function settingsCategoriesFor(role: DeviceRole | null): typeof CATEGORIES {
+  if (role === 'owner') return CATEGORIES
+  return CATEGORIES.filter((category) => !category.ownerOnly)
+}
+
 interface SettingsNavProps {
   category: SettingsCategory
+  role: DeviceRole | null
   onCategoryChange: (category: SettingsCategory) => void
   onBack: () => void
 }
 
 /** Left-column nav while settings is open — same slot as the sessions sidebar. */
-export function SettingsNav({ category, onCategoryChange, onBack }: SettingsNavProps) {
+export function SettingsNav({ category, role, onCategoryChange, onBack }: SettingsNavProps) {
+  const categories = settingsCategoriesFor(role)
   return (
     <nav
       aria-label="Settings"
@@ -68,7 +80,7 @@ export function SettingsNav({ category, onCategoryChange, onBack }: SettingsNavP
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-1.5">
-        {CATEGORIES.map(({ id, label }) => (
+        {categories.map(({ id, label }) => (
           <button
             key={id}
             type="button"
@@ -90,6 +102,7 @@ interface Props {
   settings: Settings
   update: UseUpdate
   category: SettingsCategory
+  role: DeviceRole | null
   onSaveSettings: (patch: Partial<Settings>) => void
   onSwitchServer: (connection: Connection) => void
   onClose: () => void
@@ -102,6 +115,7 @@ export function Settings({
   settings,
   update,
   category,
+  role,
   onSaveSettings,
   onSwitchServer,
   onClose,
@@ -132,7 +146,10 @@ export function Settings({
             onSave={(git) => onSaveSettings({ git })}
           />
         )}
-        {category === 'agents' && <AgentsSection client={client} />}
+        {category === 'agents' && role === 'owner' && <AgentsSection client={client} />}
+        {category === 'devices' && role === 'owner' && (
+          <DevicesSection client={client} thisDeviceId={connection.deviceId} />
+        )}
         {category === 'servers' && (
           <ServersSection
             activeConnection={connection}
@@ -442,7 +459,8 @@ function AccountSection({
         Account
       </h2>
       <p className="mt-1 text-[12.5px] text-muted-foreground">
-        The name and email new sessions author commits with.
+        The name and email new sessions author commits with. GitHub access is the one on this server
+        — every device uses the same <span className="font-mono">gh</span> login.
       </p>
 
       <div className="mt-4 grid grid-cols-2 gap-2.5">
@@ -621,6 +639,262 @@ function StatusChip({ configured }: { configured: boolean | null }) {
 }
 
 // ---------------------------------------------------------------------------
+// Devices
+// ---------------------------------------------------------------------------
+
+function formatLastSeen(timestamp: number | null): string {
+  if (timestamp === null) return 'never'
+  const seconds = Math.floor((Date.now() - timestamp) / 1000)
+  if (seconds < 60) return 'just now'
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h ago`
+  return `${Math.floor(seconds / 86_400)}d ago`
+}
+
+function formatExpiry(timestamp: number): string {
+  const seconds = Math.floor((timestamp - Date.now()) / 1000)
+  if (seconds <= 0) return 'soon'
+  if (seconds < 60) return `in ${seconds}s`
+  return `in ${Math.floor(seconds / 60)}m`
+}
+
+function DevicesSection({ client, thisDeviceId }: { client: DukeboxClient; thisDeviceId: string }) {
+  const [devices, setDevices] = useState<DeviceSummary[]>([])
+  const [invites, setInvites] = useState<PairingInvite[]>([])
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null)
+  const [revokingId, setRevokingId] = useState<string | null>(null)
+  const [working, setWorking] = useState(false)
+  const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
+
+  const reload = async () => {
+    const [listed, pending] = await Promise.all([client.listDevices(), client.listInvites()])
+    setDevices(listed)
+    setInvites(pending)
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([client.listDevices(), client.listInvites()])
+      .then(([listed, pending]) => {
+        if (cancelled) return
+        setDevices(listed)
+        setInvites(pending)
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setMessage({
+            tone: 'error',
+            text: error instanceof Error ? error.message : 'Could not load devices.',
+          })
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [client])
+
+  const invite = async () => {
+    setWorking(true)
+    setMessage(null)
+    try {
+      const created = await client.createInvite()
+      setInviteUrl(created.url)
+      await reload()
+    } catch (error) {
+      setMessage({
+        tone: 'error',
+        text: error instanceof Error ? error.message : 'Could not create an invite.',
+      })
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const copyInvite = async () => {
+    if (!inviteUrl) return
+    await navigator.clipboard.writeText(inviteUrl).catch(() => undefined)
+    setMessage({ tone: 'ok', text: 'Invite link copied.' })
+  }
+
+  const dropInvite = async (id: string) => {
+    setWorking(true)
+    try {
+      await client.revokeInvite(id)
+      if (inviteUrl) setInviteUrl(null)
+      await reload()
+    } catch (error) {
+      setMessage({
+        tone: 'error',
+        text: error instanceof Error ? error.message : 'Could not revoke that invite.',
+      })
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const revoke = async (device: DeviceSummary) => {
+    setWorking(true)
+    setMessage(null)
+    try {
+      await client.revokeDevice(device.id)
+      setRevokingId(null)
+      await reload()
+    } catch (error) {
+      setMessage({
+        tone: 'error',
+        text: error instanceof Error ? error.message : 'Could not revoke that device.',
+      })
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  return (
+    <section aria-labelledby="devices-title">
+      <h2 id="devices-title" className="text-[14px] font-medium">
+        Devices
+      </h2>
+      <p className="mt-1 text-[12.5px] text-muted-foreground">
+        Paired apps on this server. Invite another — it also needs Tailscale access to this machine.
+      </p>
+
+      {devices.length === 1 && (
+        <p className="mt-3 text-[12.5px] text-muted-foreground">
+          Only this device is paired. Invite another — it also needs Tailscale access to this
+          machine.
+        </p>
+      )}
+
+      <ul className="mt-4 flex flex-col gap-2">
+        {devices.map((device) => {
+          const confirming = revokingId === device.id
+          const self = device.id === thisDeviceId
+          return (
+            <li
+              key={device.id}
+              className="rounded-[calc(var(--radius)*0.8)] border border-border bg-surface px-3.5 py-3"
+            >
+              {confirming ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="min-w-0 flex-1 text-[12.5px] text-muted-foreground">
+                    Revoke {device.name}? It will be signed out immediately.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={working}
+                    onClick={() => void revoke(device)}
+                    className="flex-none rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12px] font-medium text-destructive hover:bg-muted"
+                  >
+                    Revoke
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRevokingId(null)}
+                    className="flex-none rounded-[calc(var(--radius)*0.6)] px-2.5 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-[13px] font-medium">{device.name}</span>
+                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10.5px] font-medium text-muted-foreground">
+                        {device.role}
+                      </span>
+                      {self && (
+                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10.5px] font-medium text-muted-foreground">
+                          This device
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 text-[11.5px] text-muted-foreground">
+                      {device.platform} · last seen {formatLastSeen(device.lastSeenAt)}
+                    </div>
+                  </div>
+                  {device.role !== 'owner' && (
+                    <button
+                      type="button"
+                      onClick={() => setRevokingId(device.id)}
+                      className="flex-none rounded-[calc(var(--radius)*0.6)] px-2 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-destructive"
+                    >
+                      Revoke
+                    </button>
+                  )}
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+
+      <p className="mt-3 text-[12px] text-muted-foreground">
+        To move the owner to another machine, on the server:{' '}
+        <span className="font-mono">duke pair replace-owner</span>
+      </p>
+
+      {inviteUrl && (
+        <div className="mt-4 rounded-[calc(var(--radius)*0.8)] border border-border bg-surface px-3.5 py-3">
+          <p className="text-[12.5px] text-muted-foreground">
+            This link expires in 15 minutes and creates a member device.
+          </p>
+          <p className="mt-2 break-all font-mono text-[11.5px]">{inviteUrl}</p>
+          <button
+            type="button"
+            onClick={() => void copyInvite()}
+            className="mt-2 rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12px] font-medium hover:bg-muted"
+          >
+            Copy link
+          </button>
+        </div>
+      )}
+
+      {invites.length > 0 && !inviteUrl && (
+        <ul className="mt-4 flex flex-col gap-2">
+          {invites.map((invite) => (
+            <li
+              key={invite.id}
+              className="flex items-center gap-2 rounded-[calc(var(--radius)*0.8)] border border-border bg-surface px-3.5 py-2.5"
+            >
+              <span className="min-w-0 flex-1 text-[12.5px] text-muted-foreground">
+                Pending invite · expires {formatExpiry(invite.expiresAt)}
+              </span>
+              <button
+                type="button"
+                disabled={working}
+                onClick={() => void dropInvite(invite.id)}
+                className="flex-none rounded-[calc(var(--radius)*0.6)] px-2 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-destructive"
+              >
+                Revoke invite
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {message && (
+        <p
+          role="alert"
+          className={`mt-3 text-[12.5px] ${message.tone === 'ok' ? 'text-muted-foreground' : 'text-destructive'}`}
+        >
+          {message.text}
+        </p>
+      )}
+
+      <button
+        type="button"
+        disabled={working}
+        onClick={() => void invite()}
+        className="mt-4 rounded-[calc(var(--radius)*0.6)] border border-border px-3.5 py-1.5 text-[12.5px] font-medium hover:bg-muted disabled:opacity-40"
+      >
+        Invite a device…
+      </button>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Servers
 // ---------------------------------------------------------------------------
 
@@ -661,11 +935,33 @@ function ServersSection({
   }
 
   const forgetServer = async (connection: Connection) => {
+    const other = new DukeboxClient(connection.address, connection.deviceToken)
+    let ownerWarning = false
+
+    try {
+      const who = await other.whoami()
+      if (who.role === 'member') {
+        await other.revokeDevice(connection.deviceId)
+      } else {
+        ownerWarning = true
+      }
+    } catch {
+      // Unreachable or already revoked: still drop the local copy.
+    }
+
     await removeConnection(connection.deviceId)
     const remaining = connections.filter((entry) => entry.deviceId !== connection.deviceId)
     setConnections(remaining)
     setForgettingId(null)
-    setMessage(null)
+
+    if (ownerWarning) {
+      setMessage({
+        tone: 'ok',
+        text: 'Forgot locally. The owner slot is still taken — run duke pair replace-owner on the server to move it.',
+      })
+    } else {
+      setMessage(null)
+    }
 
     if (connection.deviceId === activeConnection.deviceId) {
       if (remaining.length === 0) {

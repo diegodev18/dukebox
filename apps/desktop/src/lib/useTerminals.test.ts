@@ -123,7 +123,26 @@ describe('drainTab', () => {
       data: 'aGk=',
     })
 
-    expect(drainTab(queued, 't1').tabs[0]?.pending).toEqual([])
+    expect(drainTab(queued, 't1', 1).tabs[0]?.pending).toEqual([])
+  })
+
+  it('keeps chunks that arrived after the ones just written', () => {
+    const first = applyTerminalMessage(withOneTerminal(), {
+      type: 'terminal_output',
+      sessionId,
+      terminalId: 't1',
+      data: 'Zmlyc3Q=',
+    })
+    const queued = applyTerminalMessage(first, {
+      type: 'terminal_output',
+      sessionId,
+      terminalId: 't1',
+      data: 'c2Vjb25k',
+    })
+
+    // The effect wrote one chunk, then a second arrived before drain ran.
+    // Clearing the whole queue would drop `ls` output and look like a hang.
+    expect(drainTab(queued, 't1', 1).tabs[0]?.pending).toEqual(['c2Vjb25k'])
   })
 
   it('returns the same state when there is nothing queued', () => {
@@ -131,7 +150,7 @@ describe('drainTab', () => {
 
     // Identity matters: React skips a render when the state is unchanged, and
     // draining runs after every write.
-    expect(drainTab(state, 't1')).toBe(state)
+    expect(drainTab(state, 't1', 1)).toBe(state)
   })
 })
 

@@ -1,9 +1,15 @@
-import { type CommitIdentity, type ProjectSummary, type SessionSummary } from '@dukebox/protocol'
+import {
+  type CommitIdentity,
+  type DeviceRole,
+  type ProjectSummary,
+  type SessionSummary,
+} from '@dukebox/protocol'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useRef, useState } from 'react'
 import { filterProjects, filterSessions } from '@/lib/searchSessions'
 import { StatusDot, statusLabel } from '@/screens/Session'
 import type { SettingsCategory } from '@/screens/Settings'
-import { BranchIcon, PlusIcon, SearchIcon, SettingsIcon } from '@/components/icons'
+import { BranchIcon, CloseIcon, PlusIcon, SearchIcon, SettingsIcon } from '@/components/icons'
 import { UserMenu } from '@/components/UserMenu'
 
 /**
@@ -20,13 +26,15 @@ interface Props {
   selectedId: string | null
   /** Who commits are authored as — the identity from settings, if configured. */
   identity: CommitIdentity
+  role: DeviceRole | null
   onOpenSettings: (category: SettingsCategory) => void
   onSelect: (sessionId: string) => void
-  onNewSession: () => void
+  onNewSession: (projectId?: string) => void
   onConfigureEnvironment: (projectId: string) => void
   onManageEnvironments: (projectId: string) => void
   onArchive: (sessionId: string) => void
-  /** Set when an archive request failed; the row stays put. */
+  onRemoveProject: (projectId: string) => void
+  /** Set when an archive or remove request failed; the row stays put. */
   archiveError?: string | null
 }
 
@@ -35,15 +43,18 @@ export function Sidebar({
   sessions,
   selectedId,
   identity,
+  role,
   onOpenSettings,
   onSelect,
   onNewSession,
   onConfigureEnvironment,
   onManageEnvironments,
   onArchive,
+  onRemoveProject,
   archiveError,
 }: Props) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
+  const [removing, setRemoving] = useState<ProjectSummary | null>(null)
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState('')
 
@@ -66,7 +77,7 @@ export function Sidebar({
           <SearchField value={query} onChange={setQuery} onClose={closeSearch} />
         ) : (
           <>
-            <SidebarAction icon={<PlusIcon size={16} />} onClick={onNewSession}>
+            <SidebarAction icon={<PlusIcon size={16} />} onClick={() => onNewSession()}>
               New session
             </SidebarAction>
             <SidebarAction icon={<SearchIcon size={16} />} onClick={() => setSearching(true)}>
@@ -105,8 +116,11 @@ export function Sidebar({
                 }}
                 onConfigureEnvironment={() => onConfigureEnvironment(project.id)}
                 onManageEnvironments={() => onManageEnvironments(project.id)}
-                onOpenMenu={(sessionId, x, y) => {
-                  setMenu({ sessionId, x, y })
+                onOpenSessionMenu={(sessionId, x, y) => {
+                  setMenu({ kind: 'session', sessionId, x, y })
+                }}
+                onOpenProjectMenu={(x, y) => {
+                  setMenu({ kind: 'project', projectId: project.id, x, y })
                 }}
               />
             ))}
@@ -125,7 +139,7 @@ export function Sidebar({
           room when asked, not permanently at the foot of the sidebar. */}
       <div className="flex items-stretch border-t border-border">
         <div className="min-w-0 flex-1">
-          <UserMenu user={identity} onOpenSettings={onOpenSettings} />
+          <UserMenu user={identity} role={role} onOpenSettings={onOpenSettings} />
         </div>
         <button
           type="button"
@@ -137,7 +151,7 @@ export function Sidebar({
         </button>
       </div>
 
-      {menu && (
+      {menu?.kind === 'session' && (
         <SessionContextMenu
           x={menu.x}
           y={menu.y}
@@ -148,14 +162,61 @@ export function Sidebar({
           onDismiss={() => setMenu(null)}
         />
       )}
+
+      {menu?.kind === 'project' && (
+        <ProjectContextMenu
+          x={menu.x}
+          y={menu.y}
+          hasEnvironments={
+            (projects.find((project) => project.id === menu.projectId)?.environmentCount ?? 0) > 0
+          }
+          onNewSession={() => {
+            onNewSession(menu.projectId)
+            setMenu(null)
+          }}
+          onEnvironments={() => {
+            const project = projects.find((candidate) => candidate.id === menu.projectId)
+            if (project && project.environmentCount === 0) onConfigureEnvironment(project.id)
+            else onManageEnvironments(menu.projectId)
+            setMenu(null)
+          }}
+          onOpenGitHub={() => {
+            const project = projects.find((candidate) => candidate.id === menu.projectId)
+            if (project) openGitHub(project.repoFullName)
+            setMenu(null)
+          }}
+          onRemove={() => {
+            const project = projects.find((candidate) => candidate.id === menu.projectId)
+            setMenu(null)
+            if (project) setRemoving(project)
+          }}
+          onDismiss={() => setMenu(null)}
+        />
+      )}
+
+      {removing && (
+        <RemoveProjectDialog
+          repoFullName={removing.repoFullName}
+          onConfirm={() => {
+            onRemoveProject(removing.id)
+            setRemoving(null)
+          }}
+          onDismiss={() => setRemoving(null)}
+        />
+      )}
     </nav>
   )
 }
 
-interface ContextMenuState {
-  sessionId: string
-  x: number
-  y: number
+type ContextMenuState =
+  | { kind: 'session'; sessionId: string; x: number; y: number }
+  | { kind: 'project'; projectId: string; x: number; y: number }
+
+function openGitHub(repoFullName: string) {
+  const url = `https://github.com/${repoFullName}`
+  void openUrl(url).catch(() => {
+    window.open(url, '_blank', 'noopener,noreferrer')
+  })
 }
 
 function SearchField({
@@ -212,7 +273,8 @@ function ProjectGroup({
   onSelect,
   onConfigureEnvironment,
   onManageEnvironments,
-  onOpenMenu,
+  onOpenSessionMenu,
+  onOpenProjectMenu,
 }: {
   project: ProjectSummary
   sessions: SessionSummary[]
@@ -220,11 +282,18 @@ function ProjectGroup({
   onSelect: (sessionId: string) => void
   onConfigureEnvironment: () => void
   onManageEnvironments: () => void
-  onOpenMenu: (sessionId: string, x: number, y: number) => void
+  onOpenSessionMenu: (sessionId: string, x: number, y: number) => void
+  onOpenProjectMenu: (x: number, y: number) => void
 }) {
   return (
     <>
-      <div className="flex items-center gap-2.5 px-4 py-1.5 text-[12.5px] text-muted-foreground">
+      <div
+        className="flex items-center gap-2.5 px-4 py-1.5 text-[12.5px] text-muted-foreground"
+        onContextMenu={(event) => {
+          event.preventDefault()
+          onOpenProjectMenu(event.clientX, event.clientY)
+        }}
+      >
         <BranchIcon size={13} className="flex-none opacity-70" />
         <span className="min-w-0 flex-1 truncate">{project.repoFullName}</span>
         {/* One affordance, two jobs: with nothing configured the useful action
@@ -257,13 +326,13 @@ function ProjectGroup({
             onClick={() => onSelect(session.id)}
             onContextMenu={(event) => {
               event.preventDefault()
-              onOpenMenu(session.id, event.clientX, event.clientY)
+              onOpenSessionMenu(session.id, event.clientX, event.clientY)
             }}
             onKeyDown={(event) => {
               if (event.key !== 'Delete' && event.key !== 'Backspace') return
               event.preventDefault()
               const rect = event.currentTarget.getBoundingClientRect()
-              onOpenMenu(session.id, rect.left, rect.bottom)
+              onOpenSessionMenu(session.id, rect.left, rect.bottom)
             }}
             aria-current={session.id === selectedId}
             aria-label={`${statusLabel(session.status)}, ${session.title}`}
@@ -280,7 +349,7 @@ function ProjectGroup({
             onClick={(event) => {
               event.stopPropagation()
               const rect = event.currentTarget.getBoundingClientRect()
-              onOpenMenu(session.id, rect.right, rect.bottom)
+              onOpenSessionMenu(session.id, rect.right, rect.bottom)
             }}
             className={`absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-[calc(var(--radius)*0.5)] text-[13px] text-muted-foreground hover:bg-border hover:text-foreground ${
               session.id === selectedId
@@ -414,6 +483,260 @@ function SessionContextMenu({
           Archive
         </button>
       )}
+    </div>
+  )
+}
+
+/**
+ * Right-click menu for a project (repository) header.
+ *
+ * Same chrome as the session menu: the sidebar is too narrow to grow a menu
+ * beside the row, so this sits at the pointer.
+ */
+function ProjectContextMenu({
+  x,
+  y,
+  hasEnvironments,
+  onNewSession,
+  onEnvironments,
+  onOpenGitHub,
+  onRemove,
+  onDismiss,
+}: {
+  x: number
+  y: number
+  hasEnvironments: boolean
+  onNewSession: () => void
+  onEnvironments: () => void
+  onOpenGitHub: () => void
+  onRemove: () => void
+  onDismiss: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const dismiss = useRef(onDismiss)
+  dismiss.current = onDismiss
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) dismiss.current()
+    }
+
+    const items = () =>
+      Array.from(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])
+
+    const highlight = (index: number) => {
+      const list = items()
+      list.forEach((item, i) => {
+        if (i === index) item.setAttribute('data-highlighted', '')
+        else item.removeAttribute('data-highlighted')
+      })
+      list[index]?.focus()
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        dismiss.current()
+        return
+      }
+
+      const list = items()
+      if (list.length === 0) return
+
+      const current = list.findIndex((item) => item.hasAttribute('data-highlighted'))
+      const from =
+        current >= 0 ? current : list.findIndex((item) => item === document.activeElement)
+
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        const start = from >= 0 ? from : event.key === 'ArrowDown' ? -1 : 0
+        const delta = event.key === 'ArrowDown' ? 1 : -1
+        highlight((start + delta + list.length) % list.length)
+      } else if (event.key === 'Home') {
+        event.preventDefault()
+        highlight(0)
+      } else if (event.key === 'End') {
+        event.preventDefault()
+        highlight(list.length - 1)
+      }
+    }
+
+    document.addEventListener('pointerdown', onPointerDown, true)
+    document.addEventListener('keydown', onKeyDown)
+    highlight(0)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
+
+  const itemClass =
+    'flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-muted data-[highlighted]:bg-muted'
+
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      aria-label="Project"
+      style={{ left: x, top: y }}
+      className="fixed z-50 min-w-44 rounded-[calc(var(--radius)*0.7)] border border-border bg-background py-1 shadow-md"
+    >
+      <button type="button" role="menuitem" onClick={onNewSession} className={itemClass}>
+        New session
+      </button>
+      <button type="button" role="menuitem" onClick={onEnvironments} className={itemClass}>
+        {hasEnvironments ? 'Environments' : 'Set up'}
+      </button>
+      <button type="button" role="menuitem" onClick={onOpenGitHub} className={itemClass}>
+        Open on GitHub
+      </button>
+      <div className="my-1 border-t border-border" />
+      <button
+        type="button"
+        role="menuitem"
+        onClick={onRemove}
+        className={`${itemClass} text-destructive`}
+      >
+        Remove
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Type-to-confirm before deleting a project.
+ *
+ * A menu that closes the moment focus drifts is the wrong container for
+ * typing a repository name. Same dialog chrome as session details.
+ */
+function RemoveProjectDialog({
+  repoFullName,
+  onConfirm,
+  onDismiss,
+}: {
+  repoFullName: string
+  onConfirm: () => void
+  onDismiss: () => void
+}) {
+  const [typed, setTyped] = useState('')
+  const panel = useRef<HTMLDivElement>(null)
+  const input = useRef<HTMLInputElement>(null)
+  const dismiss = useRef(onDismiss)
+  dismiss.current = onDismiss
+  const matches = typed === repoFullName
+
+  useEffect(() => {
+    input.current?.focus()
+
+    const focusable = () => {
+      const nodes = panel.current?.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )
+      return nodes ? Array.from(nodes) : []
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        dismiss.current()
+        return
+      }
+
+      if (event.key !== 'Tab') return
+
+      const items = focusable()
+      if (items.length === 0) {
+        event.preventDefault()
+        panel.current?.focus()
+        return
+      }
+
+      const first = items[0]!
+      const last = items[items.length - 1]!
+      const active = document.activeElement
+
+      if (event.shiftKey && (active === first || active === panel.current)) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (active === last || active === panel.current)) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-6"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onDismiss()
+      }}
+    >
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="remove-project-title"
+        tabIndex={-1}
+        className="w-full max-w-sm overflow-hidden rounded-[calc(var(--radius)*1.1)] border border-border bg-background shadow-lg outline-none"
+      >
+        <div className="flex items-start gap-2.5 border-b border-border px-4 py-3">
+          <h2 id="remove-project-title" className="min-w-0 flex-1 font-medium">
+            Remove {repoFullName}?
+          </h2>
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label="Close"
+            className="-mt-0.5 grid size-6 flex-none place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <CloseIcon size={14} />
+          </button>
+        </div>
+
+        <form
+          className="px-4 py-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (matches) onConfirm()
+          }}
+        >
+          <p className="text-[13px] text-muted-foreground">
+            This removes the project and its sessions from Dukebox. Nothing on GitHub is touched.
+          </p>
+          <label className="mt-3 block text-[12px] text-muted-foreground">
+            Type <span className="font-medium text-foreground">{repoFullName}</span> to confirm
+            <input
+              ref={input}
+              value={typed}
+              onChange={(event) => setTyped(event.target.value)}
+              aria-label={`Type ${repoFullName} to confirm`}
+              autoComplete="off"
+              spellCheck={false}
+              className="mt-1 w-full rounded-[calc(var(--radius)*0.6)] border border-border-strong bg-background px-2.5 py-1.5 text-[13px] text-foreground outline-none"
+            />
+          </label>
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="rounded-[calc(var(--radius)*0.6)] px-2.5 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!matches}
+              className="rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12px] font-medium text-destructive hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              Remove
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

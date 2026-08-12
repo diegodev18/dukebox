@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { AGENT_CREDENTIAL_SECRET, type SecretStore } from '../secrets/store.js'
+import { requireOwner, type AuthedVariables } from './auth.js'
 
 /**
  * Secrets: values a session needs but that must not live in a repository.
@@ -34,7 +35,7 @@ const setAgentCredentialRequest = z.object({
 })
 
 export function secretRoutes(deps: SecretRoutesDeps) {
-  const app = new Hono()
+  const app = new Hono<{ Variables: AuthedVariables }>()
 
   /**
    * The agent's credentials.
@@ -42,7 +43,7 @@ export function secretRoutes(deps: SecretRoutesDeps) {
    * Server-wide rather than per project: one subscription runs every session,
    * whatever repository it is working in.
    */
-  app.put('/agent-credentials', async (c) => {
+  app.put('/agent-credentials', requireOwner, async (c) => {
     const body = await c.req.json().catch(() => null)
     const parsed = setAgentCredentialRequest.safeParse(body)
 
@@ -59,7 +60,7 @@ export function secretRoutes(deps: SecretRoutesDeps) {
     return c.json({ configured: await deps.secrets.has(AGENT_CREDENTIAL_SECRET) })
   })
 
-  app.delete('/agent-credentials', async (c) => {
+  app.delete('/agent-credentials', requireOwner, async (c) => {
     const deleted = await deps.secrets.delete(AGENT_CREDENTIAL_SECRET)
 
     if (!deleted) {
@@ -71,6 +72,9 @@ export function secretRoutes(deps: SecretRoutesDeps) {
 
   app.get('/projects/:id/secrets', async (c) => {
     const projectId = c.req.param('id')
+    if (!projectId) {
+      return c.json({ error: 'not_found', message: 'no such project' }, 404)
+    }
 
     if (!(await projectExists(deps.db, projectId))) {
       return c.json({ error: 'not_found', message: 'no such project' }, 404)
@@ -83,6 +87,9 @@ export function secretRoutes(deps: SecretRoutesDeps) {
 
   app.put('/projects/:id/secrets', async (c) => {
     const projectId = c.req.param('id')
+    if (!projectId) {
+      return c.json({ error: 'not_found', message: 'no such project' }, 404)
+    }
 
     if (!(await projectExists(deps.db, projectId))) {
       return c.json({ error: 'not_found', message: 'no such project' }, 404)
@@ -100,7 +107,12 @@ export function secretRoutes(deps: SecretRoutesDeps) {
   })
 
   app.delete('/projects/:id/secrets/:name', async (c) => {
-    const deleted = await deps.secrets.delete(c.req.param('name'), c.req.param('id'))
+    const name = c.req.param('name')
+    const projectId = c.req.param('id')
+    if (!name || !projectId) {
+      return c.json({ error: 'not_found', message: 'no such secret' }, 404)
+    }
+    const deleted = await deps.secrets.delete(name, projectId)
 
     if (!deleted) {
       return c.json({ error: 'not_found', message: 'no such secret' }, 404)

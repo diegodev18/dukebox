@@ -1,6 +1,6 @@
 {
-  "id": "378feb97-8d7d-4943-96c3-fba68701c540",
-  "prevId": "baf71cef-30c2-49e5-81b0-65d78cf7724b",
+  "id": "efe711e4-9906-4c1d-b6dd-88a963d7f0b6",
+  "prevId": "378feb97-8d7d-4943-96c3-fba68701c540",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -218,12 +218,8 @@
           "name": "environments_project_id_projects_id_fk",
           "tableFrom": "environments",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -309,12 +305,8 @@
           "name": "messages_session_id_sessions_id_fk",
           "tableFrom": "messages",
           "tableTo": "sessions",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -412,12 +404,8 @@
           "name": "pairing_codes_redeemed_by_device_id_devices_id_fk",
           "tableFrom": "pairing_codes",
           "tableTo": "devices",
-          "columnsFrom": [
-            "redeemed_by_device_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["redeemed_by_device_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -591,12 +579,8 @@
           "name": "secrets_project_id_projects_id_fk",
           "tableFrom": "secrets",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -745,6 +729,30 @@
           "primaryKey": false,
           "notNull": false
         },
+        "pr_title": {
+          "name": "pr_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pr_draft": {
+          "name": "pr_draft",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pr_state": {
+          "name": "pr_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "git_preferences": {
+          "name": "git_preferences",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "error_message": {
           "name": "error_message",
           "type": "text",
@@ -857,12 +865,8 @@
           "name": "sessions_project_id_projects_id_fk",
           "tableFrom": "sessions",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -870,12 +874,8 @@
           "name": "sessions_environment_id_environments_id_fk",
           "tableFrom": "sessions",
           "tableTo": "environments",
-          "columnsFrom": [
-            "environment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["environment_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -883,12 +883,8 @@
           "name": "sessions_created_by_device_id_devices_id_fk",
           "tableFrom": "sessions",
           "tableTo": "devices",
-          "columnsFrom": [
-            "created_by_device_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by_device_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }

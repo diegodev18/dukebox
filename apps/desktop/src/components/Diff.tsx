@@ -1,5 +1,7 @@
 import type { FileChange } from '@dukebox/protocol'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { cn } from '@/lib/utils'
+import { tokensForCode, type HighlightToken } from '@/lib/syntaxHighlight'
 
 /**
  * What changed in a file.
@@ -14,6 +16,8 @@ export function Diff({ file }: { file: FileChange }) {
   const after = file.after ?? ''
   const simplified = isSimplifiedDiff(before, after)
   const lines = useMemo(() => diffLines(before, after), [before, after])
+  const digits = useMemo(() => gutterDigits(lines), [lines])
+  const highlight = useFileHighlight(file.path, before, after)
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set())
 
   const toggleSkip = (index: number) => {
@@ -26,7 +30,7 @@ export function Diff({ file }: { file: FileChange }) {
   }
 
   return (
-    <div data-selectable>
+    <div data-selectable aria-busy={highlight.before == null || highlight.after == null}>
       {simplified && (
         <p className="px-3 py-1.5 text-[12px] text-muted-foreground">
           Diff simplified (file too large)
@@ -40,11 +44,18 @@ export function Diff({ file }: { file: FileChange }) {
             <SkipHunk
               key={index}
               line={line}
+              digits={digits}
+              highlight={highlight}
               open={expanded.has(index)}
               onToggle={() => toggleSkip(index)}
             />
           ) : (
-            <DiffRow key={index} kind={line.kind} text={line.text} />
+            <DiffRow
+              key={index}
+              line={line}
+              digits={digits}
+              tokens={tokensForRow(line, highlight)}
+            />
           ),
         )}
       </div>
@@ -54,52 +65,166 @@ export function Diff({ file }: { file: FileChange }) {
 
 function SkipHunk({
   line,
+  digits,
+  highlight,
   open,
   onToggle,
 }: {
   line: SkipLine
+  digits: number
+  highlight: FileHighlight
   open: boolean
   onToggle: () => void
 }) {
+  const range = skipRange(line.hidden)
+  const label = skipLabel(line.count, range)
+
   return (
     <div>
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        aria-label={skipLabel(line.count)}
-        className="block w-full px-1.5 py-0.5 text-left text-muted-foreground hover:bg-muted hover:text-foreground"
+        aria-label={label}
+        className="block w-full bg-muted/60 px-3 py-0.5 text-left text-muted-foreground hover:bg-muted hover:text-foreground"
       >
-        {skipLabel(line.count)}
+        {label}
       </button>
-      {open && line.hidden.map((text, index) => <DiffRow key={index} kind="same" text={text} />)}
+      {open &&
+        line.hidden.map((hidden, index) => (
+          <DiffRow
+            key={index}
+            line={hidden}
+            digits={digits}
+            tokens={tokensForRow(hidden, highlight)}
+          />
+        ))}
     </div>
   )
 }
 
-function DiffRow({ kind, text }: { kind: 'added' | 'removed' | 'same'; text: string }) {
+function DiffRow({
+  line,
+  digits,
+  tokens,
+}: {
+  line: SameLine
+  digits: number
+  tokens: HighlightToken[] | null
+}) {
+  const { kind, text, oldLine, newLine } = line
+  const gutterTint =
+    kind === 'added'
+      ? 'border-added bg-[color-mix(in_oklch,var(--color-added)_12%,var(--color-surface))]'
+      : kind === 'removed'
+        ? 'border-removed bg-[color-mix(in_oklch,var(--color-removed)_12%,var(--color-surface))]'
+        : 'border-transparent bg-surface'
+  const codeTint = kind === 'added' ? 'bg-added/12' : kind === 'removed' ? 'bg-removed/12' : ''
+
   return (
-    <div
-      className={
-        kind === 'added'
-          ? 'bg-added/12 text-added'
-          : kind === 'removed'
-            ? 'bg-removed/12 text-removed'
-            : 'text-muted-foreground'
-      }
-    >
-      <span className="inline-block w-4 flex-none select-none pl-1.5 opacity-60">
-        {kind === 'added' ? '+' : kind === 'removed' ? '−' : ''}
+    <div className="flex min-w-full">
+      <span
+        className={cn(
+          'flex flex-none select-none items-center gap-2 border-l-2 py-0 pl-2 pr-3 tabular-nums text-muted-foreground',
+          gutterTint,
+        )}
+      >
+        <span className="inline-block text-right opacity-60" style={{ width: `${digits}ch` }}>
+          {oldLine ?? ''}
+        </span>
+        <span className="inline-block text-right opacity-60" style={{ width: `${digits}ch` }}>
+          {newLine ?? ''}
+        </span>
       </span>
       {/* Code scrolls rather than wraps: a wrapped line reads as two
           lines, which is exactly the thing a diff must not blur. */}
-      <span className="whitespace-pre pr-3">{text || ' '}</span>
+      <span className={cn('flex-1 whitespace-pre pr-3 text-foreground', codeTint)}>
+        <Code text={text} tokens={tokens} />
+      </span>
     </div>
   )
 }
 
-export type SameLine = { kind: 'added' | 'removed' | 'same'; text: string }
-export type SkipLine = { kind: 'skip'; count: number; hidden: string[] }
+function Code({ text, tokens }: { text: string; tokens: HighlightToken[] | null }) {
+  if (!tokens || tokens.length === 0) return <>{text || ' '}</>
+  return (
+    <>
+      {tokens.map((token, index) => (
+        <span key={index} className="shiki-token" style={token.style as CSSProperties | undefined}>
+          {token.content}
+        </span>
+      ))}
+    </>
+  )
+}
+
+type FileHighlight = {
+  before: HighlightToken[][] | null
+  after: HighlightToken[][] | null
+}
+
+function useFileHighlight(path: string, before: string, after: string): FileHighlight {
+  const [tokens, setTokens] = useState<FileHighlight>({ before: null, after: null })
+
+  useEffect(() => {
+    let cancelled = false
+    setTokens({ before: null, after: null })
+    void Promise.all([tokensForCode(path, before), tokensForCode(path, after)]).then(
+      ([beforeTokens, afterTokens]) => {
+        if (!cancelled) setTokens({ before: beforeTokens, after: afterTokens })
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [path, before, after])
+
+  return tokens
+}
+
+function tokensForRow(line: SameLine, highlight: FileHighlight): HighlightToken[] | null {
+  if (line.kind === 'removed') {
+    return line.oldLine != null ? (highlight.before?.[line.oldLine - 1] ?? null) : null
+  }
+  return line.newLine != null ? (highlight.after?.[line.newLine - 1] ?? null) : null
+}
+
+function gutterDigits(lines: Line[]): number {
+  let max = 0
+  const consider = (n: number | null) => {
+    if (n != null && n > max) max = n
+  }
+  for (const line of lines) {
+    if (line.kind === 'skip') {
+      for (const hidden of line.hidden) {
+        consider(hidden.oldLine)
+        consider(hidden.newLine)
+      }
+    } else {
+      consider(line.oldLine)
+      consider(line.newLine)
+    }
+  }
+  return Math.max(2, String(max).length)
+}
+
+function skipRange(hidden: SameLine[]): { start: number; end: number } | undefined {
+  const first = hidden[0]
+  const last = hidden.at(-1)
+  if (!first || !last) return undefined
+  const start = first.oldLine ?? first.newLine
+  const end = last.oldLine ?? last.newLine
+  if (start == null || end == null) return undefined
+  return { start, end }
+}
+
+export type SameLine = {
+  kind: 'added' | 'removed' | 'same'
+  text: string
+  oldLine: number | null
+  newLine: number | null
+}
+export type SkipLine = { kind: 'skip'; count: number; hidden: SameLine[] }
 export type Line = SameLine | SkipLine
 
 /**
@@ -118,8 +243,11 @@ export function isSimplifiedDiff(before: string, after: string): boolean {
   return a > MAX_LCS_LINES || b > MAX_LCS_LINES
 }
 
-export function skipLabel(count: number): string {
-  return `⋯ ${count} unchanged line${count === 1 ? '' : 's'}`
+export function skipLabel(count: number, range?: { start: number; end: number }): string {
+  const noun = `⋯ ${count} unchanged line${count === 1 ? '' : 's'}`
+  if (!range) return noun
+  if (range.start === range.end) return `${noun} · ${range.start}`
+  return `${noun} · ${range.start}–${range.end}`
 }
 
 /** Added and removed line counts for a file's before/after pair. */
@@ -147,13 +275,37 @@ export function diffLines(before: string, after: string): Line[] {
   const a = before === '' ? [] : before.split('\n')
   const b = after === '' ? [] : after.split('\n')
 
-  if (a.length === 0) return b.map((text) => ({ kind: 'added', text }))
-  if (b.length === 0) return a.map((text) => ({ kind: 'removed', text }))
+  if (a.length === 0) {
+    return b.map((text, index) => ({
+      kind: 'added',
+      text,
+      oldLine: null,
+      newLine: index + 1,
+    }))
+  }
+  if (b.length === 0) {
+    return a.map((text, index) => ({
+      kind: 'removed',
+      text,
+      oldLine: index + 1,
+      newLine: null,
+    }))
+  }
 
   if (a.length > MAX_LCS_LINES || b.length > MAX_LCS_LINES) {
     return [
-      ...a.map((text): Line => ({ kind: 'removed', text })),
-      ...b.map((text): Line => ({ kind: 'added', text })),
+      ...a.map((text, index): Line => ({
+        kind: 'removed',
+        text,
+        oldLine: index + 1,
+        newLine: null,
+      })),
+      ...b.map((text, index): Line => ({
+        kind: 'added',
+        text,
+        oldLine: null,
+        newLine: index + 1,
+      })),
     ]
   }
 
@@ -178,20 +330,26 @@ export function diffLines(before: string, after: string): Line[] {
 
   while (i < a.length && j < b.length) {
     if (a[i] === b[j]) {
-      lines.push({ kind: 'same', text: a[i]! })
+      lines.push({ kind: 'same', text: a[i]!, oldLine: i + 1, newLine: j + 1 })
       i += 1
       j += 1
     } else if (lengths[i + 1]![j]! >= lengths[i]![j + 1]!) {
-      lines.push({ kind: 'removed', text: a[i]! })
+      lines.push({ kind: 'removed', text: a[i]!, oldLine: i + 1, newLine: null })
       i += 1
     } else {
-      lines.push({ kind: 'added', text: b[j]! })
+      lines.push({ kind: 'added', text: b[j]!, oldLine: null, newLine: j + 1 })
       j += 1
     }
   }
 
-  while (i < a.length) lines.push({ kind: 'removed', text: a[i++]! })
-  while (j < b.length) lines.push({ kind: 'added', text: b[j++]! })
+  while (i < a.length) {
+    lines.push({ kind: 'removed', text: a[i]!, oldLine: i + 1, newLine: null })
+    i += 1
+  }
+  while (j < b.length) {
+    lines.push({ kind: 'added', text: b[j]!, oldLine: null, newLine: j + 1 })
+    j += 1
+  }
 
   return collapse(lines)
 }
@@ -218,7 +376,7 @@ function collapse(lines: SameLine[]): Line[] {
   if (keep.size === lines.length) return lines
 
   const result: Line[] = []
-  const skipped: string[] = []
+  const skipped: SameLine[] = []
 
   lines.forEach((line, index) => {
     if (keep.has(index)) {
@@ -229,7 +387,7 @@ function collapse(lines: SameLine[]): Line[] {
       result.push(line)
       return
     }
-    skipped.push(line.text)
+    skipped.push(line)
   })
 
   if (skipped.length > 0) {

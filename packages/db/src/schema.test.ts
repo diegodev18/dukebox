@@ -149,6 +149,30 @@ describe('messages', () => {
 })
 
 describe('sessions', () => {
+  it('keeps a session when its creating device is deleted', async () => {
+    const [device] = await db
+      .insert(devices)
+      .values({ name: 'Author', platform: 'macos', tokenHash: 'hash-author' })
+      .returning()
+    const project = await insertProject()
+    const [session] = await db
+      .insert(sessions)
+      .values({
+        projectId: project.id,
+        agentId: 'claude-code',
+        status: 'running',
+        branch: 'duke/abc123',
+        baseBranch: 'main',
+        createdByDeviceId: device!.id,
+      })
+      .returning()
+
+    await db.delete(devices).where(eq(devices.id, device!.id))
+
+    const [after] = await db.select().from(sessions).where(eq(sessions.id, session!.id))
+    expect(after?.createdByDeviceId).toBeNull()
+  })
+
   it('starts lastSeq at 0 so the first event takes seq 1', async () => {
     const project = await insertProject()
     const session = await insertSession(project.id)
@@ -486,6 +510,56 @@ describe('secrets', () => {
 })
 
 describe('devices and pairing codes', () => {
+  it('defaults a device to member so inserts that omit a role stay valid', async () => {
+    const [device] = await db
+      .insert(devices)
+      .values({ name: 'Diego MacBook', platform: 'macos', tokenHash: 'hash-role' })
+      .returning()
+
+    expect(device?.role).toBe('member')
+  })
+
+  it('rejects a second active owner', async () => {
+    await db.insert(devices).values({
+      name: 'First',
+      platform: 'macos',
+      tokenHash: 'hash-owner-1',
+      role: 'owner',
+    })
+
+    await expect(
+      db.insert(devices).values({
+        name: 'Second',
+        platform: 'linux',
+        tokenHash: 'hash-owner-2',
+        role: 'owner',
+      }),
+    ).rejects.toThrow()
+  })
+
+  it('allows a new owner after the previous one is revoked', async () => {
+    const [first] = await db
+      .insert(devices)
+      .values({
+        name: 'First',
+        platform: 'macos',
+        tokenHash: 'hash-owner-revoked',
+        role: 'owner',
+      })
+      .returning()
+
+    await db.update(devices).set({ revokedAt: new Date() }).where(eq(devices.id, first!.id))
+
+    await expect(
+      db.insert(devices).values({
+        name: 'Replacement',
+        platform: 'linux',
+        tokenHash: 'hash-owner-next',
+        role: 'owner',
+      }),
+    ).resolves.toBeDefined()
+  })
+
   it('rejects a duplicate token hash', async () => {
     const values = { name: 'Diego MacBook', platform: 'macos', tokenHash: 'hash-1' }
     await db.insert(devices).values(values)

@@ -47,7 +47,7 @@ export interface LiveSession {
   resizeTerminal: (terminalId: string, cols: number, rows: number) => void
   closeTerminal: (terminalId: string) => void
   /** Forget output already written to xterm, so it is not replayed. */
-  drainTerminal: (terminalId: string) => void
+  drainTerminal: (terminalId: string, count: number) => void
 }
 
 export function useSession(
@@ -229,8 +229,8 @@ export function useSession(
     [sessionId],
   )
 
-  const drainTerminal = useCallback((terminalId: string) => {
-    setTerminals((current) => drainTab(current, terminalId))
+  const drainTerminal = useCallback((terminalId: string, count: number) => {
+    setTerminals((current) => drainTab(current, terminalId, count))
   }, [])
 
   return {

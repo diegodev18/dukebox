@@ -57,6 +57,7 @@ const secretStore = new SecretStore(db, randomBytes(32))
 const app = createApp({
   db,
   serverName: 'dukebox-test',
+  pairingEndpoint: { host: 'localhost', port: 7777 },
   features: { github, bus, sessions: sessionManager, secrets: secretStore },
 })
 

@@ -13,7 +13,7 @@ import { SecretStore } from './secrets/store.js'
 import { createApp } from './http/app.js'
 import { SessionManager } from './sessions/manager.js'
 import { TerminalRegistry } from './sessions/terminals.js'
-import { attachWebSocketServer } from './ws/server.js'
+import { attachWebSocketServer, disconnectDevice } from './ws/server.js'
 
 /**
  * Control plane entry point.
@@ -98,9 +98,13 @@ async function main() {
   // Marked stopped so the app does not show a turn that can never finish.
   await sessions.reclaimAfterRestart()
 
+  const endpoint = await transport.advertisedEndpoint(config.server.port)
+
   const app = createApp({
     db,
     serverName: hostname(),
+    pairingEndpoint: endpoint,
+    onDeviceRevoked: disconnectDevice,
     features: { github, bus, sessions, secrets: secretStore },
   })
 

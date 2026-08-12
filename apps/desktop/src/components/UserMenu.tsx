@@ -1,4 +1,4 @@
-import { DEFAULT_COMMIT_IDENTITY, type CommitIdentity } from '@dukebox/protocol'
+import { DEFAULT_COMMIT_IDENTITY, type CommitIdentity, type DeviceRole } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { AgentIcon } from '@/components/AgentIcon'
 import {
@@ -25,9 +25,11 @@ export const AVAILABLE_USERS: CommitIdentity[] = [DEFAULT_COMMIT_IDENTITY]
 
 export function UserMenu({
   user,
+  role,
   onOpenSettings,
 }: {
   user: CommitIdentity
+  role: DeviceRole | null
   onOpenSettings: (category: SettingsCategory) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -133,7 +135,9 @@ export function UserMenu({
         <Avatar name={user.name} />
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium">{user.name}</div>
-          <div className="truncate text-[11px] text-muted-foreground">{user.email}</div>
+          <div className="truncate text-[11px] text-muted-foreground">
+            {role === 'owner' ? 'Owner' : user.email}
+          </div>
         </div>
         <ChevronDownIcon size={14} className="flex-none opacity-70" />
       </button>
@@ -182,17 +186,30 @@ export function UserMenu({
               <SettingsIcon size={14} className="flex-none text-muted-foreground" />
               Settings…
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => openSettings('agents')}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted data-[highlighted]:bg-muted"
-            >
-              <span className="flex-none text-muted-foreground">
-                <AgentIcon agentId="opencode" className="size-3.5" />
-              </span>
-              Agents…
-            </button>
+            {role === 'owner' && (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => openSettings('agents')}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted data-[highlighted]:bg-muted"
+                >
+                  <span className="flex-none text-muted-foreground">
+                    <AgentIcon agentId="opencode" className="size-3.5" />
+                  </span>
+                  Agents…
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => openSettings('devices')}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted data-[highlighted]:bg-muted"
+                >
+                  <ServerIcon size={14} className="flex-none text-muted-foreground" />
+                  Devices…
+                </button>
+              </>
+            )}
             <button
               type="button"
               role="menuitem"

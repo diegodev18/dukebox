@@ -125,6 +125,8 @@ export interface StartSessionOptions {
    * Absent means the Cursor-like defaults (draft, auto-open, squash).
    */
   gitPreferences?: GitPreferences
+  /** The paired device that asked to start this session. */
+  createdByDeviceId?: string
 }
 
 /** What a running session holds while it is alive. */
@@ -267,6 +269,7 @@ export class SessionManager {
         title: purpose === 'environment_setup' ? 'Configure environment' : prompt.slice(0, 80),
         permissionMode: storedPermissionMode(options.agentId, options.permissionMode),
         gitPreferences: parseGitPreferences(options.gitPreferences),
+        createdByDeviceId: options.createdByDeviceId,
       })
       .returning()
 

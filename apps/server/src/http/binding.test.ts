@@ -25,7 +25,11 @@ afterEach(async () => {
 
 async function listen(hostname: string) {
   await prepareDatabase()
-  const app = createApp({ db, serverName: 'dukebox-test' })
+  const app = createApp({
+    db,
+    serverName: 'dukebox-test',
+    pairingEndpoint: { host: '127.0.0.1', port: 7777 },
+  })
 
   return new Promise<{ address: string; port: number }>((resolve) => {
     running = serve({ fetch: app.fetch, hostname, port: 0 }, (info) => {

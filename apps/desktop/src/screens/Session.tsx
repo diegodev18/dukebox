@@ -1,6 +1,7 @@
 import {
   DEFAULT_COMMIT_IDENTITY,
   isTerminal,
+  type DeviceRole,
   type ProjectSummary,
   type SessionSummary,
 } from '@dukebox/protocol'
@@ -59,6 +60,7 @@ export function Session({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>('account')
   const [setupProjectId, setSetupProjectId] = useState<string | null>(null)
+  const [preferProjectId, setPreferProjectId] = useState<string | null>(null)
   // Remember OpenCode when new session opens provider settings, so Back
   // restores the form with that agent still selected.
   const [preferAgentId, setPreferAgentId] = useState<string | null>(null)
@@ -67,6 +69,7 @@ export function Session({
   // carries the id; the name lives on the environment row.
   const [environmentNames, setEnvironmentNames] = useState<Record<string, string>>({})
   const [archiveError, setArchiveError] = useState<string | null>(null)
+  const [role, setRole] = useState<DeviceRole | null>(null)
 
   const refreshProjects = async () => {
     try {
@@ -81,15 +84,17 @@ export function Session({
 
     const load = async () => {
       try {
-        const [loadedProjects, loadedSessions] = await Promise.all([
+        const [loadedProjects, loadedSessions, me] = await Promise.all([
           client.listProjects(),
           client.listSessions(),
+          client.whoami(),
         ])
 
         if (cancelled) return
 
         setProjects(loadedProjects)
         setSessions(loadedSessions)
+        setRole(me.role)
         setSelected((current) => current ?? loadedSessions[0]?.id ?? null)
         setLoading(false)
       } catch {
@@ -158,6 +163,7 @@ export function Session({
     setSelected(session.id)
     setCreating(false)
     setSetupProjectId(null)
+    setPreferProjectId(null)
     setManagingProjectId(null)
     setPreferAgentId(null)
   }
@@ -176,6 +182,7 @@ export function Session({
       {settingsOpen ? (
         <SettingsNav
           category={settingsCategory}
+          role={role}
           onCategoryChange={setSettingsCategory}
           onBack={() => setSettingsOpen(false)}
         />
@@ -185,9 +192,11 @@ export function Session({
           sessions={sessions}
           selectedId={creating ? null : selected}
           identity={settings.commitIdentity ?? DEFAULT_COMMIT_IDENTITY}
+          role={role}
           onOpenSettings={(category) => {
             setCreating(false)
             setSetupProjectId(null)
+            setPreferProjectId(null)
             setManagingProjectId(null)
             setPreferAgentId(null)
             setSettingsCategory(category)
@@ -198,12 +207,14 @@ export function Session({
             setCreating(false)
             setSettingsOpen(false)
             setSetupProjectId(null)
+            setPreferProjectId(null)
             setManagingProjectId(null)
             setPreferAgentId(null)
             setSelected(sessionId)
           }}
-          onNewSession={() => {
+          onNewSession={(projectId) => {
             setSetupProjectId(null)
+            setPreferProjectId(projectId ?? null)
             setManagingProjectId(null)
             setPreferAgentId(null)
             setSettingsOpen(false)
@@ -211,6 +222,7 @@ export function Session({
           }}
           onConfigureEnvironment={(projectId) => {
             setSetupProjectId(projectId)
+            setPreferProjectId(null)
             setManagingProjectId(null)
             setPreferAgentId(null)
             setSettingsOpen(false)
@@ -220,10 +232,44 @@ export function Session({
             setCreating(false)
             setSettingsOpen(false)
             setSetupProjectId(null)
+            setPreferProjectId(null)
             setPreferAgentId(null)
             setManagingProjectId(projectId)
           }}
           archiveError={archiveError}
+          onRemoveProject={(projectId) => {
+            void (async () => {
+              try {
+                await client.deleteProject(projectId)
+                setArchiveError(null)
+              } catch (error) {
+                setArchiveError(
+                  error instanceof Error ? error.message : 'Could not remove the project.',
+                )
+                return
+              }
+
+              const remaining = sessions.filter((session) => session.projectId !== projectId)
+              setProjects((current) => current.filter((project) => project.id !== projectId))
+              setSessions(remaining)
+              setSelected((currentSelected) => {
+                if (!currentSelected) return currentSelected
+                if (remaining.some((session) => session.id === currentSelected)) {
+                  return currentSelected
+                }
+                return remaining[0]?.id ?? null
+              })
+              if (managingProjectId === projectId) setManagingProjectId(null)
+              if (setupProjectId === projectId) {
+                setSetupProjectId(null)
+                setCreating(false)
+              }
+              if (preferProjectId === projectId) {
+                setPreferProjectId(null)
+                setCreating(false)
+              }
+            })()
+          }}
           onArchive={(sessionId) => {
             void (async () => {
               try {
@@ -263,6 +309,7 @@ export function Session({
           settings={settings}
           update={update}
           category={settingsCategory}
+          role={role}
           onSaveSettings={onSaveSettings}
           onSwitchServer={onSwitchServer}
           onClose={() => setSettingsOpen(false)}
@@ -279,8 +326,10 @@ export function Session({
           gitPreferences={settings.git}
           onCreated={onSessionCreated}
           preferSetupProjectId={setupProjectId}
+          preferProjectId={preferProjectId}
           preferAgentId={preferAgentId}
           onConfigureProviders={() => {
+            if (role !== 'owner') return
             setPreferAgentId('opencode')
             setSettingsCategory('agents')
             setSettingsOpen(true)
