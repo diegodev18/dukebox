@@ -5,6 +5,13 @@ import {
   type UpsertOpencodeProviderRequest,
 } from '@dukebox/protocol'
 import { useEffect, useState } from 'react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type { DukeboxClient } from '@/lib/client'
 
 /**
@@ -226,21 +233,22 @@ function ProviderForm({
 
   return (
     <div className="mt-3 rounded-[calc(var(--radius)*0.8)] border border-border bg-surface px-3.5 py-3">
-      <label className="block text-[12px] text-muted-foreground">
-        Provider
-        <select
-          value={kind}
-          onChange={(event) => setKind(event.target.value as OpencodeProviderKind)}
-          className="mt-1 w-full rounded-[calc(var(--radius)*0.6)] border border-border-strong bg-background px-2.5 py-1.5 text-[13px] outline-none"
-        >
-          {OPENCODE_CATALOG.map((entry) => (
-            <option key={entry.kind} value={entry.kind}>
-              {entry.name}
-            </option>
-          ))}
-          <option value="openai-compatible">Custom (OpenAI-compatible)</option>
-        </select>
-      </label>
+      <div className="block text-[12px] text-muted-foreground">
+        <span id="opencode-provider-kind-label">Provider</span>
+        <Select value={kind} onValueChange={(value) => setKind(value as OpencodeProviderKind)}>
+          <SelectTrigger className="mt-1" aria-labelledby="opencode-provider-kind-label">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {OPENCODE_CATALOG.map((entry) => (
+              <SelectItem key={entry.kind} value={entry.kind}>
+                {entry.name}
+              </SelectItem>
+            ))}
+            <SelectItem value="openai-compatible">Custom (OpenAI-compatible)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       {taken && (
         <p className="mt-2 text-[12px] text-muted-foreground">
