@@ -53,7 +53,7 @@ interface TerminalProps {
   onTerminalInput: (terminalId: string, data: string) => void
   onTerminalResize: (terminalId: string, cols: number, rows: number) => void
   onCloseTerminal: (terminalId: string) => void
-  onDrainTerminal: (terminalId: string) => void
+  onDrainTerminal: (terminalId: string, count: number) => void
   /** Set when opening a terminal was rejected, so the waiting state can clear. */
   error?: string | null
 }
@@ -559,7 +559,7 @@ function TerminalPanel({
           active={tab.terminalId === active?.terminalId}
           onInput={(data) => onTerminalInput(tab.terminalId, data)}
           onResize={(cols, rows) => onTerminalResize(tab.terminalId, cols, rows)}
-          onDrain={() => onDrainTerminal(tab.terminalId)}
+          onDrain={(count) => onDrainTerminal(tab.terminalId, count)}
         />
       ))}
     </div>
