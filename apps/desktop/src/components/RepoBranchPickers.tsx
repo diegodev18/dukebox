@@ -333,24 +333,26 @@ export function ModelPicker({
   value,
   onChange,
   disabled,
+  models = AVAILABLE_MODELS,
 }: {
   value: string
   onChange: (modelId: string) => void
   disabled?: boolean
+  models?: readonly { id: string; label: string }[]
 }) {
   const [open, setOpen] = useState(false)
-  const label = modelLabel(value) ?? value
+  const label = models.find((model) => model.id === value)?.label ?? modelLabel(value) ?? value
 
   return (
     <PickerShell
       open={open}
       onOpenChange={setOpen}
-      disabled={Boolean(disabled)}
+      disabled={Boolean(disabled) || models.length === 0}
       label={<span className="truncate">{label || 'Model'}</span>}
       ariaLabel="Model"
     >
       <div className="max-h-64 overflow-y-auto py-1">
-        {AVAILABLE_MODELS.map((model) => (
+        {models.map((model) => (
           <PickerRow
             key={model.id}
             selected={model.id === value}

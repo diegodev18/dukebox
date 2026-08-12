@@ -44,6 +44,14 @@ function clientMock() {
     agentCredentialsConfigured: vi.fn().mockResolvedValue(false),
     setAgentCredentials: vi.fn().mockResolvedValue(undefined),
     clearAgentCredentials: vi.fn().mockResolvedValue(undefined),
+    listOpencodeProviders: vi.fn().mockResolvedValue([]),
+    upsertOpencodeProvider: vi.fn().mockResolvedValue({
+      id: 'anthropic',
+      kind: 'anthropic',
+      name: 'Anthropic',
+      models: [{ id: 'claude-sonnet-4-5', label: 'Sonnet 4.5' }],
+    }),
+    deleteOpencodeProvider: vi.fn().mockResolvedValue(undefined),
   }
 }
 
@@ -152,6 +160,42 @@ describe('Settings', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
     await waitFor(() => expect(client.clearAgentCredentials).toHaveBeenCalled())
+  })
+
+  it('saves an OpenCode provider from Account', async () => {
+    const client = clientMock()
+    renderSettings({ client })
+
+    await openCategory('Account')
+    await waitFor(() => expect(screen.getByText(/no providers configured/i)).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: /add provider/i }))
+    await userEvent.type(screen.getByPlaceholderText(/paste key/i), 'sk-ant-opencode')
+    await userEvent.click(screen.getByRole('button', { name: 'Save provider' }))
+
+    await waitFor(() =>
+      expect(client.upsertOpencodeProvider).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'anthropic', apiKey: 'sk-ant-opencode' }),
+      ),
+    )
+  })
+
+  it('opens Account when asked to land there', async () => {
+    render(
+      <SettingsScreen
+        settings={defaultSettings()}
+        connection={server as never}
+        client={clientMock() as never}
+        update={updateMock()}
+        onSaveSettings={vi.fn()}
+        onSwitchServer={vi.fn()}
+        onClose={vi.fn()}
+        onDisconnected={vi.fn()}
+        initialCategory="account"
+      />,
+    )
+
+    expect(await screen.findByRole('heading', { name: 'Account' })).toBeInTheDocument()
   })
 
   it('lists paired servers and switches to another one', async () => {

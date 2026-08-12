@@ -1,0 +1,4 @@
+{"type":"step_start","timestamp":1700000002000,"sessionID":"ses_reason0000000000000001","part":{"id":"prt_1","sessionID":"ses_reason0000000000000001","messageID":"msg_1","type":"step-start"}}
+{"type":"reasoning","timestamp":1700000002001,"sessionID":"ses_reason0000000000000001","part":{"id":"prt_2","sessionID":"ses_reason0000000000000001","messageID":"msg_1","type":"reasoning","text":"considering the options"}}
+{"type":"text","timestamp":1700000002002,"sessionID":"ses_reason0000000000000001","part":{"id":"prt_3","sessionID":"ses_reason0000000000000001","messageID":"msg_1","type":"text","text":"Done."}}
+{"type":"error","timestamp":1700000002003,"sessionID":"ses_reason0000000000000001","error":{"name":"ProviderError","data":{"message":"rate limited"}}}
