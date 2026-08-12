@@ -6,7 +6,7 @@ import {
   AVAILABLE_MODELS,
   agentLabel,
   modelLabel,
-} from './AgentIcon.js'
+} from '@/components/AgentIcon'
 
 /**
  * Chip + searchable popover menus for picking a repository, branch, agent, or

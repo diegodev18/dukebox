@@ -7,8 +7,8 @@ import type {
 } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { ThinkingOrb } from 'thinking-orbs'
-import { activityBlock, mapOrbState, orbStateForTool } from '../lib/orbState.js'
-import { Markdown } from './Markdown.js'
+import { activityBlock, mapOrbState, orbStateForTool } from '@/lib/orbState'
+import { Markdown } from '@/components/Markdown'
 
 /**
  * The conversation.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Block } from '@dukebox/protocol'
-import { activityBlock, mapOrbState, orbStateForTool } from './orbState.js'
+import { activityBlock, mapOrbState, orbStateForTool } from '@/lib/orbState'
 
 describe('orbStateForTool', () => {
   it('maps search-like tools to searching', () => {

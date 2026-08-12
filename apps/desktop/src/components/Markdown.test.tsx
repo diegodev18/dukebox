@@ -6,7 +6,7 @@ vi.mock('@tauri-apps/plugin-opener', () => ({
   openUrl: vi.fn(),
 }))
 
-import { Markdown } from './Markdown.js'
+import { Markdown } from '@/components/Markdown'
 
 describe('Markdown', () => {
   it('strips backticks from inline code', () => {

@@ -1,6 +1,6 @@
 import type { SessionSummary } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
-import type { Connection } from '../lib/connection.js'
+import type { Connection } from '@/lib/connection'
 
 /**
  * Where this session actually runs, on demand.

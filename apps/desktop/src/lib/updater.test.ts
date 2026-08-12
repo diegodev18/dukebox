@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { checkForUpdate, installUpdate } from './updater.js'
+import { checkForUpdate, installUpdate } from '@/lib/updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { type Update } from '@tauri-apps/plugin-updater'
 

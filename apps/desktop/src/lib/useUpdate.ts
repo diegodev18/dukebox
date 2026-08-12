@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { checkForUpdate, installUpdate, type DownloadProgress, type Update } from './updater.js'
+import { checkForUpdate, installUpdate, type DownloadProgress, type Update } from '@/lib/updater'
 
 /**
  * The app's relationship with its own version, as a state machine.

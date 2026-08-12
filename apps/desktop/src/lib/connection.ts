@@ -1,5 +1,5 @@
 import { load, type Store } from '@tauri-apps/plugin-store'
-import type { ServerAddress } from './client.js'
+import type { ServerAddress } from '@/lib/client'
 
 /**
  * Where this app is paired, and the token that proves it.

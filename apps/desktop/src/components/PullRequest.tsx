@@ -1,7 +1,7 @@
 import type { SessionSummary } from '@dukebox/protocol'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useState } from 'react'
-import type { DukeboxClient } from '../lib/client.js'
+import type { DukeboxClient } from '@/lib/client'
 
 /**
  * Opening a pull request, and getting back to one already open.

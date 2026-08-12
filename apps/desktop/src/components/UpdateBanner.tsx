@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import type { Update } from '../lib/updater.js'
-import type { UpdateState } from '../lib/useUpdate.js'
+import type { Update } from '@/lib/updater'
+import type { UpdateState } from '@/lib/useUpdate'
 
 /**
  * The strip that tells the user a newer Dukebox exists.

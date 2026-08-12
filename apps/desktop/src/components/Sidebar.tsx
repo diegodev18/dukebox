@@ -4,9 +4,9 @@ import {
   type SessionSummary,
 } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
-import { filterProjects, filterSessions } from '../lib/searchSessions.js'
-import { StatusDot } from '../screens/Session.js'
-import { UserMenu } from './UserMenu.js'
+import { filterProjects, filterSessions } from '@/lib/searchSessions'
+import { StatusDot } from '@/screens/Session'
+import { UserMenu } from '@/components/UserMenu'
 
 /**
  * Sessions, grouped by the repository they run against.
