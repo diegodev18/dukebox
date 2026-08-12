@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { EnvironmentsPanel } from './EnvironmentsPanel.js'
@@ -90,8 +90,10 @@ describe('EnvironmentsPanel', () => {
     render(<EnvironmentsPanel client={makeClient() as never} projectId="p1" />)
 
     const field = await screen.findByDisplayValue('refact/*')
-    await userEvent.clear(field)
-    await userEvent.type(field, 'nope/*')
+    // Replacing the value with fireEvent.change is deterministic; a clear()
+    // followed by type() can race under load and leave the old text prepended
+    // to the new ("refact/*nope/*").
+    fireEvent.change(field, { target: { value: 'nope/*' } })
 
     const row = await rowFor('nope/*')
     await waitFor(() => expect(within(row).getByText('Matches no branches')).toBeInTheDocument())
@@ -101,8 +103,7 @@ describe('EnvironmentsPanel', () => {
     render(<EnvironmentsPanel client={makeClient() as never} projectId="p1" />)
 
     const field = await screen.findByDisplayValue('refact/*')
-    await userEvent.clear(field)
-    await userEvent.type(field, 're:(a+)+')
+    fireEvent.change(field, { target: { value: 're:(a+)+' } })
 
     await waitFor(() => expect(screen.getByText(/nested quantifiers/i)).toBeInTheDocument())
   })
@@ -112,8 +113,10 @@ describe('EnvironmentsPanel', () => {
     render(<EnvironmentsPanel client={client as never} projectId="p1" />)
 
     const field = await screen.findByDisplayValue('Refactors')
-    await userEvent.clear(field)
-    await userEvent.type(field, 'Rewrites')
+    // Focus, then set the value: a change event never moves focus, and the
+    // blur (via tab below) is what the test is really about.
+    field.focus()
+    fireEvent.change(field, { target: { value: 'Rewrites' } })
 
     // A half-typed name must never reach the server.
     expect(client.updateEnvironment).not.toHaveBeenCalled()
@@ -130,8 +133,8 @@ describe('EnvironmentsPanel', () => {
     render(<EnvironmentsPanel client={client as never} projectId="p1" />)
 
     const field = await screen.findByDisplayValue('refact/*')
-    await userEvent.clear(field)
-    await userEvent.type(field, 're:(a+)+')
+    field.focus()
+    fireEvent.change(field, { target: { value: 're:(a+)+' } })
     await userEvent.tab()
 
     await waitFor(() => expect(screen.getByText(/nested quantifiers/i)).toBeInTheDocument())
@@ -143,8 +146,8 @@ describe('EnvironmentsPanel', () => {
     render(<EnvironmentsPanel client={client as never} projectId="p1" />)
 
     const field = await screen.findByDisplayValue('refact/*')
-    await userEvent.clear(field)
-    await userEvent.type(field, 'feat/*')
+    field.focus()
+    fireEvent.change(field, { target: { value: 'feat/*' } })
     await userEvent.tab()
 
     await waitFor(() =>
@@ -224,8 +227,8 @@ describe('EnvironmentsPanel', () => {
     render(<EnvironmentsPanel client={client as never} projectId="p1" />)
 
     const field = await screen.findByDisplayValue('refact/*')
-    await userEvent.clear(field)
-    await userEvent.type(field, 'feat/*')
+    field.focus()
+    fireEvent.change(field, { target: { value: 'feat/*' } })
     await userEvent.tab()
 
     await waitFor(() =>
