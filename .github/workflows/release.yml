@@ -70,6 +70,41 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --filter '@dukebox/desktop...'
 
+      - name: Configure macOS code signing (optional)
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Tauri's bundler signs only when these are present — and an empty
+          # APPLE_CERTIFICATE makes it try to import an empty cert and fail.
+          # So write them to the environment only when one is actually set.
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            echo "APPLE_CERTIFICATE=$APPLE_CERTIFICATE" >> "$GITHUB_ENV"
+            echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD" >> "$GITHUB_ENV"
+            echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+            echo "APPLE_ID=$APPLE_ID" >> "$GITHUB_ENV"
+            echo "APPLE_PASSWORD=$APPLE_PASSWORD" >> "$GITHUB_ENV"
+            echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure Windows code signing (optional)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -n "$WINDOWS_CERTIFICATE" ]; then
+            echo "WINDOWS_CERTIFICATE=$WINDOWS_CERTIFICATE" >> "$GITHUB_ENV"
+            echo "WINDOWS_CERTIFICATE_PASSWORD=$WINDOWS_CERTIFICATE_PASSWORD" >> "$GITHUB_ENV"
+          fi
+
       - name: Build and publish
         uses: tauri-apps/tauri-action@v1
         env:
@@ -77,16 +112,6 @@ jobs:
           # Required: signs the updater bundles so the app can trust them.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Optional macOS code signing + notarization.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Optional Windows code signing.
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
           projectPath: apps/desktop
           tagName: desktop-v__VERSION__
