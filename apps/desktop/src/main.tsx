@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { App } from './App.js'
-import { applyTheme, bootTheme } from './lib/settings.js'
+import { App } from '@/App'
+import { applyTheme, bootTheme } from '@/lib/settings'
 import './styles.css'
 
 // Before anything paints: the store file is read asynchronously, and a window

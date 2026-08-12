@@ -1,9 +1,9 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { Update } from '../lib/updater.js'
-import type { UpdateState } from '../lib/useUpdate.js'
-import { UpdateBanner } from './UpdateBanner.js'
+import type { Update } from '@/lib/updater'
+import type { UpdateState } from '@/lib/useUpdate'
+import { UpdateBanner } from '@/components/UpdateBanner'
 
 /**
  * The banner is the whole "how do I update" surface, so what matters is which

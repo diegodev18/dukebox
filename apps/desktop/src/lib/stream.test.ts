@@ -1,6 +1,6 @@
 import type { ClientCommand, ServerMessage } from '@dukebox/protocol'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SessionStream, type StreamStatus } from './stream.js'
+import { SessionStream, type StreamStatus } from '@/lib/stream'
 
 /**
  * A WebSocket that never touches a network.

@@ -6,19 +6,19 @@ import {
 } from '@dukebox/protocol'
 import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { AgentIcon } from './components/AgentIcon.js'
-import { Composer } from './components/Composer.js'
-import { Transcript } from './components/Transcript.js'
-import { PullRequest } from './components/PullRequest.js'
-import { Workspace } from './components/Workspace.js'
+import { AgentIcon } from '@/components/AgentIcon'
+import { Composer } from '@/components/Composer'
+import { Transcript } from '@/components/Transcript'
+import { PullRequest } from '@/components/PullRequest'
+import { Workspace } from '@/components/Workspace'
 import {
   applyTerminalMessage,
   drainTab,
   emptyTerminalState,
   removeTab,
   type TerminalState,
-} from './lib/useTerminals.js'
-import { NewSession } from './screens/NewSession.js'
+} from '@/lib/useTerminals'
+import { NewSession } from '@/screens/NewSession'
 import './styles.css'
 
 /**

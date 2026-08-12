@@ -5,7 +5,7 @@ import {
   type UpsertOpencodeProviderRequest,
 } from '@dukebox/protocol'
 import { useEffect, useState } from 'react'
-import type { DukeboxClient } from '../lib/client.js'
+import type { DukeboxClient } from '@/lib/client'
 
 /**
  * OpenCode's providers: API keys for Anthropic, OpenAI, and the rest, plus

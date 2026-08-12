@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyTerminalMessage, drainTab, emptyTerminalState, removeTab } from './useTerminals.js'
+import { applyTerminalMessage, drainTab, emptyTerminalState, removeTab } from '@/lib/useTerminals'
 
 const sessionId = '11111111-1111-4111-8111-111111111111'
 

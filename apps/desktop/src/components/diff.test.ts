@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { diffLines } from './Diff.js'
+import { diffLines } from '@/components/Diff'
 
 const kinds = (before: string, after: string) => diffLines(before, after).map((line) => line.kind)
 const texts = (before: string, after: string) => diffLines(before, after).map((line) => line.text)

@@ -1,5 +1,5 @@
-import { PairingForm } from '../components/PairingForm.js'
-import type { Connection } from '../lib/connection.js'
+import { PairingForm } from '@/components/PairingForm'
+import type { Connection } from '@/lib/connection'
 
 /**
  * First run.

@@ -6,8 +6,8 @@ import {
   AVAILABLE_MODELS,
   agentLabel,
   modelLabel,
-} from './AgentIcon.js'
-import { CheckIcon, ChevronDownIcon, FolderIcon, ServerIcon } from './icons.js'
+} from '@/components/AgentIcon'
+import { CheckIcon, ChevronDownIcon, FolderIcon, ServerIcon } from '@/components/icons'
 
 /**
  * Chip + searchable popover menus for picking a repository, branch, agent, or

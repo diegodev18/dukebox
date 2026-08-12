@@ -1,7 +1,7 @@
 import { DEFAULT_COMMIT_IDENTITY, type CommitIdentity } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
-import { AgentIcon } from './AgentIcon.js'
-import { CheckIcon, ChevronDownIcon, RefreshIcon, SettingsIcon } from './icons.js'
+import { AgentIcon } from '@/components/AgentIcon'
+import { CheckIcon, ChevronDownIcon, RefreshIcon, SettingsIcon } from '@/components/icons'
 
 /**
  * Who Dukebox is acting as, at the foot of the sidebar.

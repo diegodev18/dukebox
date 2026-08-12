@@ -9,9 +9,9 @@ import {
   type SessionSummary,
 } from '@dukebox/protocol'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AVAILABLE_AGENTS, AVAILABLE_MODELS, DEFAULT_MODEL } from '../components/AgentIcon.js'
-import { OpenCodeProviders, opencodeModelOptions } from '../components/OpenCodeProviders.js'
-import { SendIcon } from '../components/icons.js'
+import { AVAILABLE_AGENTS, AVAILABLE_MODELS, DEFAULT_MODEL } from '@/components/AgentIcon'
+import { OpenCodeProviders, opencodeModelOptions } from '@/components/OpenCodeProviders'
+import { SendIcon } from '@/components/icons'
 import {
   AgentPicker,
   BASE_IMAGE_VALUE,
@@ -20,9 +20,9 @@ import {
   InstancePicker,
   ModelPicker,
   RepoPicker,
-} from '../components/RepoBranchPickers.js'
-import type { DukeboxClient } from '../lib/client.js'
-import type { Connection } from '../lib/connection.js'
+} from '@/components/RepoBranchPickers'
+import type { DukeboxClient } from '@/lib/client'
+import type { Connection } from '@/lib/connection'
 
 /**
  * Starting a session from the centre column.

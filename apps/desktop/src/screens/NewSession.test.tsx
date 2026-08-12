@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { NewSession } from './NewSession.js'
+import { NewSession } from '@/screens/NewSession'
 
 /**
  * The pickers are popover menus, not `<select>`s, so every assertion about the
