@@ -1,6 +1,6 @@
 [package]
 name = "dukebox"
-version = "0.6.0"
+version = "0.7.0"
 description = "Dukebox desktop app"
 edition = "2021"
 rust-version = "1.77"
