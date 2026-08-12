@@ -93,4 +93,34 @@ describe('Transcript', () => {
     expect(onRespond).toHaveBeenCalledWith('p1', false)
     expect(screen.getByText('Kept planning')).toBeInTheDocument()
   })
+
+  it('shows Working while a live session is producing output', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          running: true,
+          blocks: [{ kind: 'prompt', id: 'p', text: 'hi' }],
+        })}
+        onRespond={vi.fn()}
+        status="running"
+      />,
+    )
+
+    expect(screen.getByRole('status', { name: 'Working' })).toBeInTheDocument()
+  })
+
+  it('does not show Working when the session has stopped', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          running: true,
+          blocks: [{ kind: 'prompt', id: 'p', text: 'hi' }],
+        })}
+        onRespond={vi.fn()}
+        status="stopped"
+      />,
+    )
+
+    expect(screen.queryByRole('status', { name: 'Working' })).not.toBeInTheDocument()
+  })
 })
