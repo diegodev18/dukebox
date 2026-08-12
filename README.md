@@ -118,9 +118,21 @@ sudo duke update --from-git some-branch
 sudo duke rollback          # restore the previous release if something is wrong
 ```
 
-`duke update` restarts the service and rolls back automatically if the new
-release fails to start. Re-running `install.sh` does the same thing and also
-applies any unit-file changes.
+`duke update` restarts the service, rebuilds the session agent image
+(`dukebox/base-node:latest`, which ships Claude Code and OpenCode), and rolls
+back automatically if the new release fails to start. Re-running `install.sh`
+does the same thing and also applies any unit-file changes.
+
+If an update left the control plane on a new release but the agent image
+rebuild failed (or you restored OpenCode onto a machine whose image was built
+before that agent existed), rebuild just the image:
+
+```bash
+sudo duke image rebuild
+```
+
+New sessions pick up the rebuilt image; already-running containers keep the
+old one until you stop them.
 
 `duke update --from-git` is for operators who want `main` (or any other branch,
 tag, or commit) without waiting for a `server-v*` release. It clones the ref
@@ -174,6 +186,7 @@ duke version                          # installed release version
 duke status                           # version, service state, transport, devices
 duke update [--check]                 # update to the latest release
 duke update --from-git [ref]          # build and install from git (default: main)
+duke image rebuild                    # rebuild dukebox/base-node:latest
 duke rollback                         # restore the previous release
 duke restart                          # restart the control plane
 duke config show                      # effective configuration
