@@ -72,6 +72,12 @@ export interface InstallStagingOptions {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/** Tag the installer and updates publish for session containers. */
+export const AGENT_IMAGE_TAG = 'dukebox/base-node:latest'
+
+/** Dockerfile directory relative to a release/install root. */
+export const AGENT_IMAGE_CONTEXT = 'images/base-node'
+
 export async function downloadFile(
   url: string,
   dest: string,
@@ -82,6 +88,39 @@ export async function downloadFile(
     throw new Error(`could not download ${url}: the server returned ${response.status}`)
   }
   await pipeline(Readable.fromWeb(response.body as never), createWriteStream(dest))
+}
+
+/**
+ * Rebuild the session agent image from the Dockerfile shipped in the install.
+ *
+ * Agents (`claude`, `opencode`, …) are baked into this image. Updating the
+ * control plane alone leaves an old tag in place — OpenCode sessions then fail
+ * with `exec: "opencode": executable file not found in $PATH`. Rebuild on every
+ * update so the running image matches the Dockerfile the release just installed.
+ *
+ * Failure is reported rather than fatal: the control plane itself still works,
+ * and an operator can retry with `duke image rebuild`.
+ */
+export async function buildAgentImage(options: {
+  installRoot: string
+  log: (line: string) => void
+  run?: typeof runCommand
+}): Promise<UpdateResult> {
+  const run = options.run ?? runCommand
+  const context = join(options.installRoot, AGENT_IMAGE_CONTEXT)
+
+  options.log(`Building the agent image (${AGENT_IMAGE_TAG})`)
+  const build = await run('docker', ['build', '-t', AGENT_IMAGE_TAG, context])
+  if (build.code !== 0) {
+    return {
+      ok: false,
+      message:
+        `could not build ${AGENT_IMAGE_TAG}: ${build.stderr.trim() || build.stdout.trim() || 'docker build failed'}. ` +
+        `Retry with: sudo duke image rebuild`,
+    }
+  }
+
+  return { ok: true, message: `built ${AGENT_IMAGE_TAG}` }
 }
 
 /**
@@ -137,6 +176,18 @@ export async function installStaging(options: InstallStagingOptions): Promise<Up
 
     const active = await run('systemctl', ['is-active', service])
     if (active.code === 0 && active.stdout.trim() === 'active') {
+      // Rebuild after the swap so the new Dockerfile (and pinned agent
+      // versions) is what Docker builds. A failed image build does not roll
+      // the control plane back — sessions for agents that were already in the
+      // previous image still work, and the operator can retry the rebuild.
+      const image = await buildAgentImage({ installRoot, log, run })
+      if (!image.ok) {
+        log(`warning: ${image.message}`)
+        return {
+          ok: true,
+          message: `${successMessage} Warning: agent image was not rebuilt (${image.message})`,
+        }
+      }
       return { ok: true, message: successMessage }
     }
 

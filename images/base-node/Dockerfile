@@ -31,7 +31,13 @@ RUN apt-get update \
 
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
   && npm install -g "opencode-ai@${OPENCODE_VERSION}" \
-  && npm cache clean --force
+  && npm cache clean --force \
+  # Fail the build if a postinstall left a stub binary (or nothing) on PATH.
+  # Sessions exec these by name; discovering that at runtime is too late.
+  && command -v claude \
+  && command -v opencode \
+  && claude --version \
+  && opencode --version
 
 # The `node` user ships with the base image. Running as root would mean any
 # agent command could modify the image's own toolchain.

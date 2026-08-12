@@ -10,15 +10,16 @@
  *   duke version                        print the installed release version
  *   duke update [--check]               update to the latest server release
  *   duke update --from-git [ref]        build and install from a git ref (default: main)
+ *   duke image rebuild                  rebuild the session agent Docker image
  *   duke rollback                       restore the previous release
  *   duke restart                        restart the control plane service
  *   duke config show                    print the effective configuration
  *   duke config get <section.key>       print one setting
  *   duke config set <section.key> <v>   change one setting (and restart)
  *
- * `update`, `rollback`, `restart`, and `config set` talk to systemd and must
- * run as root. The installer calls `pair new` to print the first link, which
- * is how a desktop app learns this server exists.
+ * `update`, `image rebuild`, `rollback`, `restart`, and `config set` talk to
+ * systemd / Docker and must run as root. The installer calls `pair new` to
+ * print the first link, which is how a desktop app learns this server exists.
  */
 import type { Database } from '@dukebox/db'
 import { createDatabase } from '@dukebox/db'
@@ -36,7 +37,7 @@ import {
   RELEASE_TAG_PREFIX,
   selectServerAsset,
 } from './admin/update.js'
-import { performUpdate, runCommand } from './admin/updater.js'
+import { buildAgentImage, performUpdate, runCommand } from './admin/updater.js'
 import { defaultRepoUrl, parseUpdateArgs, performGitUpdate } from './admin/gitUpdate.js'
 import {
   effectiveValues,
@@ -91,6 +92,35 @@ async function commandVersion(): Promise<void> {
     return
   }
   console.log(await installedVersion(installRoot))
+}
+
+async function commandImage(args: string[]): Promise<void> {
+  const subcommand = args[1]
+  if (subcommand !== 'rebuild') {
+    console.error('usage: duke image rebuild')
+    process.exitCode = 1
+    return
+  }
+
+  requireRoot('rebuilding the agent image')
+
+  const installRoot = await findInstallRoot()
+  if (!installRoot) {
+    throw new ConfigError(
+      'no release install found',
+      'Run this on a machine installed by install.sh, or build manually: docker build -t dukebox/base-node:latest images/base-node',
+    )
+  }
+
+  const result = await buildAgentImage({
+    installRoot,
+    log: (line) => console.log(line),
+  })
+  if (result.ok) console.log(`ok: ${result.message}`)
+  else {
+    console.error(`failed: ${result.message}`)
+    process.exitCode = 1
+  }
 }
 
 async function commandRestart(): Promise<void> {
@@ -342,6 +372,10 @@ async function main() {
       await commandUpdate(args)
       return
 
+    case 'image':
+      await commandImage(args)
+      return
+
     case 'config':
       await commandConfig(args)
       return
@@ -450,7 +484,7 @@ async function main() {
 
     default:
       console.error(
-        'usage: duke <version | status | restart | update [--from-git [ref]] | rollback | config | pair new | device ls | device rm <id>>',
+        'usage: duke <version | status | restart | update [--from-git [ref]] | image rebuild | rollback | config | pair new | device ls | device rm <id>>',
       )
       process.exitCode = 1
   }
