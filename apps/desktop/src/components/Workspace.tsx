@@ -450,43 +450,46 @@ function Panels({ session, files }: { session: SessionSummary | null; files: Fil
   return (
     // One scroller for the list: a per-file `overflow-x` hid the horizontal
     // bar under the last hunk, so a tall diff had to be scrolled to the
-    // bottom before a long line could be read. File names and skip hunks
-    // pin to `--workspace-files-width`; line numbers travel with the code.
+    // bottom before a long line could be read. The inner `w-max` box is as
+    // wide as the longest line — without it the file row is only the panel
+    // wide, sticky left cannot travel, and the name pans away with the code.
     <div ref={panel} className="min-h-0 flex-1 overflow-auto">
-      {files.map((file) => {
-        const expanded = open === file.path
+      <div className="w-max min-w-full">
+        {files.map((file) => {
+          const expanded = open === file.path
 
-        return (
-          <div key={file.path} className="border-b border-border last:border-b-0">
-            <button
-              type="button"
-              onClick={() => setOpen(expanded ? null : file.path)}
-              aria-expanded={expanded}
-              aria-label={basename(file.path)}
-              className="sticky top-0 left-0 z-10 box-border flex w-[var(--workspace-files-width)] min-w-0 items-center gap-2 bg-surface px-3 py-2 text-left text-[12.5px] hover:bg-muted"
-            >
-              {expanded ? (
-                <ChevronDownIcon size={13} className="flex-none text-muted-foreground" />
-              ) : (
-                <ChevronRightIcon size={13} className="flex-none text-muted-foreground" />
-              )}
-              {/* The name leads and the directory trails: the name is what
+          return (
+            <div key={file.path} className="border-b border-border last:border-b-0">
+              <button
+                type="button"
+                onClick={() => setOpen(expanded ? null : file.path)}
+                aria-expanded={expanded}
+                aria-label={basename(file.path)}
+                className="sticky top-0 left-0 z-10 box-border flex w-[var(--workspace-files-width)] min-w-0 items-center gap-2 bg-surface px-3 py-2 text-left text-[12.5px] hover:bg-muted"
+              >
+                {expanded ? (
+                  <ChevronDownIcon size={13} className="flex-none text-muted-foreground" />
+                ) : (
+                  <ChevronRightIcon size={13} className="flex-none text-muted-foreground" />
+                )}
+                {/* The name leads and the directory trails: the name is what
                   someone is looking for, and paths are too long to lead with. */}
-              <span className="truncate font-medium">{basename(file.path)}</span>
-              <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                {dirname(file.path)}
-              </span>
-              <Badge file={file} />
-            </button>
+                <span className="truncate font-medium">{basename(file.path)}</span>
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                  {dirname(file.path)}
+                </span>
+                <Badge file={file} />
+              </button>
 
-            {expanded && (
-              <div className="border-t border-border py-1.5">
-                <Diff file={file} />
-              </div>
-            )}
-          </div>
-        )
-      })}
+              {expanded && (
+                <div className="border-t border-border py-1.5">
+                  <Diff file={file} />
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
