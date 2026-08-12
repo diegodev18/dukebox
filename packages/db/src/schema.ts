@@ -328,6 +328,19 @@ export const sessions = pgTable(
 
     changedFileCount: integer('changed_file_count').notNull().default(0),
     prUrl: text('pr_url'),
+    /** Cached title of the session's pull request, once one exists. */
+    prTitle: text('pr_title'),
+    /** Whether that pull request is still a draft. */
+    prDraft: boolean('pr_draft'),
+    /** `open`, `merged`, or `closed`. */
+    prState: text('pr_state'),
+    /**
+     * How this session commits, opens, and merges pull requests.
+     *
+     * Copied from the client at creation so a turn that ends after the app
+     * has closed still follows what the person configured.
+     */
+    gitPreferences: jsonb('git_preferences'),
     errorMessage: text('error_message'),
 
     createdAt,

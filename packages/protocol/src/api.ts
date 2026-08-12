@@ -1,6 +1,14 @@
 import { z } from 'zod'
 import { environmentProposal } from './config.js'
-import { permissionMode, sessionPurpose, sessionSummary } from './session.js'
+import {
+  gitPreferences,
+  mergeMethod,
+  permissionMode,
+  pullRequestDetails,
+  pullRequestSummary,
+  sessionPurpose,
+  sessionSummary,
+} from './session.js'
 import { MAX_BRANCH_PATTERN_LENGTH } from './branchPattern.js'
 
 /**
@@ -222,6 +230,12 @@ export const createSessionRequest = z
         email: z.string().min(1),
       })
       .optional(),
+    /**
+     * How this session commits, opens, and merges pull requests.
+     *
+     * Absent means the server's defaults (draft, auto-open, squash).
+     */
+    gitPreferences: gitPreferences.optional(),
     purpose: sessionPurpose.default('coding'),
     /** Required for coding sessions; ignored for environment_setup (server prompt). */
     prompt: z.string().optional(),
@@ -241,11 +255,19 @@ export type CreateSessionRequest = z.infer<typeof createSessionRequest>
 export const listSessionsResponse = z.object({ sessions: z.array(sessionSummary) })
 
 export const openPullRequestRequest = z.object({
-  /** Defaults to the session's title. */
+  /** Defaults to a generated title from the diff. */
   title: z.string().optional(),
 })
 
-export const openPullRequestResponse = z.object({ url: z.string().url() })
+export const openPullRequestResponse = pullRequestSummary
+
+export const mergePullRequestRequest = z.object({
+  method: mergeMethod.optional(),
+})
+
+export const mergePullRequestResponse = pullRequestSummary
+
+export const pullRequestResponse = pullRequestDetails
 
 // ---------------------------------------------------------------------------
 // Errors

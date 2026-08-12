@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   agentCapabilities,
+  DEFAULT_GIT_PREFERENCES,
   DEFAULT_PERMISSION_MODE,
   EXIT_PLAN_MODE_ACTION,
+  parseGitPreferences,
   permissionMode,
   sessionSummary,
 } from './session.js'
@@ -76,5 +78,46 @@ describe('sessionSummary', () => {
   it('rejects a summary that omits the field', () => {
     const { permissionMode: _omitted, ...rest } = summary
     expect(sessionSummary.safeParse(rest).success).toBe(false)
+  })
+
+  it('defaults pullRequest to null when the client omits it', () => {
+    expect(sessionSummary.parse(summary).pullRequest).toBeNull()
+  })
+
+  it('carries an opened pull request', () => {
+    const parsed = sessionSummary.parse({
+      ...summary,
+      pullRequestUrl: 'https://github.com/diego/dukebox/pull/1',
+      pullRequest: {
+        url: 'https://github.com/diego/dukebox/pull/1',
+        title: 'Add a health check',
+        isDraft: true,
+        state: 'open',
+      },
+    })
+    expect(parsed.pullRequest?.isDraft).toBe(true)
+    expect(parsed.pullRequest?.title).toBe('Add a health check')
+  })
+})
+
+describe('gitPreferences', () => {
+  it('matches Cursor defaults', () => {
+    expect(DEFAULT_GIT_PREFERENCES).toMatchObject({
+      createAsDraft: true,
+      autoOpenDraft: true,
+      commitOnTurnEnd: true,
+      mergeMethod: 'squash',
+      deleteBranchAfterMerge: true,
+      prDescription: 'auto',
+    })
+  })
+
+  it('fills missing keys from a partial row', () => {
+    expect(parseGitPreferences({ autoOpenDraft: false }).autoOpenDraft).toBe(false)
+    expect(parseGitPreferences({ autoOpenDraft: false }).createAsDraft).toBe(true)
+  })
+
+  it('falls back to defaults for garbage', () => {
+    expect(parseGitPreferences('nope')).toEqual(DEFAULT_GIT_PREFERENCES)
   })
 })

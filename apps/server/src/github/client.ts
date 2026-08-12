@@ -39,6 +39,43 @@ export type Repository = z.infer<typeof repository>
 
 const branch = z.object({ name: z.string() })
 
+const pullRequestView = z.object({
+  url: z.string(),
+  title: z.string(),
+  body: z.string().nullish().default(''),
+  isDraft: z.boolean(),
+  state: z.enum(['OPEN', 'MERGED', 'CLOSED', 'open', 'merged', 'closed']),
+  mergeable: z.enum(['MERGEABLE', 'CONFLICTING', 'UNKNOWN']).nullish(),
+})
+
+export type PullRequestView = {
+  url: string
+  title: string
+  body: string
+  isDraft: boolean
+  state: 'open' | 'merged' | 'closed'
+  mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN' | null
+}
+
+function toPullRequestView(raw: {
+  url: string
+  title: string
+  body?: string | null | undefined
+  isDraft: boolean
+  state: string
+  mergeable?: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN' | null | undefined
+}): PullRequestView {
+  const state = raw.state.toLowerCase()
+  return {
+    url: raw.url,
+    title: raw.title,
+    body: raw.body ?? '',
+    isDraft: raw.isDraft,
+    state: state === 'merged' || state === 'closed' ? state : 'open',
+    mergeable: raw.mergeable ?? null,
+  }
+}
+
 export interface GitHubClientOptions {
   /** Path to the CLI. Overridable for tests and unusual installs. */
   binary?: string
@@ -171,9 +208,9 @@ export class GitHubClient {
   /**
    * Open a pull request and return its URL.
    *
-   * A pull request rather than a merge, always. The agent's work is reviewed
-   * by the user on GitHub, where they already have the tools to read a diff
-   * and the history to compare it against.
+   * Draft by default: the agent is still working, and a ready PR would invite
+   * review of unfinished work. Pass `draft: false` when the caller has already
+   * decided it is ready.
    */
   async createPullRequest(options: {
     repoFullName: string
@@ -200,7 +237,7 @@ export class GitHubClient {
       options.body ?? '',
     ]
 
-    if (options.draft) args.push('--draft')
+    if (options.draft !== false) args.push('--draft')
 
     const output = (await this.run(args)).trim()
 
@@ -213,13 +250,57 @@ export class GitHubClient {
     return url
   }
 
-  /** The URL of an open pull request for a branch, or null. */
-  async findPullRequest(repoFullName: string, head: string): Promise<string | null> {
+  /** An open or recently closed pull request for a branch, or null. */
+  async findPullRequest(repoFullName: string, head: string): Promise<PullRequestView | null> {
     const results = await this.json(
-      ['pr', 'list', '--repo', repoFullName, '--head', head, '--json', 'url', '--state', 'open'],
-      z.array(z.object({ url: z.string() })),
+      [
+        'pr',
+        'list',
+        '--repo',
+        repoFullName,
+        '--head',
+        head,
+        '--json',
+        'url,title,body,isDraft,state,mergeable',
+        '--state',
+        'all',
+        '--limit',
+        '1',
+      ],
+      z.array(pullRequestView),
     )
 
-    return results[0]?.url ?? null
+    const first = results[0]
+    return first ? toPullRequestView(first) : null
+  }
+
+  /** Mark a draft pull request ready for review. */
+  async markReady(repoFullName: string, url: string): Promise<void> {
+    await this.run(['pr', 'ready', url, '--repo', repoFullName])
+  }
+
+  /** Merge a pull request. */
+  async mergePullRequest(options: {
+    repoFullName: string
+    url: string
+    method: 'squash' | 'merge' | 'rebase'
+    deleteBranch?: boolean
+  }): Promise<void> {
+    const args = ['pr', 'merge', options.url, '--repo', options.repoFullName, `--${options.method}`]
+    if (options.deleteBranch) args.push('--delete-branch')
+    await this.run(args)
+  }
+
+  /** Update a pull request's title or body. */
+  async editPullRequest(options: {
+    repoFullName: string
+    url: string
+    title?: string
+    body?: string
+  }): Promise<void> {
+    const args = ['pr', 'edit', options.url, '--repo', options.repoFullName]
+    if (options.title !== undefined) args.push('--title', options.title)
+    if (options.body !== undefined) args.push('--body', options.body)
+    await this.run(args)
   }
 }

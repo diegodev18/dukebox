@@ -5,15 +5,18 @@ import type {
   DeviceSummary,
   EnvironmentProposal,
   EnvironmentSummary,
+  GitPreferences,
   ListInvitesResponse,
   ListOpencodeCatalogResponse,
   ListOpencodeProvidersResponse,
   MeResponse,
+  MergeMethod,
   OpencodeProvider,
   PairingInvite,
   PairRedeemResponse,
   ProjectEnvironmentResponse,
   ProjectSummary,
+  PullRequestSummary,
   PutProjectEnvironmentRequest,
   RepositorySummary,
   SessionSummary,
@@ -191,6 +194,7 @@ export class DukeboxClient {
      * server uses its default.
      */
     commitIdentity?: { name: string; email: string }
+    gitPreferences?: Partial<GitPreferences>
   }): Promise<SessionSummary> {
     return this.request('/api/sessions', { method: 'POST', body: JSON.stringify(options) })
   }
@@ -300,10 +304,25 @@ export class DukeboxClient {
     return this.request<{ events: unknown[] }>(`/api/sessions/${sessionId}/events?after=${after}`)
   }
 
-  async openPullRequest(sessionId: string, title?: string): Promise<{ url: string }> {
+  async openPullRequest(sessionId: string, title?: string): Promise<PullRequestSummary> {
     return this.request(`/api/sessions/${sessionId}/pr`, {
       method: 'POST',
       body: JSON.stringify(title ? { title } : {}),
+    })
+  }
+
+  async getPullRequest(sessionId: string): Promise<PullRequestSummary> {
+    return this.request(`/api/sessions/${sessionId}/pr`)
+  }
+
+  async markPullRequestReady(sessionId: string): Promise<PullRequestSummary> {
+    return this.request(`/api/sessions/${sessionId}/pr/ready`, { method: 'POST', body: '{}' })
+  }
+
+  async mergePullRequest(sessionId: string, method?: MergeMethod): Promise<PullRequestSummary> {
+    return this.request(`/api/sessions/${sessionId}/pr/merge`, {
+      method: 'POST',
+      body: JSON.stringify(method ? { method } : {}),
     })
   }
 

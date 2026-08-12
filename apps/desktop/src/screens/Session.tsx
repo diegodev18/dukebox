@@ -13,7 +13,6 @@ import type { UseUpdate } from '@/lib/useUpdate'
 import { AgentIcon, hasAgentIcon } from '@/components/AgentIcon'
 import { Composer } from '@/components/Composer'
 import { EnvironmentsPanel } from '@/components/EnvironmentsPanel'
-import { PullRequest } from '@/components/PullRequest'
 import { SessionInfo } from '@/components/SessionInfo'
 import { Sidebar } from '@/components/Sidebar'
 import { Transcript } from '@/components/Transcript'
@@ -324,6 +323,7 @@ export function Session({
           connection={connection}
           projects={projects}
           identity={settings.commitIdentity}
+          gitPreferences={settings.git}
           onCreated={onSessionCreated}
           preferSetupProjectId={setupProjectId}
           preferProjectId={preferProjectId}
@@ -337,19 +337,7 @@ export function Session({
         />
       ) : current ? (
         <>
-          <SessionColumn
-            session={current}
-            live={live}
-            client={client}
-            connection={connection}
-            onPullRequest={(url) =>
-              setSessions((sessions) =>
-                sessions.map((session) =>
-                  session.id === selected ? { ...session, pullRequestUrl: url } : session,
-                ),
-              )
-            }
-          />
+          <SessionColumn session={current} live={live} connection={connection} />
           <Workspace
             session={current}
             files={live.transcript.files}
@@ -362,6 +350,19 @@ export function Session({
             onCloseTerminal={live.closeTerminal}
             onDrainTerminal={live.drainTerminal}
             error={live.error}
+            pullRequest={
+              current.purpose === 'coding'
+                ? {
+                    client,
+                    onUpdated: (patch) =>
+                      setSessions((sessions) =>
+                        sessions.map((session) =>
+                          session.id === selected ? { ...session, ...patch } : session,
+                        ),
+                      ),
+                  }
+                : null
+            }
             environmentReview={
               current.purpose === 'environment_setup' &&
               (current.status === 'done' || current.status === 'failed')
@@ -391,15 +392,11 @@ export function Session({
 function SessionColumn({
   session,
   live,
-  client,
   connection,
-  onPullRequest,
 }: {
   session: SessionSummary
   live: LiveSession
-  client: DukeboxClient
   connection: Connection
-  onPullRequest: (url: string) => void
 }) {
   // A transcript can still look mid-turn after a restart — the last events
   // never got a `done`. The session status is what actually knows whether an
@@ -417,15 +414,6 @@ function SessionColumn({
         <h1 className="truncate font-medium">{session.title}</h1>
         <SessionInfo session={session} connection={connection} />
         <span className="flex-1" />
-
-        {session.purpose !== 'environment_setup' && (
-          <PullRequest
-            client={client}
-            session={session}
-            changedFiles={live.transcript.files.length}
-            onOpened={onPullRequest}
-          />
-        )}
 
         <span className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
           <StatusDot status={session.status} />

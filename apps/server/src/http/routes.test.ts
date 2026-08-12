@@ -47,7 +47,25 @@ const sessionManager = {
   start: vi.fn(),
   stop: vi.fn(async () => {}),
   archive: vi.fn(async () => {}),
-  openPullRequest: vi.fn(async () => 'https://github.com/diego/dukebox/pull/1'),
+  openPullRequest: vi.fn(async () => ({
+    url: 'https://github.com/diego/dukebox/pull/1',
+    title: 'Add a thing',
+    isDraft: true,
+    state: 'open' as const,
+  })),
+  getPullRequest: vi.fn(async () => null),
+  markPullRequestReady: vi.fn(async () => ({
+    url: 'https://github.com/diego/dukebox/pull/1',
+    title: 'Add a thing',
+    isDraft: false,
+    state: 'open' as const,
+  })),
+  mergePullRequest: vi.fn(async () => ({
+    url: 'https://github.com/diego/dukebox/pull/1',
+    title: 'Add a thing',
+    isDraft: false,
+    state: 'merged' as const,
+  })),
 } as unknown as SessionManager
 
 const secretStore = new SecretStore(db, randomBytes(32))
@@ -653,6 +671,40 @@ describe('POST /api/sessions/:id/pr', () => {
 
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({ url: expect.stringContaining('/pull/1') })
+  })
+
+  it('returns a live pull request', async () => {
+    vi.mocked(sessionManager.getPullRequest).mockResolvedValueOnce({
+      url: 'https://github.com/diego/dukebox/pull/1',
+      title: 'Add a thing',
+      isDraft: true,
+      state: 'open',
+    })
+
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await request(`/api/sessions/${session.id}/pr`)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ isDraft: true })
+  })
+
+  it('marks a pull request ready', async () => {
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await post(`/api/sessions/${session.id}/pr/ready`, {})
+    expect(response.status).toBe(200)
+    expect(sessionManager.markPullRequestReady).toHaveBeenCalledWith(session.id)
+  })
+
+  it('merges a pull request', async () => {
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await post(`/api/sessions/${session.id}/pr/merge`, { method: 'squash' })
+    expect(response.status).toBe(200)
+    expect(sessionManager.mergePullRequest).toHaveBeenCalledWith(session.id, 'squash')
   })
 
   it('passes a title through', async () => {

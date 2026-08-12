@@ -51,6 +51,14 @@ describe('loadSettings', () => {
       theme: 'dark',
       checkForUpdatesOnLaunch: true,
       commitIdentity: null,
+      git: {
+        createAsDraft: true,
+        autoOpenDraft: true,
+        commitOnTurnEnd: true,
+        mergeMethod: 'squash',
+        deleteBranchAfterMerge: true,
+        prDescription: 'auto',
+      },
     })
   })
 })

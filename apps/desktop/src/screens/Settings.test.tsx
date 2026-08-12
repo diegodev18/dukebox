@@ -184,6 +184,7 @@ describe('Settings', () => {
     expect(buttons).toEqual([
       'Settings',
       'Account',
+      'Git',
       'Agents',
       'Devices',
       'Servers',
@@ -197,6 +198,18 @@ describe('Settings', () => {
     await openCategory('Appearance')
     await userEvent.click(screen.getByRole('button', { name: 'Dark' }))
     expect(onSaveSettings).toHaveBeenCalledWith({ theme: 'dark' })
+  })
+
+  it('toggles git preferences from the Git category', async () => {
+    const { onSaveSettings } = renderSettings()
+    await openCategory('Git')
+
+    expect(screen.getByRole('heading', { name: 'Git' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('switch', { name: 'Open a draft automatically' }))
+
+    expect(onSaveSettings).toHaveBeenCalledWith({
+      git: expect.objectContaining({ autoOpenDraft: false, createAsDraft: true }),
+    })
   })
 
   it('auto-saves the commit identity after typing settles', async () => {
@@ -340,7 +353,7 @@ describe('Settings', () => {
 
     const nav = screen.getByRole('navigation', { name: 'Settings' })
     const buttons = [...nav.querySelectorAll('button')].map((button) => button.textContent?.trim())
-    expect(buttons).toEqual(['Settings', 'Account', 'Servers', 'Appearance', 'Updates'])
+    expect(buttons).toEqual(['Settings', 'Account', 'Git', 'Servers', 'Appearance', 'Updates'])
   })
 
   it('lists devices and issues an invite', async () => {

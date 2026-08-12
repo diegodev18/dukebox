@@ -6,11 +6,15 @@ import {
   ENVIRONMENT_PROPOSAL_PATH,
   isTerminal,
   mergeProjectConfig,
+  parseGitPreferences,
   parseSecretReference,
   projectConfig,
   resolveEnvironment,
   type CommitIdentity,
+  type GitPreferences,
+  type MergeMethod,
   type ProjectConfig,
+  type PullRequestSummary,
   type SessionPurpose,
   type SessionStatus,
   type PermissionMode,
@@ -35,7 +39,7 @@ import type { GitHubClient } from '../github/client.js'
 import { AGENT_CREDENTIAL_SECRET, type SecretStore } from '../secrets/store.js'
 import { buildOpencodeSessionEnv, loadOpencodeProviders } from '../opencode/providers.js'
 import { ENVIRONMENT_SETUP_PROMPT, parseEnvironmentProposalJson } from './environmentSetup.js'
-import { pullRequestContent } from './summary.js'
+import { writePullRequestContent } from './pr-writer.js'
 import { toSummary } from './summarize.js'
 
 /**
@@ -115,6 +119,12 @@ export interface StartSessionOptions {
    * Absent means the server's default identity.
    */
   commitIdentity?: CommitIdentity
+  /**
+   * How this session commits, opens, and merges pull requests.
+   *
+   * Absent means the Cursor-like defaults (draft, auto-open, squash).
+   */
+  gitPreferences?: GitPreferences
   /** The paired device that asked to start this session. */
   createdByDeviceId?: string
 }
@@ -258,6 +268,7 @@ export class SessionManager {
         environmentId,
         title: purpose === 'environment_setup' ? 'Configure environment' : prompt.slice(0, 80),
         permissionMode: storedPermissionMode(options.agentId, options.permissionMode),
+        gitPreferences: parseGitPreferences(options.gitPreferences),
         createdByDeviceId: options.createdByDeviceId,
       })
       .returning()
@@ -479,6 +490,17 @@ export class SessionManager {
       // and the user can still see the conversation.
     }
 
+    if (running.purpose === 'coding' && reason !== 'error') {
+      try {
+        await this.syncPullRequest(sessionId, { reason: 'turn_end' })
+      } catch (error) {
+        console.error(
+          `auto pull request for session ${sessionId}:`,
+          error instanceof Error ? error.message : error,
+        )
+      }
+    }
+
     if (running.purpose === 'environment_setup' && reason !== 'error') {
       await this.captureEnvironmentProposal(sessionId, running)
     }
@@ -662,45 +684,245 @@ export class SessionManager {
   /**
    * Push the session branch and open a pull request.
    *
-   * A pull request, never a merge: the user reviews the agent's work on
-   * GitHub, where they already have the tools to read a diff.
+   * Called from the workspace tab. Auto-open at the end of a turn goes through
+   * the same path with `reason: 'turn_end'`.
    */
-  async openPullRequest(sessionId: string, title?: string): Promise<string> {
-    // Resumed if the control plane has forgotten it. Asking for a pull request
-    // is exactly what someone does after coming back to finished work, which
-    // is the case most likely to have outlived a restart.
-    const running = await this.ensureRunning(sessionId)
+  async openPullRequest(sessionId: string, title?: string): Promise<PullRequestSummary> {
+    const opened = await this.syncPullRequest(sessionId, {
+      reason: 'open',
+      ...(title ? { title } : {}),
+    })
+    if (!opened) throw new SessionError('there is nothing to open a pull request for')
+    return opened
+  }
 
+  async getPullRequest(sessionId: string): Promise<PullRequestSummary | null> {
+    const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
+    if (!session) throw new SessionError('no such session')
+
+    const github = this.deps.github
+    if (!github) {
+      const summary = toSummary(session).pullRequest
+      return summary
+    }
+
+    const repo = await this.repoFullName(session.projectId)
+    if (!repo) return toSummary(session).pullRequest
+
+    const found = await github.findPullRequest(repo, session.branch)
+    if (!found) return toSummary(session).pullRequest
+
+    await this.persistPullRequest(sessionId, {
+      url: found.url,
+      title: found.title,
+      isDraft: found.isDraft,
+      state: found.state,
+    })
+
+    return {
+      url: found.url,
+      title: found.title,
+      isDraft: found.isDraft,
+      state: found.state,
+    }
+  }
+
+  async markPullRequestReady(sessionId: string): Promise<PullRequestSummary> {
     const github = this.deps.github
     if (!github) throw new SessionError('GitHub is not configured on this server')
 
     const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
+    if (!session?.prUrl) throw new SessionError('this session has no pull request')
 
+    await github.markReady(await this.requireRepoFullName(session.projectId), session.prUrl)
+
+    const next: PullRequestSummary = {
+      url: session.prUrl,
+      title: session.prTitle ?? '',
+      isDraft: false,
+      state: 'open',
+    }
+    await this.persistPullRequest(sessionId, next)
+    return next
+  }
+
+  async mergePullRequest(sessionId: string, method?: MergeMethod): Promise<PullRequestSummary> {
+    const github = this.deps.github
+    if (!github) throw new SessionError('GitHub is not configured on this server')
+
+    const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
+    if (!session?.prUrl) throw new SessionError('this session has no pull request')
+
+    const prefs = parseGitPreferences(session.gitPreferences)
+    await github.mergePullRequest({
+      repoFullName: await this.requireRepoFullName(session.projectId),
+      url: session.prUrl,
+      method: method ?? prefs.mergeMethod,
+      deleteBranch: prefs.deleteBranchAfterMerge,
+    })
+
+    const next: PullRequestSummary = {
+      url: session.prUrl,
+      title: session.prTitle ?? '',
+      isDraft: false,
+      state: 'merged',
+    }
+    await this.persistPullRequest(sessionId, next)
+    return next
+  }
+
+  /**
+   * Commit leftover changes, push, and open (or reuse) a draft pull request.
+   *
+   * `turn_end` honours the session's git preferences and is silent when there
+   * is nothing to do. `open` is the explicit user action and always tries.
+   */
+  private async syncPullRequest(
+    sessionId: string,
+    options: { reason: 'turn_end' | 'open'; title?: string },
+  ): Promise<PullRequestSummary | null> {
+    const running = await this.ensureRunning(sessionId)
+    const github = this.deps.github
+
+    const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
     if (!session) throw new SessionError('no such session')
 
-    // Whether the branch has anything on it, asked against the commit the
-    // session started from. `commitAll` returning null only means there is
-    // nothing *uncommitted* — an agent that committed its own work would look
-    // identical to one that did nothing, which is the case this used to
-    // refuse.
+    const prefs = parseGitPreferences(session.gitPreferences)
+    const userAsked = options.reason === 'open'
+
+    if (session.purpose === 'environment_setup') {
+      if (userAsked) throw new SessionError('environment setup sessions do not open pull requests')
+      return null
+    }
+
+    if (!github) {
+      if (userAsked) throw new SessionError('GitHub is not configured on this server')
+      return null
+    }
+
+    const dirty = await running.workspace.isDirty()
     const changed = await running.workspace.changedFiles(running.baseCommit)
 
-    // The same summary the pull request uses, so a commit read on its own says
-    // what changed rather than repeating the instruction.
-    const summary = pullRequestContent({
+    if (!userAsked && !prefs.autoOpenDraft && !prefs.commitOnTurnEnd) return null
+
+    const shouldCommit = userAsked || prefs.commitOnTurnEnd
+    const shouldOpen = userAsked || prefs.autoOpenDraft
+
+    const commits = await running.workspace.commitsSince(running.baseCommit)
+    const diffStat = await running.workspace.diffStat(running.baseCommit)
+    const content = await writePullRequestContent({
       prompt: session.title ?? '',
-      events: await this.deps.bus.replay(sessionId).catch(() => []),
+      commits,
+      diffStat,
       changedFiles: changed,
       sessionId,
       branch: session.branch,
+      preferences: prefs,
+      ...(this.deps.secrets ? { secrets: this.deps.secrets } : {}),
     })
 
-    await running.workspace.commitAll(title ?? summary.title)
-
-    if (changed.length === 0 && !session.prUrl) {
-      throw new SessionError('there is nothing to open a pull request for')
+    if (shouldCommit && dirty) {
+      await running.workspace.commitAll(options.title ?? content.title)
     }
 
+    const stillChanged = await running.workspace.changedFiles(running.baseCommit)
+    if (stillChanged.length === 0 && !session.prUrl) {
+      if (userAsked) throw new SessionError('there is nothing to open a pull request for')
+      return null
+    }
+
+    // Push whenever we will open a PR, or when one already exists so GitHub
+    // sees the new commits even if auto-open is off.
+    if (!shouldOpen && !session.prUrl) return null
+
+    await this.ensurePush(sessionId, running, session.branch, github)
+
+    const existing = await github.findPullRequest(running.repoFullName, session.branch)
+    if (existing && (existing.state === 'open' || existing.state === 'merged')) {
+      const summary: PullRequestSummary = {
+        url: existing.url,
+        title: existing.title,
+        isDraft: existing.isDraft,
+        state: existing.state,
+      }
+      await this.persistPullRequest(sessionId, summary)
+      return summary
+    }
+
+    if (!shouldOpen) return toSummary(session).pullRequest
+
+    const afterCommit = await running.workspace.commitsSince(running.baseCommit)
+    const afterStat = await running.workspace.diffStat(running.baseCommit)
+    const afterFiles = await running.workspace.changedFiles(running.baseCommit)
+    const written =
+      afterCommit.join('\n') === commits.join('\n')
+        ? content
+        : await writePullRequestContent({
+            prompt: session.title ?? '',
+            commits: afterCommit,
+            diffStat: afterStat,
+            changedFiles: afterFiles,
+            sessionId,
+            branch: session.branch,
+            preferences: prefs,
+            ...(this.deps.secrets ? { secrets: this.deps.secrets } : {}),
+          })
+
+    const url = await github.createPullRequest({
+      repoFullName: running.repoFullName,
+      head: session.branch,
+      base: session.baseBranch,
+      title: options.title ?? written.title,
+      body: written.body,
+      draft: prefs.createAsDraft,
+    })
+
+    const summary: PullRequestSummary = {
+      url,
+      title: options.title ?? written.title,
+      isDraft: prefs.createAsDraft,
+      state: 'open',
+    }
+    await this.persistPullRequest(sessionId, summary)
+    return summary
+  }
+
+  private async persistPullRequest(sessionId: string, pr: PullRequestSummary): Promise<void> {
+    const [updated] = await this.deps.db
+      .update(sessions)
+      .set({
+        prUrl: pr.url,
+        prTitle: pr.title,
+        prDraft: pr.isDraft,
+        prState: pr.state,
+        updatedAt: new Date(),
+      })
+      .where(eq(sessions.id, sessionId))
+      .returning()
+
+    if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
+  }
+
+  private async repoFullName(projectId: string): Promise<string | null> {
+    const [project] = await this.deps.db
+      .select({ repoFullName: projects.repoFullName })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+    return project?.repoFullName ?? null
+  }
+
+  private async requireRepoFullName(projectId: string): Promise<string> {
+    const name = await this.repoFullName(projectId)
+    if (!name) throw new SessionError('no such project')
+    return name
+  }
+
+  private async ensurePush(
+    sessionId: string,
+    running: RunningSession,
+    branch: string,
+    github: GitHubClient,
+  ): Promise<void> {
     // A proxy that stopped listening — the service restarted, or the session
     // was stopped and resumed — leaves its socket file behind. Restarted here
     // rather than reported, because the fix is the same either way and the
@@ -710,10 +932,6 @@ export class SessionManager {
       if (restarted) this.running.set(sessionId, { ...running, credentials: restarted })
     }
 
-    // Checked from inside the container, which is the only place it matters.
-    // A bind mount is tied to the directory that existed when the container
-    // was created, so one replaced since then leaves the container looking at
-    // nothing while the host holds a working socket.
     if (
       running.credentials &&
       !(await running.workspace.credentialSocketReachable(CONTAINER_SOCKET_PATH))
@@ -726,13 +944,8 @@ export class SessionManager {
     }
 
     try {
-      await running.workspace.push(session.branch)
+      await running.workspace.push(branch)
     } catch (error) {
-      // A repository that does not exist — renamed, deleted, or never pushed —
-      // refuses authentication exactly like a bad token, because GitHub will
-      // not confirm a private repository is missing to someone who might not
-      // be allowed to know. Checked first so it is not reported as a
-      // credential problem.
       const reachable = await github
         .defaultBranch(running.repoFullName)
         .then(() => true)
@@ -746,17 +959,8 @@ export class SessionManager {
         )
       }
 
-      // git's own stderr is the only thing that says why a push failed —
-      // rejected credentials, a protected branch, a remote that moved on. The
-      // command line alone sends someone looking in the wrong place.
       const detail = error instanceof WorkspaceError ? error.stderr.trim() : ''
 
-      // git names none of the things that can actually be wrong, so the state
-      // of the credential path is collected from inside the container and sent
-      // with the failure rather than left for someone to go and look for.
-      // Whether the host can produce a token at all. The container-side checks
-      // cannot see this: a proxy that serves nothing because `gh` gave it
-      // nothing looks exactly like one that was never asked.
       const tokenState = await github
         .token()
         .then(() => 'host token: yes')
@@ -765,9 +969,6 @@ export class SessionManager {
             `host token: NO (${failure instanceof Error ? failure.message : 'unknown'})`,
         )
 
-      // The proxy answering from the host side. The container-side checks
-      // cannot distinguish a proxy that is listening from one that replies,
-      // and a socket file outlives the process that created it.
       const proxyState = running.credentials
         ? `${await askProxy(
             join(this.socketDirFor(sessionId), 'credentials.sock'),
@@ -783,34 +984,11 @@ export class SessionManager {
         : 'credentials: not configured on this server'
 
       throw new SessionError(
-        [
-          `could not push ${session.branch}`,
-          detail && `: ${detail}`,
-          diagnosis && ` [${diagnosis}]`,
-        ]
+        [`could not push ${branch}`, detail && `: ${detail}`, diagnosis && ` [${diagnosis}]`]
           .filter(Boolean)
           .join(''),
       )
     }
-
-    // A second push to the same branch updates the existing pull request
-    // rather than failing, so a follow-up turn extends the same review.
-    const existing = await github.findPullRequest(running.repoFullName, session.branch)
-
-    const url =
-      existing ??
-      (await github.createPullRequest({
-        repoFullName: running.repoFullName,
-        head: session.branch,
-        base: session.baseBranch,
-        // An explicit title still wins: someone who names it means it.
-        title: title ?? summary.title,
-        body: summary.body,
-      }))
-
-    await this.deps.db.update(sessions).set({ prUrl: url }).where(eq(sessions.id, sessionId))
-
-    return url
   }
 
   /**
