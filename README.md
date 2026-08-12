@@ -31,10 +31,13 @@ newest one for your machine from the
 | Windows  | `Dukebox_0.1.0_x64-setup.exe`                                        |
 | Linux    | `dukebox_0.1.0_amd64.deb` (or the `.AppImage`)                       |
 
-The installers are not code-signed yet, so the OS may warn the first time;
-right-click → Open (macOS) or "More info → Run anyway" (Windows) gets past
-it. First run shows the pairing screen — paste the link a server installer
-prints (below) and the app finds its server.
+The installers are not signed by Apple or Microsoft yet, so the OS will warn
+the first time: on macOS, right-click the app → Open (or
+`xattr -cr /Applications/Dukebox.app`); on Windows, "More info → Run anyway".
+The app bundle is ad-hoc signed, so once you accept it, it keeps opening —
+the warning is about the developer's identity, not the app's integrity. First
+run shows the pairing screen — paste the link a server installer prints
+(below) and the app finds its server.
 
 ### The server
 
