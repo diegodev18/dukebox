@@ -198,7 +198,7 @@ describe('Sandbox', () => {
       await terminal.close()
     })
 
-    it('strips the frame headers Docker adds even to a TTY exec', async () => {
+    it('does not paint multiplex headers on a TTY exec', async () => {
       const container = await createSession()
       const terminal = await container.openTerminal({ cols: 80, rows: 24 })
 
@@ -208,10 +208,26 @@ describe('Sandbox', () => {
       terminal.stream.write('printf MARKER\n')
       await waitFor(() => Buffer.concat(chunks).includes('MARKER'))
 
-      // Asking for a TTY does not turn Docker's framing off: a hijacked exec
-      // stream carries an 8-byte header per chunk either way. Left in, they
-      // reach the terminal emulator and are painted on screen as garbage.
+      // A TTY exec is a raw PTY stream. Multiplex headers (`[1, 0, 0, 0, …]`)
+      // belong to TTY-less execs; left in, they reach the emulator as garbage.
       expect(Buffer.concat(chunks).includes(Buffer.from([1, 0, 0, 0]))).toBe(false)
+
+      await terminal.close()
+    })
+
+    it('returns output from ls, which forks and writes to the PTY', async () => {
+      const container = await createSession()
+      await container.exec(['sh', '-c', 'echo listed-file > /tmp/listed-file'])
+      const terminal = await container.openTerminal({ cols: 80, rows: 24, cwd: '/tmp' })
+
+      const chunks: Buffer[] = []
+      terminal.stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+
+      // `ls` is the command that hung when start() omitted Tty: a builtin like
+      // `cd` never forks, so it kept working while anything that wrote from a
+      // child process was stopped with SIGTTOU.
+      terminal.stream.write('ls\n')
+      await waitFor(() => Buffer.concat(chunks).includes('listed-file'))
 
       await terminal.close()
     })
@@ -239,6 +255,8 @@ describe('Sandbox', () => {
       const terminal = await container.openTerminal({ cols: 80, rows: 24 })
 
       await expect(terminal.resize(120, 40)).resolves.toBeUndefined()
+      // A hidden panel measures 0×0; that size must not reach the PTY.
+      await expect(terminal.resize(0, 0)).resolves.toBeUndefined()
 
       await terminal.close()
     })

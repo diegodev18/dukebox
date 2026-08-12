@@ -98,10 +98,10 @@ export interface TerminalHandle {
   /**
    * Terminal bytes in both directions.
    *
-   * Reads are demultiplexed with stdout and stderr merged, which is what a
-   * terminal wants: a compiler's warnings belong interleaved with its output,
-   * on the same screen, in the order they happened. `execStream` drops stderr
-   * instead, because there it would corrupt a JSONL event stream.
+   * A TTY exec merges stdout and stderr in the PTY, which is what a terminal
+   * wants: a compiler's warnings belong interleaved with its output, on the
+   * same screen, in the order they happened. `execStream` keeps them apart
+   * instead, because there stderr would corrupt a JSONL event stream.
    */
   stream: Duplex
   resize: (cols: number, rows: number) => Promise<void>
@@ -209,57 +209,65 @@ export class SessionContainer {
   async openTerminal(
     options: { cols: number; rows: number; cwd?: string } = { cols: 80, rows: 24 },
   ): Promise<TerminalHandle> {
+    const size = clampTerminalSize(options.cols, options.rows)
+
     const exec = await this.container.exec({
       Cmd: ['/bin/bash', '-l'],
       AttachStdin: true,
       AttachStdout: true,
       AttachStderr: true,
       Tty: true,
-      ConsoleSize: [options.rows, options.cols],
+      ConsoleSize: [size.rows, size.cols],
       ...(options.cwd ? { WorkingDir: options.cwd } : {}),
     })
 
-    const raw = await exec.start({ hijack: true, stdin: true })
+    // Tty must be set here as well as on create. Docker takes the start flag
+    // for the stream format and for putting the process in the foreground of
+    // the PTY. Create-only Tty allocates a PTY but start-without-Tty attaches
+    // it as a multiplexed non-TTY stream: bash builtins still work, and a
+    // forked command like `ls` is stopped with SIGTTOU the moment it writes.
+    const raw = await exec.start({ hijack: true, stdin: true, Tty: true })
 
-    // Demultiplexed even though this exec has a TTY. Docker frames a hijacked
-    // exec stream regardless — asking for a TTY does not turn the framing off —
-    // and handing those 8-byte headers to a terminal emulator paints them on
-    // screen as garbage between every chunk.
+    // A TTY exec is a raw PTY stream — stdout and stderr are already merged,
+    // and there are no 8-byte multiplex headers. Demuxing that stream treats
+    // the first bytes of the prompt as a frame header with a huge payload and
+    // waits forever, which looks like the command hung.
     //
-    // Both channels are demuxed into one destination rather than separated:
-    // stderr belongs interleaved with stdout on a terminal, in the order it
-    // arrived.
-    const output = new PassThrough()
-    this.docker.modem.demuxStream(raw, output, output)
-
-    raw.on('end', () => output.end())
-    raw.on('error', (error: Error) => output.emit('error', error))
-
     // Written by hand rather than with `Duplex.from`, which wires the two sides
     // into a pipeline that treats a destroyed socket as a broken pipe. Closing
     // a terminal destroys the socket by design, and the pipeline would report
     // every one of those as ERR_STREAM_PREMATURE_CLOSE.
     const stream = new Duplex({
-      read() {},
+      read() {
+        raw.resume()
+      },
       write(chunk, encoding, callback) {
-        raw.write(chunk, encoding, callback)
+        if (!raw.write(chunk, encoding)) {
+          raw.once('drain', callback)
+          return
+        }
+        callback()
       },
       destroy(error, callback) {
         raw.destroy()
-        output.destroy()
         callback(error)
       },
     })
 
-    output.on('data', (chunk: Buffer) => stream.push(chunk))
-    output.on('end', () => stream.push(null))
+    raw.on('data', (chunk: Buffer) => {
+      if (!stream.push(chunk)) raw.pause()
+    })
+    raw.on('end', () => stream.push(null))
+    raw.on('error', (error: Error) => stream.destroy(error))
 
     return {
       stream,
       // Docker takes rows before columns, and getting them backwards produces a
-      // terminal that looks right until something wraps.
+      // terminal that looks right until something wraps. A 0×0 size is what
+      // GNU ls infinite-loops on when it lays out columns.
       resize: async (cols, rows) => {
-        await exec.resize({ h: rows, w: cols })
+        const next = clampTerminalSize(cols, rows)
+        await exec.resize({ h: next.rows, w: next.cols })
       },
       // Destroying the socket is what ends the shell. Left open, the process
       // lives on inside the container against its PID limit.
@@ -411,6 +419,18 @@ export class Sandbox {
 
 function toEnvArray(env: Record<string, string>): string[] {
   return Object.entries(env).map(([key, value]) => `${key}=${value}`)
+}
+
+/**
+ * A PTY of 0 columns makes GNU `ls` hang in its columnar layout, and a
+ * FitAddon measuring a hidden panel reports exactly that. Flooring rejects
+ * the fractional sizes a layout pass can produce; the minima match xterm.js.
+ */
+function clampTerminalSize(cols: number, rows: number): { cols: number; rows: number } {
+  return {
+    cols: Number.isFinite(cols) && cols >= 2 ? Math.floor(cols) : 80,
+    rows: Number.isFinite(rows) && rows >= 1 ? Math.floor(rows) : 24,
+  }
 }
 
 /**

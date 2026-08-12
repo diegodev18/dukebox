@@ -74,10 +74,16 @@ export function applyTerminalMessage(state: TerminalState, message: ServerMessag
 }
 
 /** Drop chunks already written to xterm, so they are not replayed on remount. */
-export function drainTab(state: TerminalState, terminalId: string): TerminalState {
-  return mapTab(state, terminalId, (tab) =>
-    tab.pending.length === 0 ? tab : { ...tab, pending: [] },
-  )
+export function drainTab(state: TerminalState, terminalId: string, count: number): TerminalState {
+  return mapTab(state, terminalId, (tab) => {
+    if (count <= 0 || tab.pending.length === 0) return tab
+
+    // Slice rather than clear: output can arrive between the write and this
+    // update, and dropping those chunks is how a command's output vanishes
+    // while the next prompt still appears — it looks like the command hung.
+    const pending = tab.pending.slice(count)
+    return pending.length === tab.pending.length ? tab : { ...tab, pending }
+  })
 }
 
 export function removeTab(state: TerminalState, terminalId: string): TerminalState {
