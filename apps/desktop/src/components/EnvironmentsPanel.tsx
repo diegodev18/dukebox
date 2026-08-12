@@ -110,9 +110,18 @@ export function EnvironmentsPanel({ client, projectId }: Props) {
   }
 
   const create = async () => {
+    // The server allows one name per project, so a plain "New environment"
+    // would make a second click fail with a 409. Count the names already in
+    // use and bump the default until it is free.
+    const taken = new Set(environments.map((environment) => environment.name))
+    let name = 'New environment'
+    for (let suffix = 2; taken.has(name); suffix++) {
+      name = `New environment ${suffix}`
+    }
+
     try {
       const created = await client.createEnvironment(projectId, {
-        name: 'New environment',
+        name,
         branchPattern: '**',
       })
       setEnvironments((current) => [...current, created])

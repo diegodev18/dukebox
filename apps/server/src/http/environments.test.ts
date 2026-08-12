@@ -126,6 +126,66 @@ describe('environment routes', () => {
     expect(body.message).toContain('nested quantifiers')
   })
 
+  it('409s when the name is already taken in this project', async () => {
+    await post(`/api/projects/${projectId}/environments`, {
+      name: 'Default',
+      branchPattern: '**',
+    })
+
+    // A duplicate name would make the picker unreadable, and the raw
+    // constraint error is a database exception, not a message anyone can act
+    // on — so it surfaces as a 409, not a 500.
+    const response = await post(`/api/projects/${projectId}/environments`, {
+      name: 'Default',
+      branchPattern: 'refact/*',
+    })
+
+    expect(response.status).toBe(409)
+    const body = (await response.json()) as { error: string; message: string }
+    expect(body.error).toBe('conflict')
+    expect(body.message).toContain('“Default” already exists')
+  })
+
+  it('lets two projects use the same environment name', async () => {
+    const other = await otherProject()
+
+    await post(`/api/projects/${projectId}/environments`, {
+      name: 'Default',
+      branchPattern: '**',
+    })
+
+    // The uniqueness is per (project_id, name), so a same-named environment
+    // in a different project is a different row, not a conflict.
+    const response = await post(`/api/projects/${other.id}/environments`, {
+      name: 'Default',
+      branchPattern: '**',
+    })
+
+    expect(response.status).toBe(201)
+  })
+
+  it('409s when a rename collides with another environment', async () => {
+    await db.insert(environments).values([
+      { projectId, name: 'First', branchPattern: '**', position: 0 },
+      { projectId, name: 'Second', branchPattern: 'b/*', position: 1 },
+    ])
+
+    const [first] = await db.select().from(environments).where(eq(environments.name, 'First'))
+
+    const response = await request(`/api/environments/${first!.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: 'Second' }),
+    })
+
+    expect(response.status).toBe(409)
+    const body = (await response.json()) as { message: string }
+    expect(body.message).toContain('“Second” already exists')
+
+    // The refused rename leaves the original name in place.
+    const [after] = await db.select().from(environments).where(eq(environments.id, first!.id))
+    expect(after!.name).toBe('First')
+  })
+
   it('lists environments in position order', async () => {
     await db.insert(environments).values([
       { projectId, name: 'Second', branchPattern: 'refact/*', position: 1 },

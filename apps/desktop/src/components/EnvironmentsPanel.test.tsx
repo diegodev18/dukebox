@@ -232,4 +232,35 @@ describe('EnvironmentsPanel', () => {
       expect(client.updateEnvironment).toHaveBeenCalledWith('env-1', { branchPattern: 'feat/*' }),
     )
   })
+
+  it('bumps the default name when "New environment" is already taken', async () => {
+    const taken = [{ ...environments[0], name: 'New environment' }, ...environments.slice(1)]
+    const created = {
+      id: 'env-3',
+      projectId: 'p1',
+      name: 'New environment 2',
+      branchPattern: '**',
+      position: 2,
+      hasConfig: false,
+      hasSnapshot: false,
+      hasDraft: false,
+    }
+    const client = makeClient({
+      listEnvironments: vi.fn().mockResolvedValue(taken),
+      createEnvironment: vi.fn().mockResolvedValue(created),
+    })
+    render(<EnvironmentsPanel client={client as never} projectId="p1" />)
+
+    await waitFor(() => expect(screen.getByDisplayValue('New environment')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: 'New environment' }))
+
+    // A duplicate name would bounce off the server's (project_id, name)
+    // constraint, so the panel counts what is taken and asks for a free one.
+    await waitFor(() =>
+      expect(client.createEnvironment).toHaveBeenCalledWith('p1', {
+        name: 'New environment 2',
+        branchPattern: '**',
+      }),
+    )
+  })
 })

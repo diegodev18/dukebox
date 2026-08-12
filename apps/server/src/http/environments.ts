@@ -34,6 +34,23 @@ function toSummary(row: typeof environments.$inferSelect): EnvironmentSummary {
   }
 }
 
+/**
+ * Postgres unique violation (SQLSTATE 23505).
+ *
+ * The (project_id, name) index makes a duplicate name an unhandled database
+ * exception unless a route names it, which would surface as a 500 with the
+ * raw constraint message. Reading `code` off the driver error is the only
+ * reliable check: drizzle does not wrap it in anything richer.
+ */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === '23505'
+  )
+}
+
 export function environmentRoutes(deps: EnvironmentRoutesDeps) {
   const app = new Hono()
 
@@ -75,15 +92,32 @@ export function environmentRoutes(deps: EnvironmentRoutesDeps) {
     const position =
       current?.highest === null || current?.highest === undefined ? 0 : current.highest + 1
 
-    const [created] = await deps.db
-      .insert(environments)
-      .values({
-        projectId,
-        name: parsed.data.name,
-        branchPattern: parsed.data.branchPattern,
-        position,
-      })
-      .returning()
+    let created: typeof environments.$inferSelect | undefined
+    try {
+      ;[created] = await deps.db
+        .insert(environments)
+        .values({
+          projectId,
+          name: parsed.data.name,
+          branchPattern: parsed.data.branchPattern,
+          position,
+        })
+        .returning()
+    } catch (error) {
+      // A duplicate name is a conflict, not a server fault: the picker would
+      // be unreadable with two environments sharing a name, so a second
+      // "Default" is refused rather than silently added.
+      if (isUniqueViolation(error)) {
+        return c.json(
+          {
+            error: 'conflict',
+            message: `an environment named “${parsed.data.name}” already exists`,
+          },
+          409,
+        )
+      }
+      throw error
+    }
 
     if (!created) {
       return c.json({ error: 'invalid_request', message: 'could not create environment' }, 400)
@@ -109,17 +143,33 @@ export function environmentRoutes(deps: EnvironmentRoutesDeps) {
       }
     }
 
-    const [updated] = await deps.db
-      .update(environments)
-      .set({
-        ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
-        ...(parsed.data.branchPattern !== undefined
-          ? { branchPattern: parsed.data.branchPattern }
-          : {}),
-        updatedAt: new Date(),
-      })
-      .where(eq(environments.id, id))
-      .returning()
+    let updated: typeof environments.$inferSelect | undefined
+    try {
+      ;[updated] = await deps.db
+        .update(environments)
+        .set({
+          ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+          ...(parsed.data.branchPattern !== undefined
+            ? { branchPattern: parsed.data.branchPattern }
+            : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(environments.id, id))
+        .returning()
+    } catch (error) {
+      // Renaming onto a name the project already has collides with the same
+      // unique index as creating a duplicate.
+      if (isUniqueViolation(error)) {
+        return c.json(
+          {
+            error: 'conflict',
+            message: `an environment named “${parsed.data.name}” already exists`,
+          },
+          409,
+        )
+      }
+      throw error
+    }
 
     if (!updated) {
       return c.json({ error: 'not_found', message: 'no such environment' }, 404)
