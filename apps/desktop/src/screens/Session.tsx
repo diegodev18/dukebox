@@ -181,20 +181,13 @@ export function Session({
           sessions={sessions}
           selectedId={creating ? null : selected}
           identity={settings.commitIdentity ?? DEFAULT_COMMIT_IDENTITY}
-          onCheckForUpdates={() => update.check(true)}
-          onOpenSettings={() => {
+          onOpenSettings={(category) => {
             setCreating(false)
             setSetupProjectId(null)
             setManagingProjectId(null)
-            setSettingsCategory('account')
+            setSettingsCategory(category)
             setSettingsOpen(true)
-          }}
-          onOpenOpencodeProviders={() => {
-            setCreating(false)
-            setSetupProjectId(null)
-            setManagingProjectId(null)
-            setSettingsCategory('account')
-            setSettingsOpen(true)
+            if (category === 'updates') update.check(true)
           }}
           onSelect={(sessionId) => {
             setCreating(false)

@@ -1,7 +1,14 @@
 import { DEFAULT_COMMIT_IDENTITY, type CommitIdentity } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { AgentIcon } from '@/components/AgentIcon'
-import { CheckIcon, ChevronDownIcon, RefreshIcon, SettingsIcon } from '@/components/icons'
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  RefreshIcon,
+  ServerIcon,
+  SettingsIcon,
+} from '@/components/icons'
+import type { SettingsCategory } from '@/screens/Settings'
 
 /**
  * Who Dukebox is acting as, at the foot of the sidebar.
@@ -11,22 +18,17 @@ import { CheckIcon, ChevronDownIcon, RefreshIcon, SettingsIcon } from '@/compone
  * opening a repository to check.
  *
  * The identity is a setting, so the menu's real jobs are showing who that is
- * and getting to the places that matter — settings and updates. The account
- * list is a single row until account switching exists.
+ * and deep-linking into the settings categories that matter.
  */
 
 export const AVAILABLE_USERS: CommitIdentity[] = [DEFAULT_COMMIT_IDENTITY]
 
 export function UserMenu({
   user,
-  onCheckForUpdates,
   onOpenSettings,
-  onOpenOpencodeProviders,
 }: {
   user: CommitIdentity
-  onCheckForUpdates: () => void
-  onOpenSettings: () => void
-  onOpenOpencodeProviders: () => void
+  onOpenSettings: (category: SettingsCategory) => void
 }) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
@@ -68,6 +70,11 @@ export function UserMenu({
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [open])
+
+  const openSettings = (category: SettingsCategory) => {
+    setOpen(false)
+    onOpenSettings(category)
+  }
 
   return (
     <div ref={root}>
@@ -126,10 +133,7 @@ export function UserMenu({
             <button
               type="button"
               role="menuitem"
-              onClick={() => {
-                setOpen(false)
-                onOpenSettings()
-              }}
+              onClick={() => openSettings('account')}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted"
             >
               <SettingsIcon size={14} className="flex-none text-muted-foreground" />
@@ -138,16 +142,22 @@ export function UserMenu({
             <button
               type="button"
               role="menuitem"
-              onClick={() => {
-                setOpen(false)
-                onOpenOpencodeProviders()
-              }}
+              onClick={() => openSettings('agents')}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted"
             >
               <span className="flex-none text-muted-foreground">
                 <AgentIcon agentId="opencode" className="size-3.5" />
               </span>
-              OpenCode providers…
+              Agents…
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => openSettings('servers')}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted"
+            >
+              <ServerIcon size={14} className="flex-none text-muted-foreground" />
+              Servers…
             </button>
           </div>
 
@@ -155,14 +165,11 @@ export function UserMenu({
             <button
               type="button"
               role="menuitem"
-              onClick={() => {
-                setOpen(false)
-                onCheckForUpdates()
-              }}
+              onClick={() => openSettings('updates')}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted"
             >
               <RefreshIcon size={14} className="flex-none text-muted-foreground" />
-              Check for updates…
+              Updates…
             </button>
           </div>
         </div>

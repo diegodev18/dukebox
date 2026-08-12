@@ -1,5 +1,5 @@
 import { DEFAULT_COMMIT_IDENTITY } from '@dukebox/protocol'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronLeftIcon } from '@/components/icons'
 import { OpenCodeProviders } from '@/components/OpenCodeProviders'
 import { PairingForm } from '@/components/PairingForm'
@@ -20,10 +20,11 @@ import type { UseUpdate } from '@/lib/useUpdate'
  * nav. The content column shows one section at a time — never nested deeper.
  */
 
-export type SettingsCategory = 'account' | 'servers' | 'appearance' | 'updates'
+export type SettingsCategory = 'account' | 'agents' | 'servers' | 'appearance' | 'updates'
 
 const CATEGORIES: { id: SettingsCategory; label: string }[] = [
   { id: 'account', label: 'Account' },
+  { id: 'agents', label: 'Agents' },
   { id: 'servers', label: 'Servers' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'updates', label: 'Updates' },
@@ -106,22 +107,22 @@ export function Settings({
   return (
     <div className="h-full min-h-0 overflow-y-auto px-6 py-5">
       <div className="mx-auto max-w-xl">
-        {category === 'appearance' && (
-          <AppearanceSection theme={settings.theme} onSave={onSaveSettings} />
-        )}
         {category === 'account' && (
           <AccountSection
-            client={client}
             identity={settings.commitIdentity}
             onSaveIdentity={(commitIdentity) => onSaveSettings({ commitIdentity })}
           />
         )}
+        {category === 'agents' && <AgentsSection client={client} />}
         {category === 'servers' && (
           <ServersSection
             activeConnection={connection}
             onSwitchServer={onSwitchServer}
             onDisconnected={onDisconnected}
           />
+        )}
+        {category === 'appearance' && (
+          <AppearanceSection theme={settings.theme} onSave={onSaveSettings} />
         )}
         {category === 'updates' && (
           <UpdatesSection
@@ -157,26 +158,31 @@ function AppearanceSection({
       <h2 id="appearance-title" className="text-[14px] font-medium">
         Appearance
       </h2>
-      <p className="mt-1 text-[12.5px] text-muted-foreground">
-        The colour scheme follows your operating system unless you pick one here.
-      </p>
 
-      <div className="mt-4 inline-flex rounded-[calc(var(--radius)*0.8)] border border-border bg-surface p-0.5">
-        {THEME_OPTIONS.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={theme === option.value}
-            onClick={() => onSave({ theme: option.value })}
-            className={`rounded-[calc(var(--radius)*0.6)] px-3.5 py-1.5 text-[13px] font-medium ${
-              theme === option.value
-                ? 'bg-foreground text-background'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {option.label}
-          </button>
-        ))}
+      <div className="mt-4 flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium">Colour scheme</p>
+          <p className="mt-0.5 text-[12px] text-muted-foreground">
+            Follows your operating system unless you pick one here.
+          </p>
+        </div>
+        <div className="inline-flex flex-none rounded-[calc(var(--radius)*0.8)] border border-border bg-surface p-0.5">
+          {THEME_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={theme === option.value}
+              onClick={() => onSave({ theme: option.value })}
+              className={`rounded-[calc(var(--radius)*0.6)] px-3 py-1.5 text-[13px] font-medium ${
+                theme === option.value
+                  ? 'bg-foreground text-background'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
     </section>
   )
@@ -187,23 +193,40 @@ function AppearanceSection({
 // ---------------------------------------------------------------------------
 
 function AccountSection({
-  client,
   identity,
   onSaveIdentity,
 }: {
-  client: DukeboxClient
   identity: Settings['commitIdentity']
   onSaveIdentity: (identity: { name: string; email: string } | null) => void
 }) {
-  const [name, setName] = useState(identity?.name ?? DEFAULT_COMMIT_IDENTITY.name)
-  const [email, setEmail] = useState(identity?.email ?? DEFAULT_COMMIT_IDENTITY.email)
+  const storedName = identity?.name ?? DEFAULT_COMMIT_IDENTITY.name
+  const storedEmail = identity?.email ?? DEFAULT_COMMIT_IDENTITY.email
+  const [name, setName] = useState(storedName)
+  const [email, setEmail] = useState(storedEmail)
   const [saved, setSaved] = useState(false)
+  const onSaveIdentityRef = useRef(onSaveIdentity)
+  onSaveIdentityRef.current = onSaveIdentity
 
-  const saveIdentity = () => {
-    if (name.trim() === '' || email.trim() === '') return
-    onSaveIdentity({ name: name.trim(), email: email.trim() })
-    setSaved(true)
-  }
+  // Persist as the fields settle, the same way theme applies on pick — no
+  // separate Save step to remember.
+  useEffect(() => {
+    const nextName = name.trim()
+    const nextEmail = email.trim()
+    if (nextName === '' || nextEmail === '') return
+    if (nextName === storedName && nextEmail === storedEmail) return
+
+    const timer = setTimeout(() => {
+      onSaveIdentityRef.current({ name: nextName, email: nextEmail })
+      setSaved(true)
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [name, email, storedName, storedEmail])
+
+  useEffect(() => {
+    if (!saved) return
+    const timer = setTimeout(() => setSaved(false), 2000)
+    return () => clearTimeout(timer)
+  }, [saved])
 
   const resetIdentity = () => {
     setName(DEFAULT_COMMIT_IDENTITY.name)
@@ -212,26 +235,16 @@ function AccountSection({
     setSaved(true)
   }
 
-  useEffect(() => {
-    if (!saved) return
-    const timer = setTimeout(() => setSaved(false), 2000)
-    return () => clearTimeout(timer)
-  }, [saved])
-
   return (
     <section aria-labelledby="account-title">
       <h2 id="account-title" className="text-[14px] font-medium">
         Account
       </h2>
-
-      <h3 className="mt-4 text-[12px] font-semibold tracking-wide text-muted-foreground uppercase">
-        Commit identity
-      </h3>
       <p className="mt-1 text-[12.5px] text-muted-foreground">
         The name and email new sessions author commits with.
       </p>
 
-      <div className="mt-3 grid grid-cols-2 gap-2.5">
+      <div className="mt-4 grid grid-cols-2 gap-2.5">
         <label className="block text-[12px] text-muted-foreground">
           Name
           <input
@@ -253,14 +266,6 @@ function AccountSection({
       <div className="mt-2.5 flex items-center gap-2">
         <button
           type="button"
-          disabled={name.trim() === '' || email.trim() === ''}
-          onClick={saveIdentity}
-          className="rounded-[calc(var(--radius)*0.6)] bg-foreground px-3.5 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
-        >
-          Save identity
-        </button>
-        <button
-          type="button"
           onClick={resetIdentity}
           className="rounded-[calc(var(--radius)*0.6)] px-2 py-1.5 text-[12.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
         >
@@ -268,6 +273,19 @@ function AccountSection({
         </button>
         {saved && <span className="text-[12px] text-muted-foreground">Saved</span>}
       </div>
+    </section>
+  )
+}
+
+function AgentsSection({ client }: { client: DukeboxClient }) {
+  return (
+    <section aria-labelledby="agents-title">
+      <h2 id="agents-title" className="text-[14px] font-medium">
+        Agents
+      </h2>
+      <p className="mt-1 text-[12.5px] text-muted-foreground">
+        Credentials agents use to reach model providers. Stored on the server.
+      </p>
 
       <AgentCredentials client={client} />
       <OpenCodeProviders client={client} />
@@ -332,12 +350,12 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
   }
 
   return (
-    <div className="mt-5 border-t border-border pt-4">
+    <div className="mt-5">
       <h3 className="text-[12px] font-semibold tracking-wide text-muted-foreground uppercase">
         Agent API
       </h3>
       <p className="mt-1 text-[12.5px] text-muted-foreground">
-        The token agents use to reach their model provider. Stored on the server.
+        Shared token for agents that talk to a single provider endpoint.
       </p>
 
       <div className="mt-3 flex items-center gap-2">
@@ -415,6 +433,7 @@ function ServersSection({
 }) {
   const [connections, setConnections] = useState<Connection[]>([])
   const [pairing, setPairing] = useState(false)
+  const [forgettingId, setForgettingId] = useState<string | null>(null)
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
 
   const reload = async () => {
@@ -443,6 +462,7 @@ function ServersSection({
     await removeConnection(connection.deviceId)
     const remaining = connections.filter((entry) => entry.deviceId !== connection.deviceId)
     setConnections(remaining)
+    setForgettingId(null)
     setMessage(null)
 
     if (connection.deviceId === activeConnection.deviceId) {
@@ -467,43 +487,70 @@ function ServersSection({
       <ul className="mt-4 flex flex-col gap-2">
         {connections.map((entry) => {
           const active = entry.deviceId === activeConnection.deviceId
+          const confirming = forgettingId === entry.deviceId
           return (
             <li
               key={entry.deviceId}
               className="rounded-[calc(var(--radius)*0.8)] border border-border bg-surface px-3.5 py-3"
             >
-              <div className="flex items-center gap-2.5">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-[13px] font-medium">{entry.serverName}</span>
-                    {active && (
-                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10.5px] font-medium text-muted-foreground">
-                        Active
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-0.5 truncate font-mono text-[11.5px] text-muted-foreground">
-                    {entry.address.host}:{entry.address.port}
-                  </div>
-                </div>
-
-                {!active && (
+              {confirming ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="min-w-0 flex-1 text-[12.5px] text-muted-foreground">
+                    {connections.length === 1
+                      ? 'Forget this server and disconnect?'
+                      : active
+                        ? 'Forget the active server?'
+                        : `Forget ${entry.serverName}?`}
+                  </p>
                   <button
                     type="button"
-                    onClick={() => void useServer(entry)}
-                    className="flex-none rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12px] font-medium hover:bg-muted"
+                    onClick={() => void forgetServer(entry)}
+                    className="flex-none rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12px] font-medium text-destructive hover:bg-muted"
                   >
-                    Use
+                    Forget server
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => void forgetServer(entry)}
-                  className="flex-none rounded-[calc(var(--radius)*0.6)] px-2 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-destructive"
-                >
-                  Forget
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => setForgettingId(null)}
+                    className="flex-none rounded-[calc(var(--radius)*0.6)] px-2.5 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-[13px] font-medium">{entry.serverName}</span>
+                      {active && (
+                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10.5px] font-medium text-muted-foreground">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 truncate font-mono text-[11.5px] text-muted-foreground">
+                      {entry.address.host}:{entry.address.port}
+                    </div>
+                  </div>
+
+                  {!active && (
+                    <button
+                      type="button"
+                      onClick={() => void useServer(entry)}
+                      className="flex-none rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12px] font-medium hover:bg-muted"
+                    >
+                      Use
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setForgettingId(entry.deviceId)}
+                    className="flex-none rounded-[calc(var(--radius)*0.6)] px-2 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-destructive"
+                  >
+                    Forget
+                  </button>
+                </div>
+              )}
             </li>
           )
         })}
@@ -578,8 +625,11 @@ function UpdatesSection({
       <h2 id="updates-title" className="text-[14px] font-medium">
         Updates
       </h2>
+      <p className="mt-1 text-[12.5px] text-muted-foreground">
+        Check for a newer Dukebox build, or let the app ask on launch.
+      </p>
 
-      <div className="mt-3 flex items-center gap-2 text-[12.5px]">
+      <div className="mt-4 flex items-center gap-2 text-[12.5px]">
         {state.status === 'available' ? (
           <span className="text-muted-foreground">
             Dukebox {state.update.version} is available.

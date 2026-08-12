@@ -2,6 +2,7 @@ import { type CommitIdentity, type ProjectSummary, type SessionSummary } from '@
 import { useEffect, useRef, useState } from 'react'
 import { filterProjects, filterSessions } from '@/lib/searchSessions'
 import { StatusDot } from '@/screens/Session'
+import type { SettingsCategory } from '@/screens/Settings'
 import { BranchIcon, PlusIcon, SearchIcon, SettingsIcon } from '@/components/icons'
 import { UserMenu } from '@/components/UserMenu'
 
@@ -19,9 +20,7 @@ interface Props {
   selectedId: string | null
   /** Who commits are authored as — the identity from settings, if configured. */
   identity: CommitIdentity
-  onCheckForUpdates: () => void
-  onOpenSettings: () => void
-  onOpenOpencodeProviders: () => void
+  onOpenSettings: (category: SettingsCategory) => void
   onSelect: (sessionId: string) => void
   onNewSession: () => void
   onConfigureEnvironment: (projectId: string) => void
@@ -36,9 +35,7 @@ export function Sidebar({
   sessions,
   selectedId,
   identity,
-  onCheckForUpdates,
   onOpenSettings,
-  onOpenOpencodeProviders,
   onSelect,
   onNewSession,
   onConfigureEnvironment,
@@ -129,17 +126,12 @@ export function Sidebar({
           room when asked, not permanently at the foot of the sidebar. */}
       <div className="flex items-stretch border-t border-border">
         <div className="min-w-0 flex-1">
-          <UserMenu
-            user={identity}
-            onCheckForUpdates={onCheckForUpdates}
-            onOpenSettings={onOpenSettings}
-            onOpenOpencodeProviders={onOpenOpencodeProviders}
-          />
+          <UserMenu user={identity} onOpenSettings={onOpenSettings} />
         </div>
         <button
           type="button"
           aria-label="Settings"
-          onClick={onOpenSettings}
+          onClick={() => onOpenSettings('account')}
           className="grid w-10 flex-none place-items-center self-stretch text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <SettingsIcon size={16} />
