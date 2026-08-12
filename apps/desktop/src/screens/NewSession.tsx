@@ -16,7 +16,7 @@ import {
   DEFAULT_PERMISSION_MODE,
   agentHasPermissionModes,
 } from '@/components/AgentIcon'
-import { OpenCodeProviders, opencodeModelOptions } from '@/components/OpenCodeProviders'
+import { modelsForProvider } from '@/components/OpenCodeProviders'
 import { SendIcon } from '@/components/icons'
 import {
   AgentPicker,
@@ -26,6 +26,7 @@ import {
   InstancePicker,
   ModelPicker,
   PermissionModePicker,
+  ProviderPicker,
   RepoPicker,
 } from '@/components/RepoBranchPickers'
 import type { DukeboxClient } from '@/lib/client'
@@ -51,6 +52,10 @@ interface Props {
   onCreated: (session: SessionSummary, project: ProjectSummary | null) => void
   /** Prefer starting environment setup for this project (e.g. from sidebar). */
   preferSetupProjectId?: string | null
+  /** Restore this agent after returning from provider settings. */
+  preferAgentId?: string | null
+  /** Open Settings → Agents to add or edit OpenCode providers. */
+  onConfigureProviders: () => void
 }
 
 /** Matches the search field in the pickers, so the two read as one family. */
@@ -70,10 +75,17 @@ export function NewSession({
   identity,
   onCreated,
   preferSetupProjectId,
+  preferAgentId,
+  onConfigureProviders,
 }: Props) {
   const preferred = preferSetupProjectId
     ? projects.find((project) => project.id === preferSetupProjectId)
     : undefined
+
+  const initialAgent =
+    preferAgentId && AVAILABLE_AGENTS.some((agent) => agent.id === preferAgentId)
+      ? preferAgentId
+      : AVAILABLE_AGENTS[0].id
 
   const [repositories, setRepositories] = useState<RepositorySummary[]>([])
   const [target, setTarget] = useState<string>(
@@ -86,11 +98,20 @@ export function NewSession({
   const [branchesLoading, setBranchesLoading] = useState(false)
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([])
   const [environmentId, setEnvironmentId] = useState<string>(BASE_IMAGE_VALUE)
-  const [agentId, setAgentId] = useState<string>(AVAILABLE_AGENTS[0].id)
+  const [agentId, setAgentId] = useState<string>(initialAgent)
   const [model, setModel] = useState<string>(DEFAULT_MODEL)
   const [permissionMode, setPermissionMode] = useState(DEFAULT_PERMISSION_MODE)
   const [opencodeProviders, setOpencodeProviders] = useState<OpencodeProvider[]>([])
+  const [opencodeProvidersStatus, setOpencodeProvidersStatus] = useState<
+    'loading' | 'loaded' | 'failed'
+  >('loading')
+  const [providerId, setProviderId] = useState('')
   const [prompt, setPrompt] = useState('')
+  // Coming back from provider settings with OpenCode already selected must
+  // not bounce straight into settings again if the list is still empty.
+  const skipEmptyRedirect = useRef(preferAgentId === 'opencode')
+  const onConfigureProvidersRef = useRef(onConfigureProviders)
+  onConfigureProvidersRef.current = onConfigureProviders
   const [forceSetup, setForceSetup] = useState(Boolean(preferSetupProjectId))
   const [newEnvironmentName, setNewEnvironmentName] = useState('Default')
   const [newEnvironmentPattern, setNewEnvironmentPattern] = useState('**')
@@ -238,11 +259,47 @@ export function NewSession({
     setEnvironmentId(resolveEnvironment(environments, baseBranch)?.id ?? BASE_IMAGE_VALUE)
   }, [baseBranch, environments])
 
+  useEffect(() => {
+    let cancelled = false
+
+    client
+      .listOpencodeProviders()
+      .then((found) => {
+        if (cancelled) return
+        setOpencodeProviders(found)
+        setOpencodeProvidersStatus('loaded')
+      })
+      .catch(() => {
+        // A failed list must not bounce into settings: the form stays put and
+        // Start stays blocked until a model can be chosen.
+        if (cancelled) return
+        setOpencodeProviders([])
+        setOpencodeProvidersStatus('failed')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [client])
+
   const usingOpenCode = agentId === 'opencode'
+  const selectedProvider = opencodeProviders.find((provider) => provider.id === providerId)
   const models = useMemo(
-    () => (usingOpenCode ? opencodeModelOptions(opencodeProviders) : AVAILABLE_MODELS),
-    [usingOpenCode, opencodeProviders],
+    () =>
+      usingOpenCode
+        ? selectedProvider
+          ? modelsForProvider(selectedProvider)
+          : []
+        : AVAILABLE_MODELS,
+    [usingOpenCode, selectedProvider],
   )
+
+  useEffect(() => {
+    if (!usingOpenCode) return
+    if (opencodeProviders.some((provider) => provider.id === providerId)) return
+    const first = opencodeProviders[0]?.id
+    if (first) setProviderId(first)
+  }, [usingOpenCode, opencodeProviders, providerId])
 
   useEffect(() => {
     if (models.some((candidate) => candidate.id === model)) return
@@ -250,14 +307,37 @@ export function NewSession({
     if (fallback) setModel(fallback)
   }, [models, model])
 
+  useEffect(() => {
+    if (!usingOpenCode || opencodeProvidersStatus !== 'loaded') return
+    if (opencodeProviders.length > 0) return
+    if (skipEmptyRedirect.current) return
+    onConfigureProvidersRef.current()
+  }, [usingOpenCode, opencodeProvidersStatus, opencodeProviders.length])
+
   const selectAgent = (next: string) => {
     setAgentId(next)
     if (next === 'opencode') {
-      const first = opencodeModelOptions(opencodeProviders)[0]?.id
-      if (first) setModel(first)
+      if (opencodeProvidersStatus === 'loaded' && opencodeProviders.length === 0) {
+        onConfigureProviders()
+        return
+      }
+      const firstProvider = opencodeProviders[0]
+      if (firstProvider) {
+        setProviderId(firstProvider.id)
+        const firstModel = modelsForProvider(firstProvider)[0]?.id
+        if (firstModel) setModel(firstModel)
+      }
     } else {
+      setProviderId('')
       setModel(DEFAULT_MODEL)
     }
+  }
+
+  const selectProvider = (next: string) => {
+    setProviderId(next)
+    const provider = opencodeProviders.find((candidate) => candidate.id === next)
+    const first = provider ? modelsForProvider(provider)[0]?.id : undefined
+    if (first) setModel(first)
   }
 
   const selectRepo = (fullName: string) => {
@@ -381,6 +461,15 @@ export function NewSession({
             />
           )}
           <AgentPicker value={agentId} onChange={selectAgent} disabled={busy} />
+          {usingOpenCode && opencodeProvidersStatus === 'loaded' && (
+            <ProviderPicker
+              providers={opencodeProviders}
+              value={providerId}
+              onChange={selectProvider}
+              onAddProvider={onConfigureProviders}
+              disabled={busy}
+            />
+          )}
           {!(usingOpenCode && models.length === 0) && (
             <ModelPicker value={model} onChange={setModel} disabled={busy} models={models} />
           )}
@@ -393,12 +482,6 @@ export function NewSession({
           )}
           <InstancePicker instances={instances} value={connection.deviceId} disabled={busy} />
         </div>
-
-        {usingOpenCode && (
-          <div className="mb-3">
-            <OpenCodeProviders client={client} compact onChange={setOpencodeProviders} />
-          </div>
-        )}
 
         {needsEnvironment ? (
           <div className="rounded-[calc(var(--radius)*1.1)] border border-border bg-surface px-3.5 py-3.5">

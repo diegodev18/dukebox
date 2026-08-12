@@ -1,4 +1,4 @@
-import type { EnvironmentSummary, PermissionMode } from '@dukebox/protocol'
+import type { EnvironmentSummary, OpencodeProvider, PermissionMode } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import {
   AgentIcon,
@@ -326,6 +326,61 @@ export function AgentPicker({
             <span className="truncate">{agent.label}</span>
           </PickerRow>
         ))}
+      </div>
+    </PickerShell>
+  )
+}
+
+export function ProviderPicker({
+  providers,
+  value,
+  onChange,
+  onAddProvider,
+  disabled,
+}: {
+  providers: OpencodeProvider[]
+  value: string
+  onChange: (providerId: string) => void
+  onAddProvider: () => void
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const selected = providers.find((provider) => provider.id === value)
+
+  return (
+    <PickerShell
+      open={open}
+      onOpenChange={setOpen}
+      disabled={Boolean(disabled)}
+      label={<span className="truncate">{selected?.name ?? 'Provider'}</span>}
+      ariaLabel="Provider"
+    >
+      <div className="max-h-64 overflow-y-auto py-1">
+        {providers.map((provider) => (
+          <PickerRow
+            key={provider.id}
+            selected={provider.id === value}
+            onSelect={() => {
+              onChange(provider.id)
+              setOpen(false)
+            }}
+          >
+            <span className="truncate">{provider.name}</span>
+          </PickerRow>
+        ))}
+      </div>
+
+      <div className="border-t border-border py-1">
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false)
+            onAddProvider()
+          }}
+          className="w-full px-3 py-1.5 text-left text-[13px] hover:bg-muted"
+        >
+          Add provider…
+        </button>
       </div>
     </PickerShell>
   )
