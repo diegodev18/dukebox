@@ -11,19 +11,41 @@
 set -euo pipefail
 
 REPO_URL="${DUKEBOX_REPO_URL:-https://github.com/diegodev18/dukebox.git}"
-REPO_REF="${DUKEBOX_REPO_REF:-main}"
+# Release version to install; defaults to the latest published `server-v*`.
+RELEASE_VERSION="${DUKEBOX_VERSION:-}"
 INSTALL_DIR="${DUKEBOX_INSTALL_DIR:-/opt/dukebox}"
 CONFIG_DIR="${DUKEBOX_CONFIG_DIR:-/etc/dukebox}"
 SERVICE_USER="${DUKEBOX_USER:-dukebox}"
 SERVER_PORT="${DUKEBOX_SERVER_PORT:-7777}"
 NODE_MAJOR=22
 
+# The owner, repository name, and origin all come from the same URL, so the
+# installer stays pointed at a fork — or a local mirror — by overriding one
+# variable. Download URLs are built on the origin so they follow it too.
+case "$REPO_URL" in
+  *://*)
+    # Split scheme://host[/path] and keep scheme://host as the origin. The
+    # split matters because `http://` itself contains a double slash, which a
+    # plain `%%/*` would treat as the start of the path.
+    REPO_SCHEME="${REPO_URL%%://*}"
+    REPO_REST="${REPO_URL#*://}"
+    RELEASE_ORIGIN="${REPO_SCHEME}://${REPO_REST%%/*}"
+    ;;
+  *) RELEASE_ORIGIN="https://github.com" ;;
+esac
+REPO_PATH="${REPO_REST:-${REPO_URL}}"
+REPO_PATH="${REPO_PATH#*/}"
+REPO_PATH="${REPO_PATH%.git}"
+REPO_OWNER="${REPO_PATH%%/*}"
+REPO_NAME="${REPO_PATH#*/}"
+RELEASE_BASE="${RELEASE_ORIGIN}/${REPO_OWNER}/${REPO_NAME}"
+
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!\033[0m  %s\n' "$*" >&2; }
 die()  { printf '\033[1;31mx\033[0m  %s\n' "$*" >&2; exit 1; }
 
-# Run a command as the service user. Anything touching the checkout or the
-# service's own credentials has to, or it leaves files root cannot hand back.
+# Run a command as the service user. Anything touching the install directory or
+# the service's own credentials has to, or it leaves files root cannot hand back.
 as_service_user() {
   su -s /bin/sh "$SERVICE_USER" -c "$1"
 }
@@ -134,14 +156,6 @@ install_tailscale() {
   curl -fsSL https://tailscale.com/install.sh | sh
 }
 
-install_pnpm() {
-  command -v pnpm >/dev/null && return
-
-  log "Installing pnpm"
-  corepack enable
-  corepack prepare pnpm@10.24.0 --activate
-}
-
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -214,30 +228,63 @@ EOF
 # Application
 # ---------------------------------------------------------------------------
 
-fetch_source() {
-  if [ -d "${INSTALL_DIR}/.git" ]; then
-    log "Updating Dukebox"
-    # Run as the owner. The checkout belongs to the service user, and git
-    # refuses to operate on a repository owned by someone else — which only
-    # shows up on the second run, when the directory already exists.
-    as_service_user "git -C '$INSTALL_DIR' fetch --quiet origin '$REPO_REF'"
-    as_service_user "git -C '$INSTALL_DIR' reset --quiet --hard 'origin/${REPO_REF}'"
-  else
-    log "Fetching Dukebox"
-    git clone --quiet --branch "$REPO_REF" "$REPO_URL" "$INSTALL_DIR"
-    chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
-  fi
+# The architecture token used in release asset names.
+release_arch() {
+  case "$(dpkg --print-architecture)" in
+    amd64) echo x64 ;;
+    arm64) echo arm64 ;;
+    *) die "unsupported architecture: $(dpkg --print-architecture)" ;;
+  esac
 }
 
-build_application() {
-  log "Building"
-  # Only the control plane and what it depends on. The desktop app is a native
-  # binary for the user's own machine — building it here would pull in Vite and
-  # a Rust toolchain to produce something this server never runs. The trailing
-  # "..." includes the workspace packages the server imports.
-  #
-  # As the service user, so the build output is owned by whoever runs it.
-  as_service_user "cd '$INSTALL_DIR' && pnpm install --frozen-lockfile --filter '@dukebox/server...' && pnpm --filter '@dukebox/server...' build"
+# Find the newest published `server-v*` release. Unauthenticated requests see
+# published releases only, newest first, so the first server tag is the latest.
+latest_release_version() {
+  curl -fsSL "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases?per_page=100" \
+    | grep -o '"tag_name": "server-v[^"]*"' | head -1 | sed 's/.*server-v//; s/"//g'
+}
+
+fetch_release() {
+  local arch version
+  arch="$(release_arch)"
+
+  version="$RELEASE_VERSION"
+  if [ -z "$version" ]; then
+    log "Finding the latest release"
+    version="$(latest_release_version)"
+  fi
+  [ -n "$version" ] || die "could not find a server release. Tag one with server-vX.Y.Z and push it, or set DUKEBOX_VERSION."
+
+  local tarball="dukebox-server-${version}-linux-${arch}.tar.gz"
+  download_dir="$(mktemp -d)"
+  # Global on purpose: an EXIT trap runs after this function's locals are gone.
+  # EXIT rather than RETURN so a `die` on a bad checksum still cleans up.
+  trap 'rm -rf "$download_dir"' EXIT
+
+  log "Downloading ${tarball} (server-v${version})"
+  curl -fsSL -o "${download_dir}/${tarball}" \
+    "${RELEASE_BASE}/releases/download/server-v${version}/${tarball}"
+  curl -fsSL -o "${download_dir}/SHA256SUMS" \
+    "${RELEASE_BASE}/releases/download/server-v${version}/SHA256SUMS"
+
+  # The checksum guards against a corrupt or tampered download. Refusing to
+  # proceed beats installing a bundle that fails in the field.
+  local expected actual
+  expected="$(grep " ${tarball}\$" "${download_dir}/SHA256SUMS" | awk '{print $1}')"
+  [ -n "$expected" ] || die "no checksum for ${tarball} in SHA256SUMS"
+  actual="$(sha256sum "${download_dir}/${tarball}" | awk '{print $1}')"
+  [ "$actual" = "$expected" ] || die "checksum mismatch for ${tarball}: expected ${expected}, got ${actual}"
+
+  log "Extracting to ${INSTALL_DIR}"
+  # /opt/dukebox holds only code; state lives in /etc/dukebox and the Docker
+  # volumes, so replacing it wholesale is safe — also on a re-run update.
+  local tmp_dir="${INSTALL_DIR}.tmp"
+  rm -rf "$tmp_dir"
+  mkdir -p "$tmp_dir"
+  tar -xzf "${download_dir}/${tarball}" -C "$tmp_dir"
+  rm -rf "${INSTALL_DIR}"
+  mv "$tmp_dir" "${INSTALL_DIR}"
+  chown -R "$SERVICE_USER:$SERVICE_USER" "${INSTALL_DIR}"
 }
 
 # Steps that can fail for reasons specific to a machine. Reported rather than
@@ -274,6 +321,11 @@ install_service() {
 
   systemctl daemon-reload
   systemctl enable --quiet dukebox
+}
+
+install_duke() {
+  log "Installing the duke CLI"
+  ln -sfn "${INSTALL_DIR}/dist/cli.js" /usr/local/bin/duke
 }
 
 # ---------------------------------------------------------------------------
@@ -374,7 +426,7 @@ print_next_steps() {
   echo "    ${step}. Start Dukebox and get a pairing link:"
   echo "         sudo systemctl start dukebox"
   echo "         sudo -u ${SERVICE_USER} DUKEBOX_CONFIG=${CONFIG_DIR}/config.toml \\"
-  echo "           node ${INSTALL_DIR}/apps/server/dist/cli.js pair new"
+  echo "           node ${INSTALL_DIR}/dist/cli.js pair new"
   echo
 }
 
@@ -392,7 +444,7 @@ print_pairing_link() {
 
   echo
   su -s /bin/sh "$SERVICE_USER" -c \
-    "cd '$INSTALL_DIR' && DUKEBOX_CONFIG='${CONFIG_DIR}/config.toml' node apps/server/dist/cli.js pair new"
+    "cd '$INSTALL_DIR' && DUKEBOX_CONFIG='${CONFIG_DIR}/config.toml' node dist/cli.js pair new"
 }
 
 # ---------------------------------------------------------------------------
@@ -404,20 +456,19 @@ main() {
   install_base_packages
   install_docker
   install_node
-  install_pnpm
   install_gh
   install_tailscale
 
   create_service_user
   generate_config
 
-  fetch_source
-  build_application
+  fetch_release
 
   # Installed before the steps that can fail on a particular machine, so a
   # failure there leaves a system an operator can fix and start by hand rather
   # than one with no service definition at all.
   install_service
+  install_duke
 
   build_agent_image
   start_dependencies
