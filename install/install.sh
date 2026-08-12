@@ -438,7 +438,7 @@ print_pairing_link() {
   sleep 3
 
   if ! systemctl is-active --quiet dukebox; then
-    warn "Dukebox failed to start. See: journalctl -u dukebox -n 50"
+    warn "Dukebox failed to start. See: duke logs"
     return 1
   fi
 

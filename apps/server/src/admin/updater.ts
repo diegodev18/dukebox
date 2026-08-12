@@ -297,7 +297,7 @@ export async function installStaging(options: InstallStagingOptions): Promise<Up
 
     return {
       ok: false,
-      message: `the new release did not start (systemctl is-active reported "${active.stdout.trim() || 'inactive'}"); rolled back. See: journalctl -u ${service} -n 50`,
+      message: `the new release did not start (systemctl is-active reported "${active.stdout.trim() || 'inactive'}"); rolled back. See: duke logs`,
     }
   } finally {
     await rm(stagingDir, { recursive: true, force: true })

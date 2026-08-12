@@ -189,6 +189,11 @@ duke update --from-git [ref]          # build and install from git (default: mai
 duke image rebuild                    # rebuild dukebox/base-node:latest
 duke rollback                         # restore the previous release
 duke restart                          # restart the control plane
+duke logs [-f] [-n N]                 # control plane journal (journalctl -u dukebox)
+duke logs session                     # list sessions
+duke logs session <id> [-f] [--json]  # session event log
+duke logs docker                      # list agent containers
+duke logs docker <id> [-f]            # agent container logs
 duke config show                      # effective configuration
 duke config get server.port           # one setting
 duke config set sandbox.memory_limit 6g   # change one setting and restart
