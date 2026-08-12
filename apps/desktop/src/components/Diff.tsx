@@ -86,7 +86,7 @@ function SkipHunk({
         onClick={onToggle}
         aria-expanded={open}
         aria-label={label}
-        className="block w-full bg-muted/60 px-3 py-0.5 text-left text-muted-foreground hover:bg-muted hover:text-foreground"
+        className="sticky left-0 z-[1] box-border block w-[var(--workspace-files-width)] bg-muted px-3 py-0.5 text-left text-muted-foreground hover:bg-border hover:text-foreground"
       >
         {label}
       </button>
