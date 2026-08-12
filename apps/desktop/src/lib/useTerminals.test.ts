@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { applyTerminalMessage, drainTab, emptyTerminalState, removeTab } from '@/lib/useTerminals'
+import {
+  applyTerminalMessage,
+  drainTab,
+  emptyTerminalState,
+  removeTab,
+  renameTab,
+} from '@/lib/useTerminals'
 
 const sessionId = '11111111-1111-4111-8111-111111111111'
 
@@ -163,5 +169,27 @@ describe('removeTab', () => {
     const state = withOneTerminal()
 
     expect(removeTab(state, 'ghost')).toBe(state)
+  })
+})
+
+describe('renameTab', () => {
+  it('changes the title', () => {
+    expect(renameTab(withOneTerminal(), 't1', 'build').tabs[0]?.title).toBe('build')
+  })
+
+  it('trims whitespace', () => {
+    expect(renameTab(withOneTerminal(), 't1', '  build  ').tabs[0]?.title).toBe('build')
+  })
+
+  it('ignores an empty title so a tab never goes blank', () => {
+    const state = withOneTerminal()
+
+    expect(renameTab(state, 't1', '   ')).toBe(state)
+  })
+
+  it('returns the same state when the title is unchanged', () => {
+    const state = withOneTerminal()
+
+    expect(renameTab(state, 't1', '1')).toBe(state)
   })
 })

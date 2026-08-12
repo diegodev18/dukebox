@@ -1,6 +1,6 @@
 import { PassThrough } from 'node:stream'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { MAX_TERMINALS_PER_SESSION, TerminalRegistry } from './terminals.js'
+import { MAX_TERMINALS_PER_SESSION, TerminalRegistry, randomTerminalTitle } from './terminals.js'
 
 const sessionId = 'session-1'
 
@@ -47,12 +47,21 @@ describe('TerminalRegistry', () => {
     expect(registry.list(sessionId)).toEqual([info])
   })
 
-  it('numbers terminals in the order they were opened', async () => {
+  it('names terminals with a unique three-digit label', async () => {
     const first = await registry.open(sessionId, { cols: 80, rows: 24 })
     const second = await registry.open(sessionId, { cols: 80, rows: 24 })
 
-    expect(first.title).toBe('1')
-    expect(second.title).toBe('2')
+    expect(first.title).toMatch(/^\d{3}$/)
+    expect(second.title).toMatch(/^\d{3}$/)
+    expect(first.title).not.toBe(second.title)
+  })
+
+  it('renames a terminal and lists the new title', async () => {
+    const info = await registry.open(sessionId, { cols: 80, rows: 24 })
+    const renamed = registry.rename(sessionId, info.terminalId, 'build')
+
+    expect(renamed.title).toBe('build')
+    expect(registry.list(sessionId)).toEqual([renamed])
   })
 
   it('refuses to open more than the cap', async () => {
@@ -230,5 +239,17 @@ describe('TerminalRegistry', () => {
     await registry.close(sessionId, first.terminalId)
 
     await expect(registry.open(sessionId, { cols: 80, rows: 24 })).resolves.toBeDefined()
+  })
+})
+
+describe('randomTerminalTitle', () => {
+  it('returns a three-digit label', () => {
+    expect(randomTerminalTitle([])).toMatch(/^\d{3}$/)
+  })
+
+  it('skips titles already in use', () => {
+    const taken = Array.from({ length: 999 }, (_, index) => String(index).padStart(3, '0'))
+
+    expect(randomTerminalTitle(taken)).toBe('999')
   })
 })

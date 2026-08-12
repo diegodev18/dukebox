@@ -74,6 +74,29 @@ describe('terminal commands', () => {
 
     expect(result.success).toBe(true)
   })
+
+  it('parses terminal_rename and trims the title', () => {
+    const result = clientCommand.safeParse({
+      type: 'terminal_rename',
+      sessionId,
+      terminalId: 't1',
+      title: '  build  ',
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.title).toBe('build')
+  })
+
+  it('rejects an empty terminal_rename title', () => {
+    const result = clientCommand.safeParse({
+      type: 'terminal_rename',
+      sessionId,
+      terminalId: 't1',
+      title: '   ',
+    })
+
+    expect(result.success).toBe(false)
+  })
 })
 
 describe('terminal messages', () => {
