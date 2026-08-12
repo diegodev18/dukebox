@@ -144,49 +144,6 @@ describe('DukeboxClient', () => {
     expect(init.method).toBe('POST')
   })
 
-  it('lists OpenCode providers', async () => {
-    const fetchMock = respondWith({
-      providers: [{ id: 'anthropic', kind: 'anthropic', name: 'Anthropic', models: [] }],
-    })
-    const providers = await client.listOpencodeProviders()
-
-    expect(providers).toHaveLength(1)
-    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
-    expect(url).toContain('/api/opencode/providers')
-  })
-
-  it('upserts an OpenCode provider', async () => {
-    const fetchMock = respondWith({
-      provider: { id: 'anthropic', kind: 'anthropic', name: 'Anthropic', models: [] },
-    })
-    await client.upsertOpencodeProvider({ kind: 'anthropic', apiKey: 'sk-ant' })
-
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
-    expect(url).toContain('/api/opencode/providers')
-    expect(init.method).toBe('PUT')
-    expect(JSON.parse(init.body as string)).toEqual({ kind: 'anthropic', apiKey: 'sk-ant' })
-  })
-
-  it('lists the OpenCode catalog', async () => {
-    const fetchMock = respondWith({
-      providers: [{ kind: 'anthropic', name: 'Anthropic', models: [] }],
-    })
-    const catalog = await client.listOpencodeCatalog()
-
-    expect(catalog).toHaveLength(1)
-    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
-    expect(url).toContain('/api/opencode/catalog')
-  })
-
-  it('deletes an OpenCode provider', async () => {
-    const fetchMock = respondWith({ deleted: true })
-    await client.deleteOpencodeProvider('anthropic')
-
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
-    expect(url).toContain('/api/opencode/providers/anthropic')
-    expect(init.method).toBe('DELETE')
-  })
-
   /**
    * The environment routes are keyed by environment, not by project, and the
    * server answers 400 without `?environmentId=`. These assert the query

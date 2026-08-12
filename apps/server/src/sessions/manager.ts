@@ -1,4 +1,4 @@
-import { ClaudeCodeAdapter, OpenCodeAdapter, type AgentAdapter } from '@dukebox/adapters'
+import { ClaudeCodeAdapter, type AgentAdapter } from '@dukebox/adapters'
 import { environments, projects, sessions, type Database, type Session } from '@dukebox/db'
 import {
   DEFAULT_COMMIT_IDENTITY,
@@ -31,7 +31,6 @@ import { join } from 'node:path'
 import type { EventBus } from '../events/bus.js'
 import type { GitHubClient } from '../github/client.js'
 import { AGENT_CREDENTIAL_SECRET, type SecretStore } from '../secrets/store.js'
-import { buildOpencodeSessionEnv, loadOpencodeProviders } from '../opencode/providers.js'
 import { ENVIRONMENT_SETUP_PROMPT, parseEnvironmentProposalJson } from './environmentSetup.js'
 import { pullRequestContent } from './summary.js'
 import { toSummary } from './summarize.js'
@@ -123,13 +122,6 @@ interface RunningSession {
 
 export class SessionError extends Error {}
 
-/** The adapter for an agent id, or a thrown error if none is registered. */
-export function createAgentAdapter(agentId: string): AgentAdapter {
-  if (agentId === 'claude-code') return new ClaudeCodeAdapter()
-  if (agentId === 'opencode') return new OpenCodeAdapter()
-  throw new SessionError(`no adapter for agent: ${agentId}`)
-}
-
 export class SessionManager {
   private readonly running = new Map<string, RunningSession>()
 
@@ -137,7 +129,9 @@ export class SessionManager {
 
   private createAdapter(agentId: string): AgentAdapter {
     if (this.deps.createAdapter) return this.deps.createAdapter(agentId)
-    return createAgentAdapter(agentId)
+
+    if (agentId === 'claude-code') return new ClaudeCodeAdapter()
+    throw new SessionError(`no adapter for agent: ${agentId}`)
   }
 
   private async setStatus(
@@ -264,12 +258,7 @@ export class SessionManager {
 
     // Set on the container rather than only on setup commands: the agent
     // process needs its own credentials, and it is started later by exec.
-    const environment = await this.environmentFor(
-      config,
-      session.projectId,
-      session.agentId,
-      purpose === 'coding' ? config.instructions : undefined,
-    )
+    const environment = await this.environmentFor(config, session.projectId)
 
     const container = await this.deps.sandbox.create({
       sessionId: session.id,
@@ -755,8 +744,6 @@ export class SessionManager {
   private async environmentFor(
     config: ProjectConfig,
     projectId: string,
-    agentId: string,
-    instructions?: string,
   ): Promise<Record<string, string>> {
     const store = this.deps.secrets
     const projectSecrets = store ? await store.environmentFor(projectId) : {}
@@ -764,19 +751,10 @@ export class SessionManager {
     const environment: Record<string, string> = {}
 
     // The agent's credentials. Server-wide: one subscription runs every
-    // session, whatever repository it is working in. Only the credentials
-    // the chosen agent actually reads are injected, so an OpenCode session
-    // does not inherit a Claude token it has no use for.
+    // session, whatever repository it is working in.
     if (store) {
-      if (agentId === 'claude-code') {
-        const agentToken = await store.get(AGENT_CREDENTIAL_SECRET)
-        if (agentToken) environment[AGENT_CREDENTIAL_SECRET] = agentToken
-      }
-
-      if (agentId === 'opencode') {
-        const providers = await loadOpencodeProviders(store)
-        Object.assign(environment, buildOpencodeSessionEnv(providers, instructions))
-      }
+      const agentToken = await store.get(AGENT_CREDENTIAL_SECRET)
+      if (agentToken) environment[AGENT_CREDENTIAL_SECRET] = agentToken
     }
 
     Object.assign(environment, projectSecrets)

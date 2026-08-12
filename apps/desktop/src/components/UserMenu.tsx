@@ -1,6 +1,5 @@
 import { DEFAULT_COMMIT_IDENTITY, type CommitIdentity } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
-import { AgentIcon } from '@/components/AgentIcon'
 import { CheckIcon, ChevronDownIcon, RefreshIcon, SettingsIcon } from '@/components/icons'
 
 /**
@@ -21,12 +20,10 @@ export function UserMenu({
   user,
   onCheckForUpdates,
   onOpenSettings,
-  onOpenOpencodeProviders,
 }: {
   user: CommitIdentity
   onCheckForUpdates: () => void
   onOpenSettings: () => void
-  onOpenOpencodeProviders: () => void
 }) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
@@ -134,20 +131,6 @@ export function UserMenu({
             >
               <SettingsIcon size={14} className="flex-none text-muted-foreground" />
               Settings…
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false)
-                onOpenOpencodeProviders()
-              }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted"
-            >
-              <span className="flex-none text-muted-foreground">
-                <AgentIcon agentId="opencode" className="size-3.5" />
-              </span>
-              OpenCode providers…
             </button>
           </div>
 

@@ -3,9 +3,6 @@ import type {
   CreateEnvironmentRequest,
   EnvironmentProposal,
   EnvironmentSummary,
-  ListOpencodeCatalogResponse,
-  ListOpencodeProvidersResponse,
-  OpencodeProvider,
   PairRedeemResponse,
   ProjectEnvironmentResponse,
   ProjectSummary,
@@ -13,7 +10,6 @@ import type {
   RepositorySummary,
   SessionSummary,
   UpdateEnvironmentRequest,
-  UpsertOpencodeProviderRequest,
 } from '@dukebox/protocol'
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 
@@ -294,28 +290,6 @@ export class DukeboxClient {
 
   async clearAgentCredentials(): Promise<void> {
     await this.request('/api/agent-credentials', { method: 'DELETE' })
-  }
-
-  async listOpencodeCatalog(): Promise<ListOpencodeCatalogResponse['providers']> {
-    const body = await this.request<ListOpencodeCatalogResponse>('/api/opencode/catalog')
-    return body.providers
-  }
-
-  async listOpencodeProviders(): Promise<OpencodeProvider[]> {
-    const body = await this.request<ListOpencodeProvidersResponse>('/api/opencode/providers')
-    return body.providers
-  }
-
-  async upsertOpencodeProvider(provider: UpsertOpencodeProviderRequest): Promise<OpencodeProvider> {
-    const body = await this.request<{ provider: OpencodeProvider }>('/api/opencode/providers', {
-      method: 'PUT',
-      body: JSON.stringify(provider),
-    })
-    return body.provider
-  }
-
-  async deleteOpencodeProvider(id: string): Promise<void> {
-    await this.request(`/api/opencode/providers/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 }
 

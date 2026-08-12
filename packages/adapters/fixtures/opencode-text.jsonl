@@ -1,3 +1,0 @@
-{"type":"step_start","timestamp":1700000000000,"sessionID":"ses_494719016ffe85dkDMj0FPRbHK","part":{"id":"prt_1","sessionID":"ses_494719016ffe85dkDMj0FPRbHK","messageID":"msg_1","type":"step-start"}}
-{"type":"text","timestamp":1700000000001,"sessionID":"ses_494719016ffe85dkDMj0FPRbHK","part":{"id":"prt_2","sessionID":"ses_494719016ffe85dkDMj0FPRbHK","messageID":"msg_1","type":"text","text":"Hello from OpenCode","time":{"start":1700000000001,"end":1700000000002}}}
-{"type":"step_finish","timestamp":1700000000003,"sessionID":"ses_494719016ffe85dkDMj0FPRbHK","part":{"id":"prt_3","sessionID":"ses_494719016ffe85dkDMj0FPRbHK","messageID":"msg_1","type":"step-finish","reason":"stop","tokens":{"input":12,"output":8,"reasoning":0,"cache":{"read":0,"write":0}}}}

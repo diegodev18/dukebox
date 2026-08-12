@@ -1,6 +1,5 @@
 import { DEFAULT_COMMIT_IDENTITY } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
-import { OpenCodeProviders } from '@/components/OpenCodeProviders'
 import { PairingForm } from '@/components/PairingForm'
 import type { DukeboxClient } from '@/lib/client'
 import {
@@ -41,8 +40,6 @@ interface Props {
   onSwitchServer: (connection: Connection) => void
   onClose: () => void
   onDisconnected: () => void
-  /** Land on this category instead of Appearance. Used from the account menu. */
-  initialCategory?: Category
 }
 
 export function Settings({
@@ -54,9 +51,8 @@ export function Settings({
   onSwitchServer,
   onClose,
   onDisconnected,
-  initialCategory = 'appearance',
 }: Props) {
-  const [category, setCategory] = useState<Category>(initialCategory)
+  const [category, setCategory] = useState<Category>('appearance')
 
   // Esc closes from anywhere in the panel, the same way it closes a popover.
   useEffect(() => {
@@ -267,7 +263,6 @@ function AccountSection({
       </div>
 
       <AgentCredentials client={client} />
-      <OpenCodeProviders client={client} />
     </section>
   )
 }

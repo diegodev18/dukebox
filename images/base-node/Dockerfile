@@ -10,7 +10,6 @@ FROM node:22-bookworm-slim
 # unattended upgrade that changes that shape breaks the adapter at runtime.
 # Bumping this is a deliberate change with a fixture update alongside it.
 ARG CLAUDE_CODE_VERSION=2.1.220
-ARG OPENCODE_VERSION=1.18.16
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -30,7 +29,6 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
-  && npm install -g "opencode-ai@${OPENCODE_VERSION}" \
   && npm cache clean --force
 
 # The `node` user ships with the base image. Running as root would mean any
@@ -51,7 +49,6 @@ RUN git config --global user.name "Dukebox Agent" \
 LABEL org.opencontainers.image.title="Dukebox base (Node)"
 LABEL org.opencontainers.image.source="https://github.com/diegosanchezdev/dukebox"
 LABEL dev.dukebox.claude-code-version="${CLAUDE_CODE_VERSION}"
-LABEL dev.dukebox.opencode-version="${OPENCODE_VERSION}"
 
 # Sessions exec into a running container. Without a foreground process the
 # container would exit immediately and there would be nothing to exec into.

@@ -21,7 +21,6 @@ interface Props {
   identity: CommitIdentity
   onCheckForUpdates: () => void
   onOpenSettings: () => void
-  onOpenOpencodeProviders: () => void
   onSelect: (sessionId: string) => void
   onNewSession: () => void
   onConfigureEnvironment: (projectId: string) => void
@@ -36,7 +35,6 @@ export function Sidebar({
   identity,
   onCheckForUpdates,
   onOpenSettings,
-  onOpenOpencodeProviders,
   onSelect,
   onNewSession,
   onConfigureEnvironment,
@@ -124,7 +122,6 @@ export function Sidebar({
             user={identity}
             onCheckForUpdates={onCheckForUpdates}
             onOpenSettings={onOpenSettings}
-            onOpenOpencodeProviders={onOpenOpencodeProviders}
           />
         </div>
         <button

@@ -3,14 +3,12 @@ import {
   resolveEnvironment,
   type CommitIdentity,
   type EnvironmentSummary,
-  type OpencodeProvider,
   type ProjectSummary,
   type RepositorySummary,
   type SessionSummary,
 } from '@dukebox/protocol'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { AVAILABLE_AGENTS, AVAILABLE_MODELS, DEFAULT_MODEL } from '@/components/AgentIcon'
-import { OpenCodeProviders, opencodeModelOptions } from '@/components/OpenCodeProviders'
+import { useEffect, useRef, useState } from 'react'
+import { AVAILABLE_AGENTS, DEFAULT_MODEL } from '@/components/AgentIcon'
 import { SendIcon } from '@/components/icons'
 import {
   AgentPicker,
@@ -81,7 +79,6 @@ export function NewSession({
   const [environmentId, setEnvironmentId] = useState<string>(BASE_IMAGE_VALUE)
   const [agentId, setAgentId] = useState<string>(AVAILABLE_AGENTS[0].id)
   const [model, setModel] = useState<string>(DEFAULT_MODEL)
-  const [opencodeProviders, setOpencodeProviders] = useState<OpencodeProvider[]>([])
   const [prompt, setPrompt] = useState('')
   const [forceSetup, setForceSetup] = useState(Boolean(preferSetupProjectId))
   const [newEnvironmentName, setNewEnvironmentName] = useState('Default')
@@ -230,28 +227,6 @@ export function NewSession({
     setEnvironmentId(resolveEnvironment(environments, baseBranch)?.id ?? BASE_IMAGE_VALUE)
   }, [baseBranch, environments])
 
-  const usingOpenCode = agentId === 'opencode'
-  const models = useMemo(
-    () => (usingOpenCode ? opencodeModelOptions(opencodeProviders) : AVAILABLE_MODELS),
-    [usingOpenCode, opencodeProviders],
-  )
-
-  useEffect(() => {
-    if (models.some((candidate) => candidate.id === model)) return
-    const fallback = models[0]?.id
-    if (fallback) setModel(fallback)
-  }, [models, model])
-
-  const selectAgent = (next: string) => {
-    setAgentId(next)
-    if (next === 'opencode') {
-      const first = opencodeModelOptions(opencodeProviders)[0]?.id
-      if (first) setModel(first)
-    } else {
-      setModel(DEFAULT_MODEL)
-    }
-  }
-
   const selectRepo = (fullName: string) => {
     setTarget(fullName)
     setForceSetup(false)
@@ -331,7 +306,6 @@ export function NewSession({
 
   const busy = status.kind === 'starting' || status.kind === 'loading'
   const options = mergeOptions(projects, repositories)
-  const hasModel = models.length > 0 && models.some((candidate) => candidate.id === model)
 
   // The server this app is paired with is the only instance it can reach, so
   // it is the whole list. Pairing with several is what makes this plural.
@@ -340,13 +314,8 @@ export function NewSession({
   ]
 
   const canSend = needsEnvironment
-    ? !busy && Boolean(target) && Boolean(baseBranch) && Boolean(agentId) && hasModel
-    : !busy &&
-      Boolean(target) &&
-      Boolean(baseBranch) &&
-      Boolean(agentId) &&
-      hasModel &&
-      prompt.trim() !== ''
+    ? !busy && Boolean(target) && Boolean(baseBranch) && Boolean(agentId)
+    : !busy && Boolean(target) && Boolean(baseBranch) && Boolean(agentId) && prompt.trim() !== ''
 
   return (
     <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
@@ -370,18 +339,10 @@ export function NewSession({
               disabled={busy || !target}
             />
           )}
-          <AgentPicker value={agentId} onChange={selectAgent} disabled={busy} />
-          {!(usingOpenCode && models.length === 0) && (
-            <ModelPicker value={model} onChange={setModel} disabled={busy} models={models} />
-          )}
+          <AgentPicker value={agentId} onChange={setAgentId} disabled={busy} />
+          <ModelPicker value={model} onChange={setModel} disabled={busy} />
           <InstancePicker instances={instances} value={connection.deviceId} disabled={busy} />
         </div>
-
-        {usingOpenCode && (
-          <div className="mb-3">
-            <OpenCodeProviders client={client} compact onChange={setOpencodeProviders} />
-          </div>
-        )}
 
         {needsEnvironment ? (
           <div className="rounded-[calc(var(--radius)*1.1)] border border-border bg-surface px-3.5 py-3.5">

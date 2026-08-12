@@ -57,7 +57,6 @@ export function Session({
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [settingsCategory, setSettingsCategory] = useState<'appearance' | 'account'>('appearance')
   const [setupProjectId, setSetupProjectId] = useState<string | null>(null)
   const [managingProjectId, setManagingProjectId] = useState<string | null>(null)
   // Only to name the environment a review session belongs to. The summary
@@ -178,14 +177,6 @@ export function Session({
           setCreating(false)
           setSetupProjectId(null)
           setManagingProjectId(null)
-          setSettingsCategory('appearance')
-          setSettingsOpen(true)
-        }}
-        onOpenOpencodeProviders={() => {
-          setCreating(false)
-          setSetupProjectId(null)
-          setManagingProjectId(null)
-          setSettingsCategory('account')
           setSettingsOpen(true)
         }}
         onSelect={(sessionId) => {
@@ -248,7 +239,6 @@ export function Session({
           onSwitchServer={onSwitchServer}
           onClose={() => setSettingsOpen(false)}
           onDisconnected={onDisconnected}
-          initialCategory={settingsCategory}
         />
       ) : managingProjectId ? (
         <EnvironmentsPanel client={client} projectId={managingProjectId} />
