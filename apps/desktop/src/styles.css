@@ -142,6 +142,27 @@
   }
 }
 
+/* Dual-theme token colours from Shiki (`defaultColor: false`). The span
+   carries --shiki-light / --shiki-dark; this picks which one follows the app
+   theme. Diff added/removed tints live on the row, not on the text. */
+.shiki-token {
+  color: var(--shiki-light, inherit);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .shiki-token {
+    color: var(--shiki-dark, inherit);
+  }
+}
+
+:root[data-theme='dark'] .shiki-token {
+  color: var(--shiki-dark, inherit);
+}
+
+:root[data-theme='light'] .shiki-token {
+  color: var(--shiki-light, inherit);
+}
+
 @utility measure {
   /* One width for the conversation, shared by the composer and the chips
      below it. A percentage of the container, never a viewport unit: `vw`
