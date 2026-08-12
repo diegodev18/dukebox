@@ -9,7 +9,7 @@ import {
   parseUpdateArgs,
   performGitUpdate,
 } from './gitUpdate.js'
-import type { CommandResult } from './updater.js'
+import type { CommandResult, RunCommandOptions } from './updater.js'
 
 describe('gitVersionLabel', () => {
   it('builds a semver prerelease from the ref and short sha', () => {
@@ -99,9 +99,15 @@ describe('performGitUpdate', () => {
     const calls: string[] = []
     const logs: string[] = []
 
+    const liveLogCalls: string[] = []
     const ok = (stdout = ''): CommandResult => ({ code: 0, stdout, stderr: '' })
-    const run = async (command: string, args: string[]): Promise<CommandResult> => {
+    const run = async (
+      command: string,
+      args: string[],
+      options?: RunCommandOptions,
+    ): Promise<CommandResult> => {
       calls.push([command, ...args].join(' '))
+      if (options?.liveLog) liveLogCalls.push([command, ...args].join(' '))
       if (command === 'git' && args.includes('rev-parse')) return ok('abc1234def56\n')
       if (command === 'pnpm' && args[0] === '--version') return ok('10.24.0\n')
       return ok()
@@ -128,6 +134,9 @@ describe('performGitUpdate', () => {
       expect(calls.some((call) => call.includes('fetch') && call.includes('main'))).toBe(true)
       expect(calls.some((call) => call.includes('package-server.sh'))).toBe(true)
       expect(calls.some((call) => call.startsWith('pnpm install'))).toBe(true)
+      expect(liveLogCalls.some((call) => call.startsWith('pnpm install'))).toBe(true)
+      expect(liveLogCalls.some((call) => call.includes('package-server.sh'))).toBe(true)
+      expect(liveLogCalls).toHaveLength(2)
       expect(logs.some((line) => line.includes('Cloning'))).toBe(true)
     } finally {
       await rm(installRoot, { recursive: true, force: true })

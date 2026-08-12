@@ -185,6 +185,7 @@ export async function performGitUpdate(options: PerformGitUpdateOptions): Promis
     const deps = await run('pnpm', ['install', '--frozen-lockfile'], {
       cwd: workDir,
       env: { ...process.env, CI: '1' },
+      liveLog: true,
     })
     if (deps.code !== 0) {
       return {
@@ -196,6 +197,7 @@ export async function performGitUpdate(options: PerformGitUpdateOptions): Promis
     const pack = await run('bash', [join(workDir, 'scripts/package-server.sh'), version], {
       cwd: workDir,
       env: { ...process.env, CI: '1' },
+      liveLog: true,
     })
     if (pack.code !== 0) {
       return {
