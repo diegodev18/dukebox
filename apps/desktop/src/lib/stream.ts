@@ -21,6 +21,11 @@ import { socketUrl, type ServerAddress } from '@/lib/client'
 
 export type StreamStatus = 'connecting' | 'live' | 'catching_up' | 'offline'
 
+/** The socket can carry commands. Offline and connecting cannot. */
+export function isStreamConnected(status: StreamStatus): boolean {
+  return status === 'live' || status === 'catching_up'
+}
+
 export interface StreamHandlers {
   onMessage: (message: ServerMessage) => void
   onStatus: (status: StreamStatus) => void
@@ -28,17 +33,25 @@ export interface StreamHandlers {
    * A connection that never reached the server.
    *
    * Separate from `onStatus('offline')`, which covers a socket that was working
-   * and dropped. This one means it never worked, and the difference decides
-   * whether waiting is worth anything.
+   * and dropped. The stream still retries; this is so the UI can name the
+   * failure rather than looking like a quiet session.
    */
   onFailure?: (reason: string) => void
+  /**
+   * The server revoked this device. Stop retrying — the token will not work
+   * again, and reconnecting forever would look like a network blip.
+   */
+  onRevoked?: () => void
 }
 
 /** Where a reconnect should resume from. Read at connect time, never cached. */
 export type ResumePoint = (sessionId: string) => number
 
-const INITIAL_RETRY_MS = 500
-const MAX_RETRY_MS = 15_000
+export const INITIAL_RETRY_MS = 500
+export const MAX_RETRY_MS = 15_000
+
+/** Close code the server sends when this device's token was revoked. */
+const REVOKED_CLOSE_CODE = 4000
 
 export class SessionStream {
   private socket: WebSocket | null = null
@@ -92,10 +105,19 @@ export class SessionStream {
       this.socket = null
       if (this.closed) return
 
+      // The token is gone. Retrying would hammer a handshake that cannot
+      // succeed, and the UI would look like a network blip forever.
+      if (event.code === REVOKED_CLOSE_CODE) {
+        this.closed = true
+        this.handlers.onStatus('offline')
+        this.handlers.onRevoked?.()
+        return
+      }
+
       // A socket that closes without ever opening never reached the server:
       // rejected at the handshake, or refused by the webview before it left.
-      // Reported rather than retried silently, because retrying forever on a
-      // connection that cannot succeed looks identical to a quiet session.
+      // Named so the banner is not the only signal, then retried — a server
+      // that is down should come back without restarting the app.
       if (!opened) {
         this.handlers.onFailure?.(
           event.code === 1006

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { UpdateBanner } from '@/components/UpdateBanner'
-import { DukeboxClient } from '@/lib/client'
+import { DukeboxClient, isAuthFailure } from '@/lib/client'
 import { activeConnection, removeConnection, type Connection } from '@/lib/connection'
 import type { Settings } from '@/lib/settings'
 import { useSettings } from '@/lib/useSettings'
@@ -45,6 +45,7 @@ function Loaded({
 
   useEffect(() => {
     let cancelled = false
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
 
     const restore = async () => {
       let connection: Connection | null = null
@@ -72,13 +73,28 @@ function Loaded({
       const client = new DukeboxClient(connection.address, connection.deviceToken)
 
       try {
-        await client.whoami()
+        // Bound so a silent server cannot pin the window on "Checking…".
+        // Session retries the same check once this screen is up.
+        await Promise.race([
+          client.whoami(),
+          new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error('timeout')), 4000)
+          }),
+        ])
         if (!cancelled) setState({ kind: 'ready', connection })
-      } catch {
-        // A revoked or unreachable server sends the user back to pairing with
-        // the stale entry cleared, rather than to a screen that cannot load.
-        await removeConnection(connection.deviceId).catch(() => undefined)
-        if (!cancelled) setState({ kind: 'unpaired' })
+      } catch (error) {
+        // A revoked token is a dead pairing. An unreachable server is not —
+        // dropping the stored credentials over a blip sent people back to
+        // pairing, and the only recovery was to restart or re-pair.
+        if (isAuthFailure(error)) {
+          await removeConnection(connection.deviceId).catch(() => undefined)
+          if (!cancelled) setState({ kind: 'unpaired' })
+          return
+        }
+
+        if (!cancelled) setState({ kind: 'ready', connection })
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId)
       }
     }
 
@@ -89,13 +105,14 @@ function Loaded({
     })
     return () => {
       cancelled = true
+      if (timeoutId) clearTimeout(timeoutId)
     }
   }, [])
 
   // The settings panel picks an already-paired server as the active one. The
   // connection object is in hand — the token was stored at pairing — so the
-  // switch is local; if the server has since revoked it, the session screen's
-  // first load fails and lands back on pairing.
+  // switch is local; if the server has since revoked it, the session screen
+  // unpairs, and if it is merely down the screen reconnects on its own.
   const switchServer = (connection: Connection) => setState({ kind: 'ready', connection })
 
   // Which screen. `checking` is blank on purpose for the moment the check

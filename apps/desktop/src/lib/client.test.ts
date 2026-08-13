@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiFailure, baseUrl, DukeboxClient, reachable, socketUrl } from '@/lib/client'
+import {
+  ApiFailure,
+  baseUrl,
+  DukeboxClient,
+  isAuthFailure,
+  reachable,
+  socketUrl,
+} from '@/lib/client'
 
 /**
  * The client is the only place the app knows how to reach a server, so what
@@ -350,5 +357,15 @@ describe('reachable', () => {
       reason: 'http',
       detail: 'answered 503',
     })
+  })
+})
+
+describe('isAuthFailure', () => {
+  it('is true only for a 401 from the API', () => {
+    expect(isAuthFailure(new ApiFailure(401, 'unauthorized', 'missing device token'))).toBe(true)
+    expect(isAuthFailure(new ApiFailure(403, 'forbidden', 'only the owner'))).toBe(false)
+    expect(isAuthFailure(new ApiFailure(500, 'unknown', 'request failed'))).toBe(false)
+    expect(isAuthFailure(new TypeError('network error'))).toBe(false)
+    expect(isAuthFailure(new Error('timeout'))).toBe(false)
   })
 })

@@ -7,9 +7,8 @@ import {
   type Transcript,
 } from '@dukebox/protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { DukeboxClient } from '@/lib/client'
 import type { Connection } from '@/lib/connection'
-import { SessionStream, type StreamStatus } from '@/lib/stream'
+import { SessionStream, isStreamConnected, type StreamStatus } from '@/lib/stream'
 import {
   applyTerminalMessage,
   drainTab,
@@ -56,6 +55,7 @@ export function useSession(
   connection: Connection,
   sessionId: string | null,
   onSessionUpdate?: (session: SessionSummary) => void,
+  onRevoked?: () => void,
 ): LiveSession {
   const [transcript, setTranscript] = useState<Transcript>(emptyTranscript)
   const [status, setStatus] = useState<StreamStatus>('connecting')
@@ -74,16 +74,21 @@ export function useSession(
   const updateRef = useRef(onSessionUpdate)
   updateRef.current = onSessionUpdate
 
+  const revokedRef = useRef(onRevoked)
+  revokedRef.current = onRevoked
+
   useEffect(() => {
     const stream = new SessionStream(
       connection.address,
       connection.deviceToken,
       {
-        onStatus: setStatus,
-        // A socket that never connected is worth saying out loud. Left to the
-        // status alone it reads as "Reconnecting…" forever, which is what a
-        // working connection looks like during a blip.
-        onFailure: setError,
+        onStatus: (next) => {
+          setStatus(next)
+          // A refused-connect error is only useful while we are down. Once the
+          // socket is live it would sit under the composer as if the send failed.
+          if (isStreamConnected(next)) setError(null)
+        },
+        onRevoked: () => revokedRef.current?.(),
         onMessage: (message) => {
           switch (message.type) {
             case 'event':
