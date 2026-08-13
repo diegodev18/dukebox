@@ -18,6 +18,7 @@ import {
   type SessionPurpose,
   type SessionStatus,
   type PermissionMode,
+  type AgentEvent,
   DEFAULT_PERMISSION_MODE,
 } from '@dukebox/protocol'
 import {
@@ -189,8 +190,27 @@ function permissionModeContext(
 /** Statuses that mean a turn was in flight when this process started. */
 const IN_PROGRESS_STATUSES: SessionStatus[] = ['provisioning', 'running', 'waiting_input']
 
+/**
+ * How often a running turn's diffs are pushed to clients.
+ *
+ * Real time, not turn-end time: the Changes tab should reflect the workspace as
+ * the agent works. Git is the only reliable witness of a change, so the panel
+ * is refreshed on a timer rather than tied to tool results.
+ */
+const LIVE_DIFF_INTERVAL_MS = 2_000
+
 export class SessionManager {
   private readonly running = new Map<string, RunningSession>()
+
+  /** Timer pushing a running turn's diffs to clients, keyed by session. */
+  private readonly diffWatch = new Map<string, NodeJS.Timeout>()
+  /** Live diff runs in flight, so a slow git diff cannot overlap itself. */
+  private readonly diffWatchInFlight = new Set<string>()
+  /** Last state each session pushed, so unchanged files are not re-emitted. */
+  private readonly lastDiffState = new Map<
+    string,
+    Map<string, { before: string | null; after: string | null }>
+  >()
 
   /**
    * Resumes in flight, keyed by session, so two callers (a prompt and a
@@ -465,7 +485,13 @@ export class SessionManager {
 
         if (event.type === 'done') {
           await this.onTurnEnd(sessionId, event.reason)
+          continue
         }
+
+        // A turn is active: keep the Changes tab current while the agent works,
+        // not only once the turn ends. Started lazily so a turn that produces
+        // no output never runs a timer.
+        this.ensureDiffWatch(sessionId)
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -473,6 +499,9 @@ export class SessionManager {
         .append(sessionId, { type: 'error', message, fatal: true })
         .catch(() => undefined)
       await this.setStatus(sessionId, 'failed', { errorMessage: message })
+    } finally {
+      this.stopDiffWatch(sessionId)
+      this.lastDiffState.delete(sessionId)
     }
   }
 
@@ -487,16 +516,19 @@ export class SessionManager {
     const running = this.running.get(sessionId)
     if (!running) return
 
-    try {
-      const diffs = await running.workspace.diffEvents(running.baseCommit)
-      for (const diff of diffs) {
-        await this.deps.bus.append(sessionId, diff)
-      }
+    // The turn is over: drop the live timer and push the final state. The
+    // cache is kept across turns, so a follow-up prompt that changes nothing
+    // emits nothing.
+    this.stopDiffWatch(sessionId)
 
-      await this.deps.db
-        .update(sessions)
-        .set({ changedFileCount: diffs.length })
-        .where(eq(sessions.id, sessionId))
+    try {
+      const count = await this.emitDiffs(sessionId)
+      if (count !== null) {
+        await this.deps.db
+          .update(sessions)
+          .set({ changedFileCount: count })
+          .where(eq(sessions.id, sessionId))
+      }
     } catch {
       // A failed diff should not fail the turn: the agent's work still stands,
       // and the user can still see the conversation.
@@ -522,6 +554,87 @@ export class SessionManager {
     await this.setStatus(sessionId, reason === 'error' ? 'failed' : 'done', {
       ...(agentSessionId ? { agentSessionId } : {}),
     })
+  }
+
+  /**
+   * Keep the session's Changes tab current while a turn runs.
+   *
+   * Diffs are pushed on a timer rather than tied to the agent's tool results:
+   * git is the only reliable witness of what changed, and it cannot know when
+   * the agent is done with a file. A turn that ends before the first tick still
+   * gets its diffs from `onTurnEnd`, so the timer never delays anything.
+   */
+  private ensureDiffWatch(sessionId: string): void {
+    if (this.diffWatch.has(sessionId)) return
+
+    const timer = setInterval(() => {
+      if (this.diffWatchInFlight.has(sessionId)) return
+      this.diffWatchInFlight.add(sessionId)
+      void this.emitDiffs(sessionId).finally(() => this.diffWatchInFlight.delete(sessionId))
+    }, LIVE_DIFF_INTERVAL_MS)
+
+    this.diffWatch.set(sessionId, timer)
+  }
+
+  private stopDiffWatch(sessionId: string): void {
+    const timer = this.diffWatch.get(sessionId)
+    if (timer) clearInterval(timer)
+    this.diffWatch.delete(sessionId)
+    this.diffWatchInFlight.delete(sessionId)
+  }
+
+  /**
+   * Compute the session's diffs since the base commit and push anything new.
+   *
+   * Returns how many files differ, for the sidebar badge, or null when the
+   * diff could not be computed. Re-emitting an unchanged state is skipped; a
+   * file the agent changed and then reverted is cleared so the panel does not
+   * keep a stale entry.
+   */
+  private async emitDiffs(sessionId: string): Promise<number | null> {
+    const running = this.running.get(sessionId)
+    if (!running) return null
+
+    try {
+      const fileDiffs = (await running.workspace.diffEvents(running.baseCommit)).filter(
+        (diff): diff is Extract<AgentEvent, { type: 'file_diff' }> => diff.type === 'file_diff',
+      )
+
+      let lastState = this.lastDiffState.get(sessionId)
+      if (!lastState) {
+        lastState = new Map()
+        this.lastDiffState.set(sessionId, lastState)
+      }
+
+      const current = new Set(fileDiffs.map((diff) => diff.path))
+      const events: AgentEvent[] = []
+
+      // A file shown as changed that is now clean was reverted mid-turn.
+      // `before === after` tells the client to drop the entry rather than
+      // render an empty diff.
+      for (const [path, last] of lastState) {
+        if (current.has(path)) continue
+        events.push({ type: 'file_diff', path, before: last.before, after: last.before })
+        lastState.delete(path)
+      }
+
+      for (const diff of fileDiffs) {
+        const last = lastState.get(diff.path)
+        if (last && last.before === diff.before && last.after === diff.after) continue
+        lastState.set(diff.path, { before: diff.before, after: diff.after })
+        events.push(diff)
+      }
+
+      for (const event of events) {
+        await this.deps.bus.append(sessionId, event)
+      }
+
+      return fileDiffs.length
+    } catch {
+      // A failed diff must not fail the turn: the agent's work still stands,
+      // and the conversation is unaffected.
+      return null
+    }
   }
 
   /**
@@ -1262,6 +1375,8 @@ export class SessionManager {
     if (!running) return
 
     this.running.delete(sessionId)
+    this.stopDiffWatch(sessionId)
+    this.lastDiffState.delete(sessionId)
 
     await running.adapter.stop()
     await running.container.stop()

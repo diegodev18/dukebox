@@ -501,6 +501,34 @@ describe('diffs', () => {
     const events = await bus.replay(session.id)
     expect(events.filter((event) => event.event.type === 'file_diff')).toHaveLength(0)
   })
+
+  it('shows changes live, before the turn ends', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo live > README.md'], { cwd: '/workspace/repo' })
+
+    // The agent is still working: a text delta, no `done`.
+    adapter.emit({ type: 'assistant_text', delta: 'making a change' })
+
+    // The Changes tab is fed by the live timer, so the diff arrives while the
+    // session is still running rather than when the turn ends.
+    await expect
+      .poll(
+        async () =>
+          (await bus.replay(session.id)).filter((event) => event.event.type === 'file_diff').length,
+        { timeout: 20_000, interval: 250 },
+      )
+      .toBeGreaterThan(0)
+
+    const [row] = await db
+      .select({ status: sessions.status })
+      .from(sessions)
+      .where(eq(sessions.id, session.id))
+
+    expect(row?.status).toBe('running')
+  })
 })
 
 describe('prompt, interrupt, and stop', () => {

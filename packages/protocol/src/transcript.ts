@@ -205,7 +205,14 @@ function fold(draft: Transcript, event: AgentEvent, seq: number): void {
 
     case 'file_diff': {
       // Latest state per path wins. An agent that edits a file three times
-      // produces three events but one entry in the review panel.
+      // produces three events but one entry in the review panel. A diff with
+      // `before === after` means the file was reverted mid-turn, so the entry
+      // is dropped rather than rendered as an empty diff.
+      if (event.before === event.after) {
+        draft.files = draft.files.filter((file) => file.path !== event.path)
+        return
+      }
+
       const files = draft.files.filter((file) => file.path !== event.path)
       files.push({ path: event.path, before: event.before, after: event.after })
       files.sort((a, b) => a.path.localeCompare(b.path))

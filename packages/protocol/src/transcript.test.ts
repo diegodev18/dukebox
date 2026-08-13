@@ -152,6 +152,15 @@ describe('files', () => {
 
     expect(transcript.files.map((file) => file.path)).toEqual(['a.ts', 'z.ts'])
   })
+
+  it('drops a file that was reverted to its original content', () => {
+    const transcript = fold(
+      at(1, { type: 'file_diff', path: 'a.ts', before: 'old', after: 'new' }),
+      at(2, { type: 'file_diff', path: 'a.ts', before: 'old', after: 'old' }),
+    )
+
+    expect(transcript.files).toEqual([])
+  })
 })
 
 describe('usage', () => {
