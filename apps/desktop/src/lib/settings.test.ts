@@ -51,6 +51,7 @@ describe('loadSettings', () => {
       theme: 'dark',
       checkForUpdatesOnLaunch: true,
       commitIdentity: null,
+      lastNewSession: null,
       git: {
         createAsDraft: true,
         autoOpenDraft: true,
@@ -60,6 +61,22 @@ describe('loadSettings', () => {
         prDescription: 'auto',
       },
     })
+  })
+
+  it('restores the last New Session pickers', async () => {
+    const lastNewSession = {
+      repoFullName: 'acme/app',
+      baseBranch: 'main',
+      environmentId: '',
+      agentId: 'claude-code',
+      model: 'opus',
+      providerId: '',
+      permissionMode: 'plan',
+    }
+    const { loadSettings } = await settingsModule()
+    vi.mocked(load).mockResolvedValue(store({ settings: { lastNewSession } }) as never)
+
+    await expect(loadSettings()).resolves.toMatchObject({ lastNewSession })
   })
 })
 
@@ -83,6 +100,22 @@ describe('saveSettings', () => {
     await expect(saveSettings({ commitIdentity: identity })).resolves.toMatchObject({
       commitIdentity: identity,
     })
+  })
+
+  it('persists the last New Session pickers', async () => {
+    const { saveSettings } = await settingsModule()
+    vi.mocked(load).mockResolvedValue(store() as never)
+
+    const lastNewSession = {
+      repoFullName: 'acme/app',
+      baseBranch: 'main',
+      environmentId: '',
+      agentId: 'claude-code',
+      model: 'opus',
+      providerId: '',
+      permissionMode: 'plan',
+    }
+    await expect(saveSettings({ lastNewSession })).resolves.toMatchObject({ lastNewSession })
   })
 
   it('mirrors a theme change into localStorage for the next boot', async () => {
@@ -120,5 +153,79 @@ describe('bootTheme', () => {
     const { bootTheme } = await settingsModule()
     localStorage.setItem('dukebox.theme', 'light')
     expect(bootTheme()).toBe('light')
+  })
+})
+
+describe('lastNewSessionFromSummary', () => {
+  it('copies repo, branch, agent, environment, and permission from the session', async () => {
+    const { lastNewSessionFromSummary } = await settingsModule()
+    const project = {
+      id: '00000000-0000-4000-8000-000000000001',
+      repoFullName: 'acme/app',
+      defaultBranch: 'main',
+      environmentCount: 1,
+      createdAt: 1,
+      sessionCount: 1,
+    }
+
+    expect(
+      lastNewSessionFromSummary(
+        {
+          id: '00000000-0000-4000-8000-000000000010',
+          projectId: project.id,
+          agentId: 'claude-code',
+          status: 'done',
+          purpose: 'coding',
+          title: 'do a thing',
+          branch: 'duke/abc',
+          baseBranch: 'main',
+          changedFileCount: 0,
+          createdAt: 1,
+          updatedAt: 1,
+          lastSeq: 0,
+          pullRequestUrl: null,
+          pullRequest: null,
+          environmentId: '00000000-0000-4000-8000-0000000000e1',
+          permissionMode: 'plan',
+        },
+        [project],
+      ),
+    ).toEqual({
+      repoFullName: 'acme/app',
+      baseBranch: 'main',
+      environmentId: '00000000-0000-4000-8000-0000000000e1',
+      agentId: 'claude-code',
+      model: '',
+      providerId: '',
+      permissionMode: 'plan',
+    })
+  })
+
+  it('returns null when there is no session or the project is gone', async () => {
+    const { lastNewSessionFromSummary } = await settingsModule()
+    expect(lastNewSessionFromSummary(undefined, [])).toBeNull()
+    expect(
+      lastNewSessionFromSummary(
+        {
+          id: '00000000-0000-4000-8000-000000000010',
+          projectId: '00000000-0000-4000-8000-000000000099',
+          agentId: 'claude-code',
+          status: 'done',
+          purpose: 'coding',
+          title: 'do a thing',
+          branch: 'duke/abc',
+          baseBranch: 'main',
+          changedFileCount: 0,
+          createdAt: 1,
+          updatedAt: 1,
+          lastSeq: 0,
+          pullRequestUrl: null,
+          pullRequest: null,
+          environmentId: null,
+          permissionMode: null,
+        },
+        [],
+      ),
+    ).toBeNull()
   })
 })

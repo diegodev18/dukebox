@@ -8,7 +8,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { DukeboxClient, isAuthFailure } from '@/lib/client'
 import { removeConnection, type Connection } from '@/lib/connection'
-import type { Settings } from '@/lib/settings'
+import { lastNewSessionFromSummary, type Settings } from '@/lib/settings'
 import { INITIAL_RETRY_MS, MAX_RETRY_MS, isStreamConnected } from '@/lib/stream'
 import type { UseUpdate } from '@/lib/useUpdate'
 import { AgentIcon, hasAgentIcon } from '@/components/AgentIcon'
@@ -411,6 +411,10 @@ export function Session({
             preferSetupProjectId={setupProjectId}
             preferProjectId={preferProjectId}
             preferAgentId={preferAgentId}
+            lastNewSession={
+              settings.lastNewSession ?? lastNewSessionFromSummary(sessions[0], projects)
+            }
+            onRemember={(last) => onSaveSettings({ lastNewSession: last })}
             disabled={disconnected}
             onConfigureProviders={() => {
               if (role !== 'owner') return

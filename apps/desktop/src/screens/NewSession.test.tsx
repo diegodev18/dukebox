@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import type { LastNewSession } from '@/lib/settings'
 import { NewSession } from '@/screens/NewSession'
 
 /**
@@ -67,8 +68,10 @@ function renderScreen(
   projectOverrides = {},
   extra: {
     onConfigureProviders?: () => void
+    onRemember?: ReturnType<typeof vi.fn>
     preferAgentId?: string | null
     preferProjectId?: string | null
+    lastNewSession?: LastNewSession | null
     projects?: (typeof project)[]
     disabled?: boolean
   } = {},
@@ -81,8 +84,10 @@ function renderScreen(
       identity={null}
       onCreated={vi.fn()}
       onConfigureProviders={extra.onConfigureProviders ?? vi.fn()}
+      onRemember={extra.onRemember}
       preferAgentId={extra.preferAgentId}
       preferProjectId={extra.preferProjectId}
+      lastNewSession={extra.lastNewSession}
       disabled={extra.disabled}
     />,
   )
@@ -446,5 +451,150 @@ describe('NewSession preferProjectId', () => {
     expect(field).toBeDisabled()
     expect(field).toHaveAttribute('placeholder', 'Waiting for connection…')
     expect(screen.getByRole('button', { name: 'Start session' })).toBeDisabled()
+  })
+})
+
+describe('NewSession last session', () => {
+  const last: LastNewSession = {
+    repoFullName: 'acme/app',
+    baseBranch: 'refact/auth',
+    environmentId: environments[0].id,
+    agentId: 'claude-code',
+    model: 'opus',
+    providerId: '',
+    permissionMode: 'plan',
+  }
+
+  it('restores the last session pickers', async () => {
+    renderScreen(makeClient(), {}, { lastNewSession: last })
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Branch' })).toHaveTextContent('refact/auth'),
+    )
+    expect(screen.getByRole('button', { name: 'Model' })).toHaveTextContent('Opus')
+    expect(screen.getByRole('button', { name: 'Permission mode' })).toHaveTextContent('Plan')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Environment' })).toHaveTextContent('Refactors'),
+    )
+  })
+
+  it('keeps an explicit base-image choice instead of auto-resolving', async () => {
+    renderScreen(
+      makeClient(),
+      {},
+      {
+        lastNewSession: {
+          ...last,
+          baseBranch: 'main',
+          environmentId: '',
+          model: 'sonnet',
+          permissionMode: 'bypass',
+        },
+      },
+    )
+
+    await waitFor(() => expect(screen.getByText(/base image will be used/i)).toBeInTheDocument())
+  })
+
+  it('lets preferProjectId override the last repository', async () => {
+    const other = {
+      ...project,
+      id: '00000000-0000-4000-8000-000000000002',
+      repoFullName: 'acme/other',
+      defaultBranch: 'develop',
+      environmentCount: 0,
+    }
+    const client = makeClient({
+      listRepositories: vi.fn().mockResolvedValue([
+        { fullName: project.repoFullName, defaultBranch: 'main', isRegistered: true },
+        { fullName: other.repoFullName, defaultBranch: 'develop', isRegistered: true },
+      ]),
+      listEnvironments: vi.fn().mockResolvedValue([]),
+    })
+
+    renderScreen(
+      client,
+      {},
+      {
+        lastNewSession: last,
+        preferProjectId: other.id,
+        projects: [project, other],
+      },
+    )
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Repository' })).toHaveTextContent('other'),
+    )
+    expect(screen.getByRole('button', { name: 'Model' })).toHaveTextContent('Opus')
+    expect(screen.getByRole('button', { name: 'Permission mode' })).toHaveTextContent('Plan')
+  })
+
+  it('restores the last OpenCode provider and model', async () => {
+    const client = makeClient({
+      listOpencodeProviders: vi.fn().mockResolvedValue([
+        {
+          id: 'anthropic',
+          kind: 'anthropic',
+          name: 'Anthropic',
+          models: [{ id: 'claude-sonnet-4-5', label: 'Sonnet 4.5' }],
+        },
+        {
+          id: 'openai',
+          kind: 'openai',
+          name: 'OpenAI',
+          models: [{ id: 'gpt-5.2', label: 'GPT-5.2' }],
+        },
+      ]),
+    })
+
+    renderScreen(
+      client,
+      {},
+      {
+        lastNewSession: {
+          ...last,
+          agentId: 'opencode',
+          providerId: 'openai',
+          model: 'openai/gpt-5.2',
+          permissionMode: 'bypass',
+        },
+      },
+    )
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Agent' })).toHaveTextContent('OpenCode'),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Provider' })).toHaveTextContent('OpenAI'),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Model' })).toHaveTextContent('GPT-5.2'),
+    )
+  })
+
+  it('remembers the chosen settings when a session starts', async () => {
+    const client = makeClient()
+    const onRemember = vi.fn()
+    renderScreen(client, {}, { onRemember })
+
+    const models = await openPicker('Model')
+    await userEvent.click(within(models).getByRole('option', { name: /Opus/ }))
+    const modes = await openPicker('Permission mode')
+    await userEvent.click(within(modes).getByRole('option', { name: 'Plan' }))
+    await userEvent.type(screen.getByLabelText(/what should it do/i), 'do a thing')
+    await userEvent.click(screen.getByRole('button', { name: /start session/i }))
+
+    await waitFor(() =>
+      expect(onRemember).toHaveBeenCalledWith(
+        expect.objectContaining({
+          repoFullName: 'acme/app',
+          baseBranch: 'main',
+          environmentId: '00000000-0000-4000-8000-0000000000e2',
+          agentId: 'claude-code',
+          model: 'opus',
+          permissionMode: 'plan',
+        }),
+      ),
+    )
   })
 })
