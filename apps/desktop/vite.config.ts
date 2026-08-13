@@ -33,5 +33,27 @@ export default defineConfig({
 
   // Tauri reads the built assets from disk, so no server is involved in a
   // release build.
-  build: { outDir: 'dist', emptyOutDir: true },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/shiki') || id.includes('node_modules/@shikijs')) {
+            return 'shiki'
+          }
+          if (id.includes('node_modules/@xterm')) return 'xterm'
+          if (
+            id.includes('node_modules/react-markdown') ||
+            id.includes('node_modules/remark-gfm') ||
+            id.includes('node_modules/mdast') ||
+            id.includes('node_modules/micromark')
+          ) {
+            return 'markdown'
+          }
+          return undefined
+        },
+      },
+    },
+  },
 })

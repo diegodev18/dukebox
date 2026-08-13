@@ -1,45 +1,38 @@
 import {
   answerPermission,
-  applyEvent,
-  emptyTranscript,
+  applyEvents,
+  type EnvelopedEvent,
   type PermissionMode,
   type SessionSummary,
-  type Transcript,
 } from '@dukebox/protocol'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { Connection } from '@/lib/connection'
-import { SessionStream, isStreamConnected, type StreamStatus } from '@/lib/stream'
+import { resetLiveSession, useLiveSession } from '@/lib/liveSession'
+import { SessionStream, isStreamConnected } from '@/lib/stream'
 import {
   applyTerminalMessage,
+  applyTerminalOutputs,
   drainTab,
-  emptyTerminalState,
   removeTab,
   renameTab,
-  type TerminalState,
 } from '@/lib/useTerminals'
 
 /**
  * One session, live.
  *
- * Holds the socket and the folded transcript together, because they are only
- * useful as a pair: the transcript's `lastSeq` is what the socket resumes from,
- * and the socket's events are what advance it.
+ * Holds the socket. Folded transcript and terminal buffers live in
+ * `useLiveSession` so a token or a PTY chunk does not re-render columns that
+ * do not draw them.
  *
  * The stream outlives any single session — one socket serves the whole app,
  * and switching sessions swaps a subscription rather than a connection.
  */
 
 export interface LiveSession {
-  transcript: Transcript
-  status: StreamStatus
-  /** Set when a command the app sent came back rejected. */
-  error: string | null
   send: (text: string, files?: { name: string; data: string }[]) => void
   interrupt: () => void
   respond: (id: string, allow: boolean) => void
   setPermissionMode: (mode: PermissionMode) => void
-  /** The shells open in this session's container. */
-  terminals: TerminalState
   openTerminal: (cols: number, rows: number) => void
   attachTerminal: (terminalId: string, cols: number, rows: number) => void
   detachTerminal: (terminalId: string) => void
@@ -57,19 +50,11 @@ export function useSession(
   onSessionUpdate?: (session: SessionSummary) => void,
   onRevoked?: () => void,
 ): LiveSession {
-  const [transcript, setTranscript] = useState<Transcript>(emptyTranscript)
-  const [status, setStatus] = useState<StreamStatus>('connecting')
-  const [error, setError] = useState<string | null>(null)
-  const [terminals, setTerminals] = useState<TerminalState>(emptyTerminalState)
-
   // The socket is read by callbacks that must not re-run when it changes, and
   // the seq is read by the socket at reconnect time — both need a ref rather
   // than state.
   const streamRef = useRef<SessionStream | null>(null)
   const lastSeqRef = useRef(0)
-
-  // Kept in sync so a reconnect resumes from what is actually rendered.
-  lastSeqRef.current = transcript.lastSeq
 
   const updateRef = useRef(onSessionUpdate)
   updateRef.current = onSessionUpdate
@@ -77,41 +62,100 @@ export function useSession(
   const revokedRef = useRef(onRevoked)
   revokedRef.current = onRevoked
 
+  const eventsRef = useRef<EnvelopedEvent[]>([])
+  const outputRef = useRef(new Map<string, string[]>())
+  const frameRef = useRef<number | null>(null)
+
+  const flushFrame = useCallback(() => {
+    if (frameRef.current != null) {
+      cancelAnimationFrame(frameRef.current)
+      frameRef.current = null
+    }
+
+    const events = eventsRef.current
+    if (events.length > 0) {
+      eventsRef.current = []
+      useLiveSession.setState((current) => {
+        const transcript = applyEvents(current.transcript, events)
+        lastSeqRef.current = transcript.lastSeq
+        return transcript === current.transcript ? current : { transcript }
+      })
+    }
+
+    const output = outputRef.current
+    if (output.size > 0) {
+      outputRef.current = new Map()
+      useLiveSession.setState((current) => {
+        const terminals = applyTerminalOutputs(current.terminals, output)
+        return terminals === current.terminals ? current : { terminals }
+      })
+    }
+  }, [])
+
+  const scheduleFlush = useCallback(() => {
+    if (frameRef.current != null) return
+    frameRef.current = requestAnimationFrame(flushFrame)
+  }, [flushFrame])
+
+  const cancelFlush = useCallback(() => {
+    if (frameRef.current != null) {
+      cancelAnimationFrame(frameRef.current)
+      frameRef.current = null
+    }
+    eventsRef.current = []
+    outputRef.current = new Map()
+  }, [])
+
   useEffect(() => {
     const stream = new SessionStream(
       connection.address,
       connection.deviceToken,
       {
         onStatus: (next) => {
-          setStatus(next)
+          useLiveSession.setState({ status: next })
           // A refused-connect error is only useful while we are down. Once the
           // socket is live it would sit under the composer as if the send failed.
-          if (isStreamConnected(next)) setError(null)
+          if (isStreamConnected(next)) useLiveSession.setState({ error: null })
         },
         onRevoked: () => revokedRef.current?.(),
         onMessage: (message) => {
           switch (message.type) {
             case 'event':
-              setTranscript((current) => applyEvent(current, message.event))
+              eventsRef.current.push(message.event)
+              scheduleFlush()
               return
             case 'session_update':
               updateRef.current?.(message.session)
               return
             case 'command_error':
-              setError(message.message)
+              flushFrame()
+              useLiveSession.setState({ error: message.message })
               return
             case 'subscription_closed':
+              flushFrame()
               // The session is over. Reconnecting would resubscribe to
               // something that will never send again.
-              setStatus('live')
+              useLiveSession.setState({ status: 'live' })
               return
             case 'caught_up':
+              flushFrame()
+              return
+            case 'terminal_output':
+              {
+                const queued = outputRef.current.get(message.terminalId)
+                if (queued) queued.push(message.data)
+                else outputRef.current.set(message.terminalId, [message.data])
+                scheduleFlush()
+              }
               return
             case 'terminal_list':
             case 'terminal_opened':
-            case 'terminal_output':
             case 'terminal_exit':
-              setTerminals((current) => applyTerminalMessage(current, message))
+              flushFrame()
+              useLiveSession.setState((current) => {
+                const terminals = applyTerminalMessage(current.terminals, message)
+                return terminals === current.terminals ? current : { terminals }
+              })
               return
           }
         },
@@ -123,37 +167,42 @@ export function useSession(
     stream.connect()
 
     return () => {
+      cancelFlush()
       stream.close()
       streamRef.current = null
     }
-  }, [connection.deviceToken, connection.address.host, connection.address.port])
+  }, [
+    connection.deviceToken,
+    connection.address.host,
+    connection.address.port,
+    scheduleFlush,
+    flushFrame,
+    cancelFlush,
+  ])
 
   // Switching sessions resets the transcript before subscribing, so the
   // previous session's messages never appear under the new one's header.
   useEffect(() => {
     if (!sessionId) return
 
-    setTranscript(emptyTranscript())
+    cancelFlush()
+    resetLiveSession(useLiveSession.getState().status)
     lastSeqRef.current = 0
-    setError(null)
-
-    // Terminals belong to the session that owns them. Left in place, the new
-    // session would show tabs whose ids mean nothing to it.
-    setTerminals(emptyTerminalState())
 
     const stream = streamRef.current
     stream?.subscribe(sessionId)
 
     return () => {
+      cancelFlush()
       stream?.unsubscribe(sessionId)
     }
-  }, [sessionId])
+  }, [sessionId, cancelFlush])
 
   const send = useCallback(
     (text: string, files?: { name: string; data: string }[]) => {
       if (!sessionId) return
 
-      setError(null)
+      useLiveSession.setState({ error: null })
 
       // The prompt comes back as a `user_prompt` event and is folded in like
       // anything else. Appending it here too would show it twice, and the local
@@ -172,7 +221,9 @@ export function useSession(
       if (!sessionId) return
 
       streamRef.current?.answerPermission(sessionId, id, allow)
-      setTranscript((current) => answerPermission(current, id))
+      useLiveSession.setState((current) => ({
+        transcript: answerPermission(current.transcript, id),
+      }))
     },
     [sessionId],
   )
@@ -189,7 +240,7 @@ export function useSession(
     (cols: number, rows: number) => {
       if (!sessionId) return
 
-      setError(null)
+      useLiveSession.setState({ error: null })
       streamRef.current?.openTerminal(sessionId, cols, rows)
     },
     [sessionId],
@@ -231,7 +282,9 @@ export function useSession(
 
       // Removed here rather than waiting for the server to confirm: the tab was
       // closed deliberately, and leaving it on screen makes the X feel broken.
-      setTerminals((current) => removeTab(current, terminalId))
+      useLiveSession.setState((current) => ({
+        terminals: removeTab(current.terminals, terminalId),
+      }))
     },
     [sessionId],
   )
@@ -242,25 +295,25 @@ export function useSession(
 
       // Applied locally first: a tab that waits for the round trip to change
       // its label feels like the input did nothing.
-      setTerminals((current) => renameTab(current, terminalId, title))
+      useLiveSession.setState((current) => ({
+        terminals: renameTab(current.terminals, terminalId, title),
+      }))
       streamRef.current?.renameTerminal(sessionId, terminalId, title)
     },
     [sessionId],
   )
 
   const drainTerminal = useCallback((terminalId: string, count: number) => {
-    setTerminals((current) => drainTab(current, terminalId, count))
+    useLiveSession.setState((current) => ({
+      terminals: drainTab(current.terminals, terminalId, count),
+    }))
   }, [])
 
   return {
-    transcript,
-    status,
-    error,
     send,
     interrupt,
     respond,
     setPermissionMode,
-    terminals,
     openTerminal,
     attachTerminal,
     detachTerminal,

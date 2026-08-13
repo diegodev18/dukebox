@@ -5,17 +5,28 @@ import {
   type ProjectSummary,
   type SessionSummary,
 } from '@dukebox/protocol'
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type CSSProperties,
+} from 'react'
 import { DukeboxClient, isAuthFailure } from '@/lib/client'
 import { removeConnection, type Connection } from '@/lib/connection'
 import { lastNewSessionFromSummary, type Settings } from '@/lib/settings'
+import type { SettingsCategory } from '@/lib/settingsCategories'
 import { INITIAL_RETRY_MS, MAX_RETRY_MS, isStreamConnected } from '@/lib/stream'
 import { NAV_DEFAULT, NAV_MIN, WORKSPACE_MIN } from '@/lib/columnWidths'
 import { useColumnWidths } from '@/lib/useColumnWidths'
+import { useLiveSession } from '@/lib/liveSession'
 import type { UseUpdate } from '@/lib/useUpdate'
 import { AgentIcon, hasAgentIcon } from '@/components/AgentIcon'
 import { Composer } from '@/components/Composer'
-import { EnvironmentsPanel } from '@/components/EnvironmentsPanel'
 import { ResizeHandle } from '@/components/ResizeHandle'
 import { SessionInfo } from '@/components/SessionInfo'
 import { SearchPalette } from '@/components/SearchPalette'
@@ -23,8 +34,6 @@ import { Sidebar } from '@/components/Sidebar'
 import { Transcript } from '@/components/Transcript'
 import { Workspace } from '@/components/Workspace'
 import { useSession, type LiveSession } from '@/lib/useSession'
-import { NewSession } from '@/screens/NewSession'
-import { Settings as SettingsScreen, SettingsNav, type SettingsCategory } from '@/screens/Settings'
 
 /**
  * The session view.
@@ -32,6 +41,21 @@ import { Settings as SettingsScreen, SettingsNav, type SettingsCategory } from '
  * Three columns: the sessions a person has, the conversation with one of them,
  * and the workspace that session is changing.
  */
+
+const SettingsScreen = lazy(() =>
+  import('@/screens/Settings').then((module) => ({ default: module.Settings })),
+)
+const SettingsNav = lazy(() =>
+  import('@/screens/Settings').then((module) => ({ default: module.SettingsNav })),
+)
+const NewSession = lazy(() =>
+  import('@/screens/NewSession').then((module) => ({ default: module.NewSession })),
+)
+const EnvironmentsPanel = lazy(() =>
+  import('@/components/EnvironmentsPanel').then((module) => ({
+    default: module.EnvironmentsPanel,
+  })),
+)
 
 interface Props {
   connection: Connection
@@ -161,21 +185,22 @@ export function Session({
     },
   )
 
-  const disconnected = !isStreamConnected(live.status)
+  const streamStatus = useLiveSession((state) => state.status)
+  const disconnected = !isStreamConnected(streamStatus)
 
   // After a drop, the sidebar's HTTP snapshot can be stale. Refresh once the
   // socket is live again rather than polling while it is down.
   const wasOffline = useRef(false)
   useEffect(() => {
     if (disconnected) {
-      if (live.status === 'offline') wasOffline.current = true
+      if (streamStatus === 'offline') wasOffline.current = true
       return
     }
     if (!wasOffline.current) return
     wasOffline.current = false
     void refreshProjects()
     void refreshSessions()
-  }, [disconnected, live.status])
+  }, [disconnected, streamStatus])
 
   const current = sessions.find((session) => session.id === selected) ?? null
 
@@ -285,7 +310,7 @@ export function Session({
     // that still misbehaves from scrolling the window itself. Internal
     // panels (`Transcript`, sidebar list, workspace files) own their scroll.
     <div className="flex h-full flex-col overflow-hidden">
-      <ConnectionBanner status={live.status} />
+      <ConnectionBanner />
       {/* Widths are variables so a drag updates them without rebuilding the
           template. Collapsing the workspace still snaps to the 244px rail. */}
       <div
@@ -304,12 +329,14 @@ export function Session({
       >
         <div className="relative z-10 flex min-h-0 min-w-0 flex-col">
           {settingsOpen ? (
-            <SettingsNav
-              category={settingsCategory}
-              role={role}
-              onCategoryChange={setSettingsCategory}
-              onBack={() => setSettingsOpen(false)}
-            />
+            <Suspense fallback={<NavFallback />}>
+              <SettingsNav
+                category={settingsCategory}
+                role={role}
+                onCategoryChange={setSettingsCategory}
+                onBack={() => setSettingsOpen(false)}
+              />
+            </Suspense>
           ) : (
             <Sidebar
               projects={projects}
@@ -441,59 +468,63 @@ export function Session({
             Loading sessions…
           </p>
         ) : settingsOpen ? (
-          <SettingsScreen
-            client={client}
-            connection={connection}
-            settings={settings}
-            update={update}
-            category={settingsCategory}
-            role={role}
-            onSaveSettings={onSaveSettings}
-            onSwitchServer={onSwitchServer}
-            onClose={() => setSettingsOpen(false)}
-            onDisconnected={onDisconnected}
-          />
+          <Suspense fallback={<PaneFallback />}>
+            <SettingsScreen
+              client={client}
+              connection={connection}
+              settings={settings}
+              update={update}
+              category={settingsCategory}
+              role={role}
+              onSaveSettings={onSaveSettings}
+              onSwitchServer={onSwitchServer}
+              onClose={() => setSettingsOpen(false)}
+              onDisconnected={onDisconnected}
+            />
+          </Suspense>
         ) : managingProjectId ? (
-          <EnvironmentsPanel
-            client={client}
-            projectId={managingProjectId}
-            disabled={disconnected}
-          />
+          <Suspense fallback={<PaneFallback />}>
+            <EnvironmentsPanel
+              client={client}
+              projectId={managingProjectId}
+              disabled={disconnected}
+            />
+          </Suspense>
         ) : creating ? (
-          <NewSession
-            client={client}
-            connection={connection}
-            projects={projects}
-            identity={settings.commitIdentity}
-            gitPreferences={settings.git}
-            onCreated={onSessionCreated}
-            preferSetupProjectId={setupProjectId}
-            preferProjectId={preferProjectId}
-            preferAgentId={preferAgentId}
-            lastNewSession={
-              settings.lastNewSession ?? lastNewSessionFromSummary(sessions[0], projects)
-            }
-            onRemember={(last) => onSaveSettings({ lastNewSession: last })}
-            disabled={disconnected}
-            onConfigureProviders={() => {
-              if (role !== 'owner') return
-              setPreferAgentId('opencode')
-              setSettingsCategory('agents')
-              setSettingsOpen(true)
-            }}
-          />
+          <Suspense fallback={<PaneFallback />}>
+            <NewSession
+              client={client}
+              connection={connection}
+              projects={projects}
+              identity={settings.commitIdentity}
+              gitPreferences={settings.git}
+              onCreated={onSessionCreated}
+              preferSetupProjectId={setupProjectId}
+              preferProjectId={preferProjectId}
+              preferAgentId={preferAgentId}
+              lastNewSession={
+                settings.lastNewSession ?? lastNewSessionFromSummary(sessions[0], projects)
+              }
+              onRemember={(last) => onSaveSettings({ lastNewSession: last })}
+              disabled={disconnected}
+              onConfigureProviders={() => {
+                if (role !== 'owner') return
+                setPreferAgentId('opencode')
+                setSettingsCategory('agents')
+                setSettingsOpen(true)
+              }}
+            />
+          </Suspense>
         ) : current ? (
           <>
             <SessionColumn key={current.id} session={current} live={live} connection={connection} />
-            <Workspace
+            <ConnectedWorkspace
               session={current}
-              files={live.transcript.files}
               width={workspaceWidth}
               onWidthChange={setWorkspaceWidth}
               widthMin={WORKSPACE_MIN}
               widthMax={workspaceMax}
               client={client}
-              terminals={live.terminals}
               disabled={disconnected}
               onOpenTerminal={live.openTerminal}
               onAttachTerminal={live.attachTerminal}
@@ -503,7 +534,6 @@ export function Session({
               onCloseTerminal={live.closeTerminal}
               onRenameTerminal={live.renameTerminal}
               onDrainTerminal={live.drainTerminal}
-              error={live.error}
               pullRequest={
                 current.purpose === 'coding'
                   ? {
@@ -566,12 +596,18 @@ function SessionColumn({
   live: LiveSession
   connection: Connection
 }) {
+  const transcript = useLiveSession((state) => state.transcript)
+  const streamStatus = useLiveSession((state) => state.status)
+  const error = useLiveSession((state) => state.error)
   // A transcript can still look mid-turn after a restart — the last events
   // never got a `done`. The session status is what actually knows whether an
   // agent is running, and a Stop button that cannot interrupt anything is how
   // that used to read as "stuck processing".
-  const working = live.transcript.running && !isTerminal(session.status)
+  const working = transcript.running && !isTerminal(session.status)
   const [composerDraft, setComposerDraft] = useState<{ text: string; key: number } | null>(null)
+  const onEdit = useCallback((text: string) => {
+    setComposerDraft({ text, key: Date.now() })
+  }, [])
 
   return (
     // `min-h-0` is what makes the transcript scroll instead of the window
@@ -595,43 +631,43 @@ function SessionColumn({
         </span>
       </header>
 
-      {session.status === 'stopped' && isStreamConnected(live.status) && (
+      {session.status === 'stopped' && isStreamConnected(streamStatus) && (
         <p className="border-b border-border bg-surface px-4.5 py-2 text-[12.5px] text-muted-foreground">
           This session stopped when the server restarted. Send a message or open a terminal to
           continue in the same workspace.
         </p>
       )}
 
-      {live.error && (
+      {error && (
         <p
           role="alert"
           className="border-b border-border bg-destructive/10 px-4.5 py-2 text-[12.5px] text-destructive"
         >
-          {live.error}
+          {error}
         </p>
       )}
 
       <Transcript
-        transcript={live.transcript}
+        transcript={transcript}
         onRespond={live.respond}
-        onEdit={(text) => setComposerDraft({ text, key: Date.now() })}
+        onEdit={onEdit}
         purpose={session.purpose}
         running={working}
         status={session.status}
-        streamStatus={live.status}
-        disabled={!isStreamConnected(live.status)}
+        streamStatus={streamStatus}
+        disabled={!isStreamConnected(streamStatus)}
       />
 
       <Composer
         onSend={live.send}
         onInterrupt={live.interrupt}
         running={working}
-        disabled={!isStreamConnected(live.status)}
-        error={live.error}
+        disabled={!isStreamConnected(streamStatus)}
+        error={error}
         {...(composerDraft ? { draft: composerDraft } : {})}
         {...(session.purpose !== 'environment_setup' && session.permissionMode
           ? {
-              permissionMode: live.transcript.permissionMode ?? session.permissionMode,
+              permissionMode: transcript.permissionMode ?? session.permissionMode,
               onPermissionModeChange: live.setPermissionMode,
             }
           : {})}
@@ -641,6 +677,27 @@ function SessionColumn({
       />
     </div>
   )
+}
+
+function ConnectedWorkspace(
+  props: Omit<ComponentProps<typeof Workspace>, 'files' | 'terminals' | 'error'>,
+) {
+  const files = useLiveSession((state) => state.transcript.files)
+  const terminals = useLiveSession((state) => state.terminals)
+  const error = useLiveSession((state) => state.error)
+  return <Workspace files={files} terminals={terminals} error={error} {...props} />
+}
+
+function PaneFallback() {
+  return (
+    <p role="status" className="grid place-items-center text-[13px] text-muted-foreground">
+      Loading…
+    </p>
+  )
+}
+
+function NavFallback() {
+  return <div className="h-full border-r border-border bg-surface" />
 }
 
 function EmptySession({
@@ -670,7 +727,8 @@ function EmptySession({
   )
 }
 
-function ConnectionBanner({ status }: { status: LiveSession['status'] }) {
+function ConnectionBanner() {
+  const status = useLiveSession((state) => state.status)
   if (isStreamConnected(status)) return null
 
   return (

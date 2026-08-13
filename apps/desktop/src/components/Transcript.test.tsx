@@ -245,4 +245,37 @@ describe('Transcript', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
     expect(onEdit).not.toHaveBeenCalled()
   })
+
+  it('renders streaming assistant text as plain prose', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          running: true,
+          blocks: [
+            { kind: 'prompt', id: 'p', text: 'hi' },
+            { kind: 'text', id: 't', text: 'Hello **world**' },
+          ],
+        })}
+        onRespond={vi.fn()}
+        running
+      />,
+    )
+
+    expect(screen.getByText(/Hello/)).toBeInTheDocument()
+    expect(document.querySelector('strong')).toBeNull()
+  })
+
+  it('renders markdown once the turn has settled', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          running: false,
+          blocks: [{ kind: 'text', id: 't', text: 'Hello **world**' }],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    expect(document.querySelector('strong')).not.toBeNull()
+  })
 })

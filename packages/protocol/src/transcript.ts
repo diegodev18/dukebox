@@ -1,4 +1,5 @@
 import type { AgentEvent, EnvelopedEvent } from './events.js'
+import { countLineChanges } from './lineChanges.js'
 import type { PermissionMode } from './session.js'
 
 /**
@@ -77,6 +78,9 @@ export interface FileChange {
   path: string
   before: string | null
   after: string | null
+  /** Line counts, folded once from before/after so the UI does not re-diff. */
+  added?: number
+  removed?: number
 }
 
 export interface Transcript {
@@ -206,8 +210,15 @@ function fold(draft: Transcript, event: AgentEvent, seq: number): void {
     case 'file_diff': {
       // Latest state per path wins. An agent that edits a file three times
       // produces three events but one entry in the review panel.
+      const { added, removed } = countLineChanges(event.before, event.after)
       const files = draft.files.filter((file) => file.path !== event.path)
-      files.push({ path: event.path, before: event.before, after: event.after })
+      files.push({
+        path: event.path,
+        before: event.before,
+        after: event.after,
+        added,
+        removed,
+      })
       files.sort((a, b) => a.path.localeCompare(b.path))
       draft.files = files
       return

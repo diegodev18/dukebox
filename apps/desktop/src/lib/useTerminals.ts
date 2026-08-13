@@ -58,10 +58,7 @@ export function applyTerminalMessage(state: TerminalState, message: ServerMessag
       }
 
     case 'terminal_output':
-      return mapTab(state, message.terminalId, (tab) => ({
-        ...tab,
-        pending: [...tab.pending, message.data],
-      }))
+      return appendOutput(state, message.terminalId, [message.data])
 
     case 'terminal_exit':
       // Kept in the list rather than removed. A shell's exit is information,
@@ -71,6 +68,36 @@ export function applyTerminalMessage(state: TerminalState, message: ServerMessag
     default:
       return state
   }
+}
+
+/**
+ * Queue several chunks for one or more terminals in a single state update.
+ *
+ * PTY output arrives faster than frames. Applying each chunk on its own is a
+ * React render per byte-burst; one map per frame is enough for xterm to catch up.
+ */
+export function applyTerminalOutputs(
+  state: TerminalState,
+  batches: ReadonlyMap<string, readonly string[]>,
+): TerminalState {
+  let next = state
+  for (const [terminalId, chunks] of batches) {
+    if (chunks.length === 0) continue
+    next = appendOutput(next, terminalId, chunks)
+  }
+  return next
+}
+
+function appendOutput(
+  state: TerminalState,
+  terminalId: string,
+  chunks: readonly string[],
+): TerminalState {
+  if (chunks.length === 0) return state
+  return mapTab(state, terminalId, (tab) => ({
+    ...tab,
+    pending: [...tab.pending, ...chunks],
+  }))
 }
 
 /** Drop chunks already written to xterm, so they are not replayed on remount. */

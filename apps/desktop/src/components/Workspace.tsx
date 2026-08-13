@@ -1,5 +1,5 @@
 import type { FileChange, SessionSummary } from '@dukebox/protocol'
-import { useEffect, useRef, useState } from 'react'
+import { lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
 import type { DukeboxClient } from '@/lib/client'
 import type { TerminalState } from '@/lib/useTerminals'
 import { EnvironmentReview } from '@/components/EnvironmentReview'
@@ -7,10 +7,13 @@ import { FileChangeList } from '@/components/FileChangeList'
 import { PullRequestPanel, type PullRequestTab } from '@/components/PullRequest'
 import { CommitIcon, ChevronLeftIcon, ChevronRightIcon, FileIcon } from '@/components/icons'
 import { SandboxFiles } from '@/components/SandboxFiles'
-import { Terminal } from '@/components/Terminal'
 import { ResizeHandle } from '@/components/ResizeHandle'
 import { pullRequestTabLabel } from '@/lib/pullRequest'
 import { WORKSPACE_DEFAULT, WORKSPACE_MIN } from '@/lib/columnWidths'
+
+const TerminalView = lazy(() =>
+  import('@/components/Terminal').then((module) => ({ default: module.Terminal })),
+)
 
 /**
  * What the session is changing: files, diffs, a terminal, a preview.
@@ -468,7 +471,7 @@ function Panels({ session, files }: { session: SessionSummary | null; files: Fil
  * panel should stop output reaching a component nobody is looking at, without
  * killing the process behind it.
  */
-function TerminalPanel({
+const TerminalPanel = memo(function TerminalPanel({
   session,
   terminals,
   onOpenTerminal,
@@ -593,19 +596,20 @@ function TerminalPanel({
       </div>
 
       {tabs.map((tab) => (
-        <Terminal
-          key={tab.terminalId}
-          tab={tab}
-          active={tab.terminalId === active?.terminalId}
-          disabled={disabled}
-          onInput={(data) => onTerminalInput(tab.terminalId, data)}
-          onResize={(cols, rows) => onTerminalResize(tab.terminalId, cols, rows)}
-          onDrain={(count) => onDrainTerminal(tab.terminalId, count)}
-        />
+        <Suspense key={tab.terminalId} fallback={null}>
+          <TerminalView
+            tab={tab}
+            active={tab.terminalId === active?.terminalId}
+            disabled={disabled}
+            onInput={(data) => onTerminalInput(tab.terminalId, data)}
+            onResize={(cols, rows) => onTerminalResize(tab.terminalId, cols, rows)}
+            onDrain={(count) => onDrainTerminal(tab.terminalId, count)}
+          />
+        </Suspense>
       ))}
     </div>
   )
-}
+})
 
 /**
  * A terminal tab's label, which becomes an input when clicked.

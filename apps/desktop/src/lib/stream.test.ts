@@ -1,6 +1,11 @@
 import type { ClientCommand, ServerMessage } from '@dukebox/protocol'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SessionStream, isStreamConnected, type StreamStatus } from '@/lib/stream'
+import {
+  SessionStream,
+  isStreamConnected,
+  parseServerMessage,
+  type StreamStatus,
+} from '@/lib/stream'
 
 /**
  * A WebSocket that never touches a network.
@@ -407,5 +412,39 @@ describe('isStreamConnected', () => {
     expect(isStreamConnected('catching_up')).toBe(true)
     expect(isStreamConnected('connecting')).toBe(false)
     expect(isStreamConnected('offline')).toBe(false)
+  })
+})
+
+describe('parseServerMessage', () => {
+  it('accepts terminal output without a Zod walk', () => {
+    const parsed = parseServerMessage(
+      JSON.stringify({
+        type: 'terminal_output',
+        sessionId: SESSION,
+        terminalId: 't1',
+        data: 'aGk=',
+      }),
+    )
+
+    expect(parsed).toEqual({
+      type: 'terminal_output',
+      sessionId: SESSION,
+      terminalId: 't1',
+      data: 'aGk=',
+    })
+  })
+
+  it('still validates other message types', () => {
+    const parsed = parseServerMessage(
+      JSON.stringify({ type: 'caught_up', sessionId: SESSION, lastSeq: 4 }),
+    )
+
+    expect(parsed).toEqual({ type: 'caught_up', sessionId: SESSION, lastSeq: 4 })
+  })
+
+  it('drops a terminal_output missing its payload', () => {
+    expect(
+      parseServerMessage(JSON.stringify({ type: 'terminal_output', sessionId: SESSION })),
+    ).toBeNull()
   })
 })

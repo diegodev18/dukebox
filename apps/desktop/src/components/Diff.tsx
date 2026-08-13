@@ -1,7 +1,18 @@
-import type { FileChange } from '@dukebox/protocol'
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { MAX_LCS_LINES, countLineChanges, type FileChange } from '@dukebox/protocol'
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type RefObject,
+} from 'react'
 import { cn } from '@/lib/utils'
+import { VirtualRows } from '@/components/VirtualRows'
 import { tokensForCode, type HighlightToken } from '@/lib/syntaxHighlight'
+
+export { MAX_LCS_LINES }
 
 /**
  * What changed in a file.
@@ -17,8 +28,15 @@ export function Diff({ file }: { file: FileChange }) {
   const simplified = isSimplifiedDiff(before, after)
   const lines = useMemo(() => diffLines(before, after), [before, after])
   const digits = useMemo(() => gutterDigits(lines), [lines])
-  const highlight = useFileHighlight(file.path, before, after)
+  const root = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLElement | null>(null)
+  const inView = useInView(root)
+  const highlight = useFileHighlight(file.path, before, after, inView)
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set())
+
+  useLayoutEffect(() => {
+    scrollRef.current = root.current?.closest('.overflow-auto') ?? null
+  }, [lines.length])
 
   const toggleSkip = (index: number) => {
     setExpanded((current) => {
@@ -29,8 +47,10 @@ export function Diff({ file }: { file: FileChange }) {
     })
   }
 
+  const rows = useMemo(() => flattenDiffRows(lines, expanded), [lines, expanded])
+
   return (
-    <div data-selectable aria-busy={highlight.before == null || highlight.after == null}>
+    <div ref={root} data-selectable aria-busy={highlight.before == null || highlight.after == null}>
       {simplified && (
         <p className="px-3 py-1.5 text-[12px] text-muted-foreground">
           Diff simplified (file too large)
@@ -39,40 +59,40 @@ export function Diff({ file }: { file: FileChange }) {
       {/* Wide enough for its longest line, so the row background spans the full
           scrolled width rather than stopping at the panel edge. */}
       <div className="inline-block min-w-full font-mono text-[12px] leading-[1.55]">
-        {lines.map((line, index) =>
-          line.kind === 'skip' ? (
-            <SkipHunk
-              key={index}
-              line={line}
-              digits={digits}
-              highlight={highlight}
-              open={expanded.has(index)}
-              onToggle={() => toggleSkip(index)}
-            />
-          ) : (
-            <DiffRow
-              key={index}
-              line={line}
-              digits={digits}
-              tokens={tokensForRow(line, highlight)}
-            />
-          ),
-        )}
+        <VirtualRows
+          count={rows.length}
+          scrollRef={scrollRef as RefObject<HTMLElement | null>}
+          estimateSize={20}
+          after={80}
+          wide
+        >
+          {(index) => {
+            const row = rows[index]!
+            if (row.kind === 'skip') {
+              return (
+                <SkipHeader
+                  line={row.line}
+                  open={expanded.has(row.index)}
+                  onToggle={() => toggleSkip(row.index)}
+                />
+              )
+            }
+            return (
+              <DiffRow line={row.line} digits={digits} tokens={tokensForRow(row.line, highlight)} />
+            )
+          }}
+        </VirtualRows>
       </div>
     </div>
   )
 }
 
-function SkipHunk({
+function SkipHeader({
   line,
-  digits,
-  highlight,
   open,
   onToggle,
 }: {
   line: SkipLine
-  digits: number
-  highlight: FileHighlight
   open: boolean
   onToggle: () => void
 }) {
@@ -80,27 +100,56 @@ function SkipHunk({
   const label = skipLabel(line.count, range)
 
   return (
-    <div className="min-w-full">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        aria-label={label}
-        className="sticky left-0 z-[1] box-border block w-[var(--workspace-files-width)] bg-muted px-3 py-0.5 text-left text-muted-foreground hover:bg-border hover:text-foreground"
-      >
-        {label}
-      </button>
-      {open &&
-        line.hidden.map((hidden, index) => (
-          <DiffRow
-            key={index}
-            line={hidden}
-            digits={digits}
-            tokens={tokensForRow(hidden, highlight)}
-          />
-        ))}
-    </div>
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-label={label}
+      className="sticky left-0 z-[1] box-border block w-[var(--workspace-files-width)] bg-muted px-3 py-0.5 text-left text-muted-foreground hover:bg-border hover:text-foreground"
+    >
+      {label}
+    </button>
   )
+}
+
+type FlatRow = { kind: 'skip'; line: SkipLine; index: number } | { kind: 'line'; line: SameLine }
+
+function flattenDiffRows(lines: Line[], expanded: ReadonlySet<number>): FlatRow[] {
+  const rows: FlatRow[] = []
+  lines.forEach((line, index) => {
+    if (line.kind === 'skip') {
+      rows.push({ kind: 'skip', line, index })
+      if (expanded.has(index)) {
+        for (const hidden of line.hidden) rows.push({ kind: 'line', line: hidden })
+      }
+      return
+    }
+    rows.push({ kind: 'line', line })
+  })
+  return rows
+}
+
+function useInView(ref: RefObject<HTMLElement | null>): boolean {
+  const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined')
+
+  useEffect(() => {
+    const element = ref.current
+    if (!element || typeof IntersectionObserver === 'undefined') {
+      setVisible(true)
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) setVisible(true)
+      },
+      { rootMargin: '240px' },
+    )
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [ref])
+
+  return visible
 }
 
 function DiffRow({
@@ -163,10 +212,16 @@ type FileHighlight = {
   after: HighlightToken[][] | null
 }
 
-function useFileHighlight(path: string, before: string, after: string): FileHighlight {
+function useFileHighlight(
+  path: string,
+  before: string,
+  after: string,
+  enabled: boolean,
+): FileHighlight {
   const [tokens, setTokens] = useState<FileHighlight>({ before: null, after: null })
 
   useEffect(() => {
+    if (!enabled) return
     let cancelled = false
     setTokens({ before: null, after: null })
     void Promise.all([tokensForCode(path, before), tokensForCode(path, after)]).then(
@@ -177,7 +232,7 @@ function useFileHighlight(path: string, before: string, after: string): FileHigh
     return () => {
       cancelled = true
     }
-  }, [path, before, after])
+  }, [path, before, after, enabled])
 
   return tokens
 }
@@ -234,8 +289,6 @@ export type Line = SameLine | SkipLine
  * rather than freezing the window. A diff nobody can read is not worth a
  * dropped frame.
  */
-export const MAX_LCS_LINES = 1500
-
 export function isSimplifiedDiff(before: string, after: string): boolean {
   if (before === '' || after === '') return false
   const a = before.split('\n').length
@@ -269,20 +322,15 @@ export function changeCounts(
   before: string | null,
   after: string | null,
 ): { added: number; removed: number } {
-  if (before === null) {
-    return { added: after ? after.split('\n').length : 0, removed: 0 }
-  }
-  if (after === null) {
-    return { added: 0, removed: before ? before.split('\n').length : 0 }
-  }
+  return countLineChanges(before, after)
+}
 
-  let added = 0
-  let removed = 0
-  for (const line of diffLines(before, after)) {
-    if (line.kind === 'added') added += 1
-    else if (line.kind === 'removed') removed += 1
+/** Prefer counts folded into the file; fall back to computing them. */
+export function fileChangeCounts(file: FileChange): { added: number; removed: number } {
+  if (file.added != null && file.removed != null) {
+    return { added: file.added, removed: file.removed }
   }
-  return { added, removed }
+  return countLineChanges(file.before, file.after)
 }
 
 export function diffLines(before: string, after: string): Line[] {
