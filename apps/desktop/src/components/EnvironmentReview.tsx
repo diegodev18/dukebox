@@ -26,6 +26,7 @@ interface Props {
   /** Shown in the header so it is clear which environment is being confirmed. */
   environmentName: string | null
   onSaved: () => void
+  disabled?: boolean
 }
 
 type Status =
@@ -42,6 +43,7 @@ export function EnvironmentReview({
   environmentId,
   environmentName,
   onSaved,
+  disabled = false,
 }: Props) {
   const [setupText, setSetupText] = useState('')
   const [instructions, setInstructions] = useState('')
@@ -181,7 +183,10 @@ export function EnvironmentReview({
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3">
+    <div
+      className={`min-h-0 flex-1 overflow-y-auto px-3.5 py-3 ${disabled ? 'pointer-events-none opacity-60' : ''}`}
+      {...(disabled ? { 'aria-disabled': true } : {})}
+    >
       <div className="mb-3 flex flex-col gap-2">
         <div>
           {/* Which environment, not just that there is one: with several per

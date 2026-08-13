@@ -73,6 +73,24 @@ describe('Transcript', () => {
     expect(screen.getByRole('button', { name: 'Allow' })).toHaveFocus()
   })
 
+  it('does not answer a permission while disconnected', async () => {
+    const onRespond = vi.fn()
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [{ kind: 'permission', id: 'p1', action: 'run a command', detail: null }],
+        })}
+        onRespond={onRespond}
+        disabled
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Allow' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Allow' }))
+    expect(onRespond).not.toHaveBeenCalled()
+  })
+
   it('offers to implement a plan rather than allow a generic tool', async () => {
     const onRespond = vi.fn()
     render(

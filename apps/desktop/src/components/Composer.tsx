@@ -27,7 +27,7 @@ export function Composer({
   onSend,
   onInterrupt,
   running,
-  disabled,
+  disabled = false,
   placeholder = 'Ask for a change…',
   error,
   permissionMode,
@@ -81,7 +81,7 @@ export function Composer({
           }}
           disabled={disabled}
           rows={1}
-          placeholder={placeholder}
+          placeholder={disabled ? 'Waiting for connection…' : placeholder}
           aria-label="Message"
           aria-invalid={Boolean(error)}
           {...(error ? { 'aria-describedby': 'composer-error' } : {})}
@@ -103,7 +103,8 @@ export function Composer({
             <button
               type="button"
               onClick={onInterrupt}
-              className="rounded-[calc(var(--radius)*0.6)] border border-border px-3 py-1.5 text-[12.5px] font-medium hover:bg-muted"
+              disabled={disabled}
+              className="rounded-[calc(var(--radius)*0.6)] border border-border px-3 py-1.5 text-[12.5px] font-medium hover:bg-muted disabled:opacity-40"
             >
               Stop
             </button>

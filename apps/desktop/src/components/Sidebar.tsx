@@ -36,6 +36,8 @@ interface Props {
   onRemoveProject: (projectId: string) => void
   /** Set when an archive or remove request failed; the row stays put. */
   archiveError?: string | null
+  /** Creating, archiving, and environment setup talk to the server. */
+  disabled?: boolean
 }
 
 export function Sidebar({
@@ -52,6 +54,7 @@ export function Sidebar({
   onArchive,
   onRemoveProject,
   archiveError,
+  disabled = false,
 }: Props) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [removing, setRemoving] = useState<ProjectSummary | null>(null)
@@ -77,7 +80,10 @@ export function Sidebar({
           <SearchField value={query} onChange={setQuery} onClose={closeSearch} />
         ) : (
           <>
-            <SidebarAction icon={<PlusIcon size={16} />} onClick={() => onNewSession()}>
+            <SidebarAction
+              icon={<PlusIcon size={16} />}
+              {...(disabled ? {} : { onClick: () => onNewSession() })}
+            >
               New session
             </SidebarAction>
             <SidebarAction icon={<SearchIcon size={16} />} onClick={() => setSearching(true)}>
@@ -116,10 +122,13 @@ export function Sidebar({
                 }}
                 onConfigureEnvironment={() => onConfigureEnvironment(project.id)}
                 onManageEnvironments={() => onManageEnvironments(project.id)}
+                disabled={disabled}
                 onOpenSessionMenu={(sessionId, x, y) => {
+                  if (disabled) return
                   setMenu({ kind: 'session', sessionId, x, y })
                 }}
                 onOpenProjectMenu={(x, y) => {
+                  if (disabled) return
                   setMenu({ kind: 'project', projectId: project.id, x, y })
                 }}
               />
@@ -275,6 +284,7 @@ function ProjectGroup({
   onManageEnvironments,
   onOpenSessionMenu,
   onOpenProjectMenu,
+  disabled = false,
 }: {
   project: ProjectSummary
   sessions: SessionSummary[]
@@ -284,6 +294,7 @@ function ProjectGroup({
   onManageEnvironments: () => void
   onOpenSessionMenu: (sessionId: string, x: number, y: number) => void
   onOpenProjectMenu: (x: number, y: number) => void
+  disabled?: boolean
 }) {
   return (
     <>
@@ -303,7 +314,8 @@ function ProjectGroup({
           <button
             type="button"
             onClick={onConfigureEnvironment}
-            className="shrink-0 text-[11px] text-foreground underline-offset-2 hover:underline"
+            disabled={disabled}
+            className="shrink-0 text-[11px] text-foreground underline-offset-2 hover:underline disabled:opacity-40 disabled:hover:no-underline"
           >
             Set up
           </button>
@@ -311,8 +323,9 @@ function ProjectGroup({
           <button
             type="button"
             onClick={onManageEnvironments}
+            disabled={disabled}
             aria-label={`Environments for ${project.repoFullName}`}
-            className="shrink-0 text-[11px] text-foreground underline-offset-2 hover:underline"
+            className="shrink-0 text-[11px] text-foreground underline-offset-2 hover:underline disabled:opacity-40 disabled:hover:no-underline"
           >
             Environments
           </button>
@@ -346,12 +359,13 @@ function ProjectGroup({
             type="button"
             aria-label={`Session actions for ${session.title}`}
             aria-haspopup="menu"
+            disabled={disabled}
             onClick={(event) => {
               event.stopPropagation()
               const rect = event.currentTarget.getBoundingClientRect()
               onOpenSessionMenu(session.id, rect.right, rect.bottom)
             }}
-            className={`absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-[calc(var(--radius)*0.5)] text-[13px] text-muted-foreground hover:bg-border hover:text-foreground ${
+            className={`absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-[calc(var(--radius)*0.5)] text-[13px] text-muted-foreground hover:bg-border hover:text-foreground disabled:opacity-40 ${
               session.id === selectedId
                 ? 'opacity-100'
                 : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'

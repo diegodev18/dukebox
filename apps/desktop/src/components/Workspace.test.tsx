@@ -46,7 +46,7 @@ const terminalHandlers = {
 async function openTerminalPanel() {
   render(<Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />)
 
-  await userEvent.click(screen.getByRole('tab', { name: 'terminal' }))
+  await userEvent.click(screen.getByRole('tab', { name: /terminal/i }))
 }
 
 describe('Workspace terminal tabs', () => {
@@ -85,5 +85,22 @@ describe('Workspace terminal tabs', () => {
 
     expect(terminalHandlers.onRenameTerminal).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: '047' })).toBeInTheDocument()
+  })
+
+  it('does not open a terminal while disconnected', async () => {
+    render(
+      <Workspace
+        session={session}
+        files={[]}
+        terminals={{ tabs: [] }}
+        disabled
+        {...terminalHandlers}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('tab', { name: /terminal/i }))
+    expect(screen.getByRole('button', { name: 'New terminal' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    expect(terminalHandlers.onOpenTerminal).not.toHaveBeenCalled()
   })
 })

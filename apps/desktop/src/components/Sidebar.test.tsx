@@ -49,6 +49,7 @@ function renderSidebar({
   onManageEnvironments = vi.fn(),
   onRemoveProject = vi.fn(),
   projectOverride = {},
+  disabled = false,
 }: {
   onArchive?: ReturnType<typeof vi.fn>
   onNewSession?: ReturnType<typeof vi.fn>
@@ -56,6 +57,7 @@ function renderSidebar({
   onManageEnvironments?: ReturnType<typeof vi.fn>
   onRemoveProject?: ReturnType<typeof vi.fn>
   projectOverride?: Partial<ProjectSummary>
+  disabled?: boolean
 } = {}) {
   render(
     <Sidebar
@@ -71,6 +73,7 @@ function renderSidebar({
       onManageEnvironments={onManageEnvironments}
       onArchive={onArchive}
       onRemoveProject={onRemoveProject}
+      disabled={disabled}
     />,
   )
   return {
@@ -188,5 +191,13 @@ describe('Sidebar', () => {
 
     await userEvent.click(confirm)
     expect(onRemoveProject).toHaveBeenCalledWith(project.id)
+  })
+
+  it('blocks starting a session while disconnected', async () => {
+    const { onNewSession } = renderSidebar({ disabled: true })
+
+    expect(screen.getByRole('button', { name: 'New session' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'New session' }))
+    expect(onNewSession).not.toHaveBeenCalled()
   })
 })

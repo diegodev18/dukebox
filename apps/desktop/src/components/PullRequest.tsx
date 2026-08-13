@@ -22,12 +22,13 @@ interface Props {
   session: SessionSummary
   files: FileChange[]
   onUpdated: PullRequestTab['onUpdated']
+  disabled?: boolean
 }
 
 type Action =
   { kind: 'idle' } | { kind: 'working'; verb: string } | { kind: 'failed'; message: string }
 
-export function PullRequestPanel({ client, session, files, onUpdated }: Props) {
+export function PullRequestPanel({ client, session, files, onUpdated, disabled = false }: Props) {
   const [action, setAction] = useState<Action>({ kind: 'idle' })
   const [confirmMerge, setConfirmMerge] = useState(false)
   const pr = session.pullRequest
@@ -71,7 +72,7 @@ export function PullRequestPanel({ client, session, files, onUpdated }: Props) {
               {pr.state === 'open' && pr.isDraft && (
                 <button
                   type="button"
-                  disabled={action.kind === 'working'}
+                  disabled={action.kind === 'working' || disabled}
                   onClick={() => void run('ready', () => client.markPullRequestReady(session.id))}
                   className="rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12.5px] font-medium hover:bg-muted disabled:opacity-50"
                 >
@@ -84,7 +85,7 @@ export function PullRequestPanel({ client, session, files, onUpdated }: Props) {
               {pr.state === 'open' && !pr.isDraft && !confirmMerge && (
                 <button
                   type="button"
-                  disabled={action.kind === 'working'}
+                  disabled={action.kind === 'working' || disabled}
                   onClick={() => setConfirmMerge(true)}
                   className="rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12.5px] font-medium hover:bg-muted disabled:opacity-50"
                 >
@@ -95,7 +96,7 @@ export function PullRequestPanel({ client, session, files, onUpdated }: Props) {
               {confirmMerge && (
                 <button
                   type="button"
-                  disabled={action.kind === 'working'}
+                  disabled={action.kind === 'working' || disabled}
                   onClick={() => void run('merge', () => client.mergePullRequest(session.id))}
                   className="rounded-[calc(var(--radius)*0.6)] border border-destructive px-2.5 py-1 text-[12.5px] font-medium text-destructive hover:bg-muted disabled:opacity-50"
                 >
@@ -122,7 +123,7 @@ export function PullRequestPanel({ client, session, files, onUpdated }: Props) {
             </p>
             <button
               type="button"
-              disabled={action.kind === 'working'}
+              disabled={action.kind === 'working' || disabled}
               onClick={() => void run('open', () => client.openPullRequest(session.id))}
               className="mt-2.5 rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12.5px] font-medium hover:bg-muted disabled:opacity-50"
             >

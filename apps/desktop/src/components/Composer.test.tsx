@@ -33,6 +33,23 @@ describe('Composer', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('rejected')
   })
 
+  it('does not send while disabled', async () => {
+    const onSend = vi.fn()
+    render(<Composer onSend={onSend} onInterrupt={vi.fn()} running={false} disabled />)
+
+    const field = screen.getByLabelText('Message')
+    expect(field).toBeDisabled()
+    expect(field).toHaveAttribute('placeholder', 'Waiting for connection…')
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+  })
+
+  it('does not interrupt while disabled', () => {
+    const onInterrupt = vi.fn()
+    render(<Composer onSend={vi.fn()} onInterrupt={onInterrupt} running disabled />)
+
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeDisabled()
+  })
+
   it('hints how to send', () => {
     render(<Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />)
 

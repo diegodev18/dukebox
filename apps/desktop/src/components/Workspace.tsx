@@ -50,6 +50,7 @@ export interface EnvironmentReviewTab {
   environmentId: string | null
   environmentName: string | null
   onSaved: () => void
+  disabled?: boolean
 }
 
 /** The terminal half of the panel's props, threaded through from useSession. */
@@ -65,6 +66,8 @@ interface TerminalProps {
   onDrainTerminal: (terminalId: string, count: number) => void
   /** Set when opening a terminal was rejected, so the waiting state can clear. */
   error?: string | null
+  /** Keystrokes and new tabs cannot reach the server while the socket is down. */
+  disabled?: boolean
 }
 
 interface Props extends TerminalProps {
@@ -202,6 +205,7 @@ export function Workspace({
                 environmentId={environmentReview.environmentId}
                 environmentName={environmentReview.environmentName}
                 onSaved={environmentReview.onSaved}
+                disabled={Boolean(environmentReview.disabled)}
               />
             </div>
           ) : tab === 'pr' && pullRequest && session ? (
@@ -210,6 +214,7 @@ export function Workspace({
               session={session}
               files={files}
               onUpdated={pullRequest.onUpdated}
+              disabled={Boolean(terminalProps.disabled)}
             />
           ) : null}
         </>
@@ -513,6 +518,7 @@ function TerminalPanel({
   onRenameTerminal,
   onDrainTerminal,
   error,
+  disabled = false,
 }: TerminalProps & { session: SessionSummary | null }) {
   const [selected, setSelected] = useState<string | null>(null)
   const [opening, setOpening] = useState(false)
@@ -572,7 +578,7 @@ function TerminalPanel({
         <button
           type="button"
           onClick={open}
-          disabled={opening}
+          disabled={opening || disabled}
           className="rounded-[calc(var(--radius)*0.6)] bg-muted px-2.5 py-1.5 text-[12.5px] font-medium hover:bg-border disabled:opacity-50"
         >
           {opening ? 'Starting…' : 'New terminal'}
@@ -595,14 +601,16 @@ function TerminalPanel({
               title={tab.title}
               selected={tab.terminalId === active?.terminalId}
               exited={tab.exited}
+              disabled={disabled}
               onSelect={() => setSelected(tab.terminalId)}
               onRename={(title) => onRenameTerminal(tab.terminalId, title)}
             />
             <button
               type="button"
               onClick={() => onCloseTerminal(tab.terminalId)}
+              disabled={disabled}
               aria-label={`Close terminal ${tab.title}`}
-              className="grid size-5 place-items-center rounded-[calc(var(--radius)*0.5)] text-muted-foreground hover:bg-border hover:text-foreground"
+              className="grid size-5 place-items-center rounded-[calc(var(--radius)*0.5)] text-muted-foreground hover:bg-border hover:text-foreground disabled:opacity-40"
             >
               ×
             </button>
@@ -613,7 +621,7 @@ function TerminalPanel({
           <button
             type="button"
             onClick={open}
-            disabled={opening}
+            disabled={opening || disabled}
             aria-label="New terminal"
             className="grid size-6 place-items-center rounded-[calc(var(--radius)*0.6)] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
           >
@@ -627,6 +635,7 @@ function TerminalPanel({
           key={tab.terminalId}
           tab={tab}
           active={tab.terminalId === active?.terminalId}
+          disabled={disabled}
           onInput={(data) => onTerminalInput(tab.terminalId, data)}
           onResize={(cols, rows) => onTerminalResize(tab.terminalId, cols, rows)}
           onDrain={(count) => onDrainTerminal(tab.terminalId, count)}
@@ -646,12 +655,14 @@ function TerminalTabName({
   title,
   selected,
   exited,
+  disabled = false,
   onSelect,
   onRename,
 }: {
   title: string
   selected: boolean
   exited: boolean
+  disabled?: boolean
   onSelect: () => void
   onRename: (title: string) => void
 }) {
@@ -686,6 +697,10 @@ function TerminalTabName({
     else setDraft(title)
   }
 
+  useEffect(() => {
+    if (disabled) setEditing(false)
+  }, [disabled])
+
   if (editing) {
     return (
       <input
@@ -717,6 +732,7 @@ function TerminalTabName({
       type="button"
       onClick={() => {
         onSelect()
+        if (disabled) return
         setDraft(title)
         setEditing(true)
       }}

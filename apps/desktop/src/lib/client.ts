@@ -68,6 +68,17 @@ export class ApiFailure extends Error {
   }
 }
 
+/**
+ * The server rejected this device token.
+ *
+ * Distinct from a network failure: an unreachable server should be retried,
+ * a revoked pairing should not. Callers that mix the two send the user back
+ * to pairing over a blip.
+ */
+export function isAuthFailure(error: unknown): boolean {
+  return error instanceof ApiFailure && error.status === 401
+}
+
 export function baseUrl(address: ServerAddress): string {
   return `${address.tls ? 'https' : 'http'}://${address.host}:${address.port}`
 }

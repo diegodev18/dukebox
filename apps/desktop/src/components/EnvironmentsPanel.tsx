@@ -19,9 +19,10 @@ import type { DukeboxClient } from '@/lib/client'
 interface Props {
   client: DukeboxClient
   projectId: string
+  disabled?: boolean
 }
 
-export function EnvironmentsPanel({ client, projectId }: Props) {
+export function EnvironmentsPanel({ client, projectId, disabled = false }: Props) {
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([])
   const [branches, setBranches] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -137,7 +138,10 @@ export function EnvironmentsPanel({ client, projectId }: Props) {
   }
 
   return (
-    <div className="min-h-0 min-w-0 overflow-y-auto px-6 py-5">
+    <div
+      className={`min-h-0 min-w-0 overflow-y-auto px-6 py-5 ${disabled ? 'pointer-events-none opacity-60' : ''}`}
+      {...(disabled ? { 'aria-disabled': true } : {})}
+    >
       <div className="mb-1.5 flex items-center justify-between gap-3">
         <h2 className="text-[14px] font-medium">Environments</h2>
         <button
