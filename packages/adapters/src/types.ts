@@ -44,10 +44,26 @@ export interface SessionContext {
   permissionMode?: PermissionMode
 }
 
+/**
+ * A file attached to a user message.
+ *
+ * `data` is the raw base64 payload of a data URI (`data:<mime>;base64,<...>`).
+ * Adapters stage the bytes into the sandbox (`/tmp/imgs/`) before the agent
+ * sees them, since agents take filesystem paths rather than inline content.
+ */
+export interface UploadedFile {
+  /** Original filename, used for the path inside the sandbox. */
+  name: string
+  /** Base64 data URI with the file's bytes. */
+  data: string
+}
+
 export interface UserMessage {
   text: string
   /** Base64 data URIs. Adapters without image support must reject these. */
   images?: string[]
+  /** Files staged into the sandbox's `/tmp/imgs/` before the prompt runs. */
+  files?: UploadedFile[]
 }
 
 export interface AgentAdapter {

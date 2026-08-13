@@ -1,5 +1,6 @@
 export * from './types.js'
 export * from './jsonl.js'
+export * from './uploads.js'
 export * from './claude-code/adapter.js'
 export * from './claude-code/mapper.js'
 export * from './claude-code/messages.js'

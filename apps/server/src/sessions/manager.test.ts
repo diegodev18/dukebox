@@ -525,6 +525,20 @@ describe('prompt, interrupt, and stop', () => {
     expect(prompts).toMatchObject([{ text: 'first' }, { text: 'second' }])
   })
 
+  it('forwards attached files to the adapter', async () => {
+    const session = await startSession('first')
+    await waitForStatus(session.id, 'running')
+
+    await manager.prompt(session.id, 'read this', undefined, [
+      { name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' },
+    ])
+
+    expect(adapter.prompts.at(-1)).toEqual({
+      text: 'read this',
+      files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
+    })
+  })
+
   it('rejects a prompt for a session that is not running', async () => {
     await expect(manager.prompt('00000000-0000-4000-8000-000000000000', 'x')).rejects.toThrow(
       SessionError,

@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto'
 import type { Duplex } from 'node:stream'
 import { JsonlReader } from '../jsonl.js'
 import type { AgentAdapter, SessionContext, UserMessage } from '../types.js'
+import { parseDataUri, stageUpload } from '../uploads.js'
 import { ClaudeCodeMapper } from './mapper.js'
 import { toClaudePermissionMode } from './modes.js'
 
@@ -75,8 +76,11 @@ export function buildArgs(context: SessionContext): string[] {
  *
  * The input side of stream-json expects the same envelope the Messages API
  * uses, one JSON object per line.
+ *
+ * `stagedFiles` are container paths the uploaded files were written to; each
+ * is referenced from its own text block so the agent can read it.
  */
-export function encodeUserMessage(message: UserMessage): string {
+export function encodeUserMessage(message: UserMessage, stagedFiles: string[] = []): string {
   const content: unknown[] = [{ type: 'text', text: message.text }]
 
   for (const image of message.images ?? []) {
@@ -86,6 +90,13 @@ export function encodeUserMessage(message: UserMessage): string {
     content.push({
       type: 'image',
       source: { type: 'base64', media_type: match[1], data: match[2] },
+    })
+  }
+
+  for (const path of stagedFiles) {
+    content.push({
+      type: 'text',
+      text: `[Attached file: ${path}]`,
     })
   }
 
@@ -121,6 +132,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
   readonly capabilities = CLAUDE_CODE_CAPABILITIES
 
   private readonly mapper = new ClaudeCodeMapper()
+  private context: SessionContext | undefined
   private stream: Duplex | undefined
   private queue: AgentEvent[] = []
   private waiting: ((event: IteratorResult<AgentEvent>) => void) | undefined
@@ -137,6 +149,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
   async start(context: SessionContext): Promise<void> {
     if (this.stream) throw new Error('adapter already started')
 
+    this.context = context
     this.requestedMode = context.permissionMode ?? DEFAULT_PERMISSION_MODE
 
     this.stream = await context.container.execStream(['claude', ...buildArgs(context)], {
@@ -247,7 +260,30 @@ export class ClaudeCodeAdapter implements AgentAdapter {
   }
 
   async send(message: UserMessage): Promise<void> {
-    this.write(encodeUserMessage(message))
+    const stagedFiles = await this.stageFiles(message)
+    this.write(encodeUserMessage(message, stagedFiles))
+  }
+
+  /**
+   * Write attached files into the sandbox at `/tmp/imgs/`.
+   *
+   * Claude Code reads file paths itself, so an uploaded file is staged in the
+   * container and then referenced from the message. Images are handled inline
+   * as base64 blocks by `encodeUserMessage` and never touch the disk.
+   */
+  private async stageFiles(message: UserMessage): Promise<string[]> {
+    if (!this.context) return []
+
+    const paths: string[] = []
+    for (const file of message.files ?? []) {
+      const parsed = parseDataUri(file.data)
+      if (!parsed) continue
+
+      const path = await stageUpload(this.context.container, file.name, parsed.payload)
+      paths.push(path)
+    }
+
+    return paths
   }
 
   async respondToPermission(id: string, allow: boolean): Promise<void> {

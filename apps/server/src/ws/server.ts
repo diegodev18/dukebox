@@ -25,7 +25,12 @@ export interface WebSocketDeps {
   db: Database
   bus: EventBus
   /** Delivers a prompt to a running agent. Set once sessions exist. */
-  onPrompt?: (sessionId: string, text: string, images?: string[]) => Promise<void>
+  onPrompt?: (
+    sessionId: string,
+    text: string,
+    images?: string[],
+    files?: { name: string; data: string }[],
+  ) => Promise<void>
   onInterrupt?: (sessionId: string) => Promise<void>
   onPermissionResponse?: (sessionId: string, id: string, allow: boolean) => Promise<void>
   onSetPermissionMode?: (sessionId: string, mode: PermissionMode) => Promise<void>
@@ -99,7 +104,7 @@ class Connection {
         return this.unsubscribe(command.sessionId)
       case 'prompt':
         return this.forward(command.sessionId, () =>
-          this.deps.onPrompt?.(command.sessionId, command.text, command.images),
+          this.deps.onPrompt?.(command.sessionId, command.text, command.images, command.files),
         )
       case 'interrupt':
         return this.forward(command.sessionId, () => this.deps.onInterrupt?.(command.sessionId))
