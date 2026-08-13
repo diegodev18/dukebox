@@ -292,8 +292,7 @@ function ProjectGroup({
   const selectedIndex = sessions.findIndex((session) => session.id === selectedId)
   const [expanded, setExpanded] = useState(() => selectedIndex >= SIDEBAR_SESSION_LIMIT)
   const canCollapse = sessions.length > SIDEBAR_SESSION_LIMIT
-  const visible =
-    expanded || !canCollapse ? sessions : sessions.slice(0, SIDEBAR_SESSION_LIMIT)
+  const visible = expanded || !canCollapse ? sessions : sessions.slice(0, SIDEBAR_SESSION_LIMIT)
 
   // Opening a session that sits past the fold (search, a deep link) should
   // expand this group so the current row is on screen. Collapsing while that
