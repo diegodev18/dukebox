@@ -99,11 +99,30 @@ export type AgentDescriptor = z.infer<typeof agentDescriptor>
  *
  * `coding` is a normal agent turn. `environment_setup` asks the agent to
  * inspect the repository and propose setup commands and environment variables
- * — it does not run the project's own setup, which would be circular.
+ * — it does not run the project's own setup, which would be circular. Setup
+ * always starts in bypass so the agent can write the proposal unattended.
  */
 export const sessionPurpose = z.enum(['coding', 'environment_setup'])
 
 export type SessionPurpose = z.infer<typeof sessionPurpose>
+
+/**
+ * The permission mode a new session should start with.
+ *
+ * Agents without modes store null. Claude Code and OpenCode default to bypass.
+ * `environment_setup` always starts in bypass: the agent has to write a
+ * proposal file unattended, and a leftover Plan mode from a coding session
+ * would stall on that write.
+ */
+export function resolvePermissionMode(
+  agentId: string,
+  purpose: SessionPurpose,
+  requested?: PermissionMode,
+): PermissionMode | null {
+  if (agentId !== 'claude-code' && agentId !== 'opencode') return null
+  if (purpose === 'environment_setup') return DEFAULT_PERMISSION_MODE
+  return requested ?? DEFAULT_PERMISSION_MODE
+}
 
 /** How a pull request is merged from the app. */
 export const mergeMethod = z.enum(['squash', 'merge', 'rebase'])

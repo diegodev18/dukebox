@@ -428,6 +428,32 @@ describe('NewSession permission mode', () => {
       ),
     )
   })
+
+  it('starts environment setup in bypass even when Plan is selected', async () => {
+    const client = makeClient({
+      listEnvironments: vi.fn().mockResolvedValue([]),
+      createEnvironment: vi.fn().mockResolvedValue({ id: 'env-new' }),
+    })
+    renderScreen(client, { environmentCount: 0 })
+
+    const modes = await openPicker('Permission mode')
+    await userEvent.click(within(modes).getByRole('option', { name: 'Plan' }))
+    expect(screen.getByRole('button', { name: 'Permission mode' })).toHaveTextContent('Plan')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Configure environment' }))
+    expect(screen.queryByRole('button', { name: 'Permission mode' })).not.toBeInTheDocument()
+
+    await userEvent.click(await screen.findByRole('button', { name: /start setup/i }))
+
+    await waitFor(() =>
+      expect(client.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          purpose: 'environment_setup',
+          permissionMode: 'bypass',
+        }),
+      ),
+    )
+  })
 })
 
 describe('NewSession loading', () => {
@@ -691,7 +717,7 @@ describe('NewSession picker placement', () => {
     expect(screen.getByRole('button', { name: 'Reconfigure environment' })).toBeInTheDocument()
   })
 
-  it('keeps mutable pickers on the environment setup form', async () => {
+  it('keeps the model picker on the environment setup form', async () => {
     const client = makeClient({ listEnvironments: vi.fn().mockResolvedValue([]) })
     renderScreen(client, { environmentCount: 0 })
 
@@ -700,7 +726,8 @@ describe('NewSession picker placement', () => {
     const form = screen.getByRole('heading', { name: 'Configure environment' }).closest('div')
     expect(form).not.toBeNull()
     expect(within(form!).getByRole('button', { name: 'Model' })).toBeInTheDocument()
-    expect(within(form!).getByRole('button', { name: 'Permission mode' })).toBeInTheDocument()
+    // Setup always runs in bypass, so the mode picker would be a lie.
+    expect(within(form!).queryByRole('button', { name: 'Permission mode' })).not.toBeInTheDocument()
     expect(within(form!).queryByRole('button', { name: 'Agent' })).not.toBeInTheDocument()
   })
 })

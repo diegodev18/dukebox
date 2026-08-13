@@ -6,6 +6,7 @@ import {
   EXIT_PLAN_MODE_ACTION,
   parseGitPreferences,
   permissionMode,
+  resolvePermissionMode,
   sessionSummary,
 } from './session.js'
 
@@ -42,6 +43,23 @@ describe('permissionMode', () => {
 
   it('defaults new Claude sessions to bypass', () => {
     expect(DEFAULT_PERMISSION_MODE).toBe('bypass')
+  })
+
+  it('starts environment setup in bypass even when the caller asked for plan', () => {
+    expect(resolvePermissionMode('claude-code', 'environment_setup', 'plan')).toBe('bypass')
+    expect(resolvePermissionMode('opencode', 'environment_setup', 'plan')).toBe('bypass')
+    expect(resolvePermissionMode('claude-code', 'environment_setup')).toBe('bypass')
+  })
+
+  it('honours the requested mode for coding sessions', () => {
+    expect(resolvePermissionMode('claude-code', 'coding', 'plan')).toBe('plan')
+    expect(resolvePermissionMode('opencode', 'coding', 'auto')).toBe('auto')
+    expect(resolvePermissionMode('claude-code', 'coding')).toBe('bypass')
+  })
+
+  it('stores no mode for agents that have none', () => {
+    expect(resolvePermissionMode('fake', 'coding', 'plan')).toBeNull()
+    expect(resolvePermissionMode('fake', 'environment_setup')).toBeNull()
   })
 
   it('names the plan-approval action distinctly from a tool', () => {

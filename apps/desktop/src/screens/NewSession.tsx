@@ -1,6 +1,7 @@
 import {
   matchesBranch,
   resolveEnvironment,
+  resolvePermissionMode,
   type CommitIdentity,
   type EnvironmentSummary,
   type GitPreferences,
@@ -434,6 +435,12 @@ export function NewSession({
         project = created = await client.createProject(target)
       }
 
+      const mode = resolvePermissionMode(
+        agentId,
+        needsEnvironment ? 'environment_setup' : 'coding',
+        permissionMode,
+      )
+
       if (needsEnvironment) {
         // The environment has to exist before the session starts, so the setup
         // run has somewhere to write its draft. If starting then fails, the row
@@ -454,7 +461,7 @@ export function NewSession({
             baseBranch,
             purpose: 'environment_setup',
             environmentId: environment.id,
-            ...(agentHasPermissionModes(agentId) ? { permissionMode } : {}),
+            ...(mode ? { permissionMode: mode } : {}),
             ...(identity ? { commitIdentity: identity } : {}),
             ...(gitPreferences ? { gitPreferences } : {}),
           })
@@ -478,7 +485,7 @@ export function NewSession({
         baseBranch,
         purpose: 'coding',
         ...(environmentId ? { environmentId } : {}),
-        ...(agentHasPermissionModes(agentId) ? { permissionMode } : {}),
+        ...(mode ? { permissionMode: mode } : {}),
         ...(identity ? { commitIdentity: identity } : {}),
         ...(gitPreferences ? { gitPreferences } : {}),
       })
@@ -590,6 +597,7 @@ export function NewSession({
                 agentId={agentId}
                 permissionMode={permissionMode}
                 onPermissionModeChange={setPermissionMode}
+                showPermissionMode={false}
               />
               <div className="flex shrink-0 items-center gap-2">
                 <button
@@ -714,6 +722,7 @@ function SessionMutablePickers({
   agentId,
   permissionMode,
   onPermissionModeChange,
+  showPermissionMode = true,
 }: {
   busy: boolean
   usingOpenCode: boolean
@@ -728,6 +737,8 @@ function SessionMutablePickers({
   agentId: string
   permissionMode: AvailablePermissionModeId
   onPermissionModeChange: (mode: AvailablePermissionModeId) => void
+  /** Setup sessions always run in bypass, so the picker is noise there. */
+  showPermissionMode?: boolean
 }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1">
@@ -743,7 +754,7 @@ function SessionMutablePickers({
       {!(usingOpenCode && models.length === 0) && (
         <ModelPicker value={model} onChange={onModelChange} disabled={busy} models={models} />
       )}
-      {agentHasPermissionModes(agentId) && (
+      {showPermissionMode && agentHasPermissionModes(agentId) && (
         <PermissionModePicker
           value={permissionMode}
           onChange={onPermissionModeChange}
