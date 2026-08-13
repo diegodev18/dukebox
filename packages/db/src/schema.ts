@@ -261,6 +261,15 @@ export const sessions = pgTable(
     title: text('title').notNull().default(''),
 
     /**
+     * The task that started this session.
+     *
+     * Distinct from `title`, which is a short interpreted name for the
+     * sidebar. The pull-request writer uses this so the original request
+     * survives after the title is named from the task.
+     */
+    prompt: text('prompt').notNull().default(''),
+
+    /**
      * `coding` (default) or `environment_setup`.
      *
      * Setup sessions skip the project's own setup commands and ask the agent

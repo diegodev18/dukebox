@@ -64,6 +64,13 @@
       "when": 1786568000000,
       "tag": "0008_pull_request_flow",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786570000000,
+      "tag": "0009_session_prompt",
+      "breakpoints": true
     }
   ]
 }
