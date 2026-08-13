@@ -269,6 +269,33 @@ export const mergePullRequestResponse = pullRequestSummary
 
 export const pullRequestResponse = pullRequestDetails
 
+/**
+ * Paths in a session's workspace, relative to the repository root.
+ *
+ * Tracked and untracked files, excluding gitignored ones. Directories are
+ * inferred by the client from the path prefixes.
+ */
+export const workspaceTreeResponse = z.object({
+  paths: z.array(z.string()),
+})
+
+export type WorkspaceTreeResponse = z.infer<typeof workspaceTreeResponse>
+
+/**
+ * Contents of one workspace file.
+ *
+ * `content` is empty when `binary` is true: the desktop cannot preview
+ * those, and sending the bytes would only waste the payload.
+ */
+export const workspaceFileResponse = z.object({
+  path: z.string(),
+  content: z.string(),
+  binary: z.boolean(),
+  truncated: z.boolean(),
+})
+
+export type WorkspaceFileResponse = z.infer<typeof workspaceFileResponse>
+
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------

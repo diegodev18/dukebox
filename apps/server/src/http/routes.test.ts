@@ -66,6 +66,13 @@ const sessionManager = {
     isDraft: false,
     state: 'merged' as const,
   })),
+  listWorkspaceTree: vi.fn(async () => ['README.md', 'src/app.ts']),
+  readWorkspaceFile: vi.fn(async (_sessionId: string, path: string) => ({
+    path,
+    content: 'export {}',
+    binary: false,
+    truncated: false,
+  })),
 } as unknown as SessionManager
 
 const secretStore = new SecretStore(db, randomBytes(32))
@@ -659,6 +666,62 @@ describe('GET /api/sessions/:id/events', () => {
   it('returns 404 for an unknown session', async () => {
     const response = await request('/api/sessions/00000000-0000-4000-8000-000000000000/events')
     expect(response.status).toBe(404)
+  })
+})
+
+describe('GET /api/sessions/:id/workspace', () => {
+  it('lists workspace paths', async () => {
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await request(`/api/sessions/${session.id}/workspace/tree`)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ paths: ['README.md', 'src/app.ts'] })
+    expect(sessionManager.listWorkspaceTree).toHaveBeenCalledWith(session.id)
+  })
+
+  it('reads a workspace file', async () => {
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await request(
+      `/api/sessions/${session.id}/workspace/file?path=${encodeURIComponent('src/app.ts')}`,
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ path: 'src/app.ts', content: 'export {}' })
+    expect(sessionManager.readWorkspaceFile).toHaveBeenCalledWith(session.id, 'src/app.ts')
+  })
+
+  it('rejects a missing path query', async () => {
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await request(`/api/sessions/${session.id}/workspace/file`)
+    expect(response.status).toBe(400)
+  })
+
+  it('rejects an invalid path as a bad request', async () => {
+    vi.mocked(sessionManager.readWorkspaceFile).mockRejectedValueOnce(
+      new SessionError('invalid path'),
+    )
+
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await request(`/api/sessions/${session.id}/workspace/file?path=../secret`)
+    expect(response.status).toBe(400)
+  })
+
+  it('reports a session that cannot resume as a conflict', async () => {
+    vi.mocked(sessionManager.listWorkspaceTree).mockRejectedValueOnce(
+      new SessionError('that session’s container no longer exists'),
+    )
+
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await request(`/api/sessions/${session.id}/workspace/tree`)
+    expect(response.status).toBe(409)
   })
 })
 

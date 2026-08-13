@@ -12,6 +12,11 @@ vi.mock('@tauri-apps/plugin-opener', () => ({
   openUrl: vi.fn(),
 }))
 
+vi.mock('@/lib/syntaxHighlight', () => ({
+  tokensForCode: async (_path: string, code: string) =>
+    code.split('\n').map((content) => [{ content: content || ' ' }]),
+}))
+
 import { Workspace } from '@/components/Workspace'
 
 const session: SessionSummary = {
@@ -150,5 +155,86 @@ describe('Workspace pull request tab', () => {
     )
 
     expect(screen.getByRole('tab', { name: 'Pull request #1' })).toBeInTheDocument()
+  })
+})
+
+describe('Workspace Changes and Files tabs', () => {
+  it('labels the diff panel Changes and keeps Files beside it', () => {
+    render(<Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />)
+
+    expect(screen.getByRole('tab', { name: 'Changes' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Files' })).toBeInTheDocument()
+    expect(
+      screen.getByText('Nothing changed yet. Files appear here as the agent edits them.'),
+    ).toBeInTheDocument()
+  })
+
+  it('browses sandbox files from the Files tab', async () => {
+    const client = {
+      listWorkspaceTree: vi.fn().mockResolvedValue(['CLAUDE.md', 'src/app.ts']),
+      readWorkspaceFile: vi.fn().mockResolvedValue({
+        path: 'CLAUDE.md',
+        content: '# Hello',
+        binary: false,
+        truncated: false,
+      }),
+    }
+
+    render(
+      <Workspace
+        session={session}
+        files={[]}
+        client={client as never}
+        terminals={terminals}
+        {...terminalHandlers}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Files' }))
+
+    expect(await screen.findByRole('button', { name: 'CLAUDE.md' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'src' }))
+    expect(screen.getByRole('button', { name: 'app.ts' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'CLAUDE.md' }))
+    expect(await screen.findByText('# Hello')).toBeInTheDocument()
+    expect(client.readWorkspaceFile).toHaveBeenCalledWith(session.id, 'CLAUDE.md')
+  })
+
+  it('asks to pick a session when none is selected', async () => {
+    render(<Workspace session={null} files={[]} terminals={terminals} {...terminalHandlers} />)
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Files' }))
+
+    expect(screen.getByText('Select a session to browse its files.')).toBeInTheDocument()
+  })
+
+  it('shows a binary-file notice instead of contents', async () => {
+    const client = {
+      listWorkspaceTree: vi.fn().mockResolvedValue(['icon.png']),
+      readWorkspaceFile: vi.fn().mockResolvedValue({
+        path: 'icon.png',
+        content: '',
+        binary: true,
+        truncated: false,
+      }),
+    }
+
+    render(
+      <Workspace
+        session={session}
+        files={[]}
+        client={client as never}
+        terminals={terminals}
+        {...terminalHandlers}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Files' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'icon.png' }))
+
+    expect(
+      await screen.findByText('This file is binary and cannot be previewed.'),
+    ).toBeInTheDocument()
   })
 })

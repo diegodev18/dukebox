@@ -286,6 +286,23 @@ const fakeClient = {
     isDraft: false,
     state: 'merged' as const,
   }),
+  listWorkspaceTree: async () => ['CLAUDE.md', 'src/app.ts'],
+  readWorkspaceFile: async (_sessionId: string, path: string) => {
+    if (path === 'CLAUDE.md') {
+      return {
+        path,
+        content: '# CLAUDE.md\n\nUse pnpm. Prefer turbo for package scripts.\n',
+        binary: false,
+        truncated: false,
+      }
+    }
+    return {
+      path,
+      content: "export function greet() {\n  return 'ok'\n}\n",
+      binary: false,
+      truncated: false,
+    }
+  },
 } as never
 
 /** A session's worth of terminal output, as a real shell would paint it. */
@@ -602,6 +619,7 @@ function Preview() {
           <Workspace
             session={activeSession}
             files={activeTranscript.files}
+            client={fakeClient}
             {...terminals}
             environmentReview={
               view === 'setup'

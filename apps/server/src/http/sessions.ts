@@ -6,7 +6,7 @@ import {
   openPullRequestRequest,
 } from '@dukebox/protocol'
 import { and, desc, eq, isNull } from 'drizzle-orm'
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import type { EventBus } from '../events/bus.js'
 import { routeParam, type AuthedVariables } from './auth.js'
 import { SessionError, type SessionManager } from '../sessions/manager.js'
@@ -189,6 +189,42 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
     return c.json({ events })
   })
 
+  /**
+   * Files in the session's workspace, for the Files tab.
+   *
+   * Tracked and untracked, excluding gitignored paths. The client turns the
+   * list into a tree; this is one round trip rather than a listing per folder.
+   */
+  app.get('/sessions/:id/workspace/tree', async (c) => {
+    try {
+      const paths = await deps.sessions.listWorkspaceTree(routeParam(c, 'id'))
+      return c.json({ paths })
+    } catch (error) {
+      if (error instanceof SessionError) return workspaceError(c, error)
+      throw error
+    }
+  })
+
+  /**
+   * Contents of one path in the session's workspace.
+   *
+   * `path` is relative to the repository root. Absolute paths and `..` are
+   * refused before the container is asked.
+   */
+  app.get('/sessions/:id/workspace/file', async (c) => {
+    const path = c.req.query('path')
+    if (!path) {
+      return c.json({ error: 'invalid_request', message: 'path is required' }, 400)
+    }
+
+    try {
+      return c.json(await deps.sessions.readWorkspaceFile(routeParam(c, 'id'), path))
+    } catch (error) {
+      if (error instanceof SessionError) return workspaceError(c, error)
+      throw error
+    }
+  })
+
   app.post('/sessions/:id/pr', async (c) => {
     const body = await c.req.json().catch(() => ({}))
     const parsed = openPullRequestRequest.safeParse(body ?? {})
@@ -297,4 +333,15 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
   })
 
   return app
+}
+
+function workspaceError(c: Context<{ Variables: AuthedVariables }>, error: SessionError) {
+  const { message } = error
+  if (message === 'invalid path') {
+    return c.json({ error: 'invalid_request', message }, 400)
+  }
+  if (message === 'no such session' || message === 'no such file') {
+    return c.json({ error: 'not_found', message }, 404)
+  }
+  return c.json({ error: 'conflict', message }, 409)
 }
