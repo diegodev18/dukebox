@@ -8,6 +8,7 @@ import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AgentIcon } from '@/components/AgentIcon'
 import { Composer } from '@/components/Composer'
+import { SearchPalette } from '@/components/SearchPalette'
 import { Transcript } from '@/components/Transcript'
 import { Workspace } from '@/components/Workspace'
 import {
@@ -405,6 +406,7 @@ function Preview() {
   const codingTranscript = applyEvents(emptyTranscript(), script)
   const setupTranscript = applyEvents(emptyTranscript(), setupScript)
   const [view, setView] = useState<'new' | 'coding' | 'setup'>('setup')
+  const [searchOpen, setSearchOpen] = useState(false)
   const terminals = usePreviewTerminals()
 
   const codingSession = {
@@ -456,6 +458,24 @@ function Preview() {
   const activeSession = view === 'setup' ? setupSession : codingSession
   const activeTranscript = view === 'setup' ? setupTranscript : codingTranscript
 
+  const previewProject = {
+    id: SESSION,
+    repoFullName: 'diegodev18/dukebox',
+    defaultBranch: 'main',
+    environmentCount: 1,
+    createdAt: Date.now(),
+    sessionCount: 2,
+  }
+
+  const previewSite = {
+    id: '00000000-0000-4000-8000-000000000010',
+    repoFullName: 'diegodev18/site',
+    defaultBranch: 'main',
+    environmentCount: 0,
+    createdAt: Date.now(),
+    sessionCount: 0,
+  }
+
   return (
     <div
       className={`grid h-full overflow-hidden ${
@@ -475,6 +495,13 @@ function Preview() {
         </button>
         <button
           type="button"
+          onClick={() => setSearchOpen(true)}
+          className="mt-1 w-full rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left font-medium hover:bg-muted"
+        >
+          Search
+        </button>
+        <button
+          type="button"
           onClick={() => setView('coding')}
           className="mt-1 w-full rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
         >
@@ -488,6 +515,24 @@ function Preview() {
           Configure environment
         </button>
       </div>
+
+      {searchOpen && (
+        <SearchPalette
+          sessions={[codingSession, setupSession]}
+          projects={[previewProject, previewSite]}
+          role="owner"
+          onSelect={(sessionId) => {
+            setView(sessionId === SESSION ? 'coding' : 'setup')
+            setSearchOpen(false)
+          }}
+          onNewSession={() => {
+            setView('new')
+            setSearchOpen(false)
+          }}
+          onOpenSettings={() => setSearchOpen(false)}
+          onDismiss={() => setSearchOpen(false)}
+        />
+      )}
 
       {view === 'new' ? (
         <NewSession

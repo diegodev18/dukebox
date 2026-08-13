@@ -6,8 +6,8 @@ import {
 } from '@dukebox/protocol'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useRef, useState } from 'react'
-import { filterProjects, filterSessions } from '@/lib/searchSessions'
 import { pullRequestStatus, pullRequestStatusAriaLabel } from '@/lib/pullRequest'
+import { relativeAge } from '@/lib/relativeTime'
 import { StatusDot, statusLabel } from '@/screens/Session'
 import type { SettingsCategory } from '@/screens/Settings'
 import { PullRequestStatusIcon } from '@/components/PullRequestStatusIcon'
@@ -36,6 +36,7 @@ interface Props {
   onManageEnvironments: (projectId: string) => void
   onArchive: (sessionId: string) => void
   onRemoveProject: (projectId: string) => void
+  onSearch: () => void
   /** Set when an archive or remove request failed; the row stays put. */
   archiveError?: string | null
   /** Creating, archiving, and environment setup talk to the server. */
@@ -55,22 +56,12 @@ export function Sidebar({
   onManageEnvironments,
   onArchive,
   onRemoveProject,
+  onSearch,
   archiveError,
   disabled = false,
 }: Props) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [removing, setRemoving] = useState<ProjectSummary | null>(null)
-  const [searching, setSearching] = useState(false)
-  const [query, setQuery] = useState('')
-
-  const visibleSessions = filterSessions(query, sessions, projects)
-  const visibleProjects = filterProjects(query, projects, sessions)
-  const filtering = searching && query.trim() !== ''
-
-  const closeSearch = () => {
-    setSearching(false)
-    setQuery('')
-  }
 
   return (
     <nav
@@ -78,21 +69,15 @@ export function Sidebar({
       className="flex min-h-0 flex-col overflow-hidden border-r border-border bg-surface"
     >
       <div className="px-2 pt-2.5 pb-1">
-        {searching ? (
-          <SearchField value={query} onChange={setQuery} onClose={closeSearch} />
-        ) : (
-          <>
-            <SidebarAction
-              icon={<PlusIcon size={16} />}
-              {...(disabled ? {} : { onClick: () => onNewSession() })}
-            >
-              New session
-            </SidebarAction>
-            <SidebarAction icon={<SearchIcon size={16} />} onClick={() => setSearching(true)}>
-              Search
-            </SidebarAction>
-          </>
-        )}
+        <SidebarAction
+          icon={<PlusIcon size={16} />}
+          {...(disabled ? {} : { onClick: () => onNewSession() })}
+        >
+          New session
+        </SidebarAction>
+        <SidebarAction icon={<SearchIcon size={16} />} onClick={onSearch}>
+          Search
+        </SidebarAction>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto py-2">
@@ -100,28 +85,19 @@ export function Sidebar({
           <p className="px-4 py-3 text-[12.5px] text-muted-foreground">
             No projects yet. Connect a repository to start.
           </p>
-        ) : filtering && visibleSessions.length === 0 ? (
-          <p className="px-4 py-3 text-[12.5px] text-muted-foreground">
-            No sessions match “{query.trim()}”.
-          </p>
         ) : (
           <>
             <p className="px-4 pt-3.5 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
               Projects
             </p>
 
-            {visibleProjects.map((project) => (
+            {projects.map((project) => (
               <ProjectGroup
                 key={project.id}
                 project={project}
-                sessions={visibleSessions.filter((session) => session.projectId === project.id)}
+                sessions={sessions.filter((session) => session.projectId === project.id)}
                 selectedId={selectedId}
-                onSelect={(sessionId) => {
-                  onSelect(sessionId)
-                  // A pick from search is a destination, not a filter to keep
-                  // applying — clear it so the full list returns underneath.
-                  if (searching) closeSearch()
-                }}
+                onSelect={onSelect}
                 onConfigureEnvironment={() => onConfigureEnvironment(project.id)}
                 onManageEnvironments={() => onManageEnvironments(project.id)}
                 disabled={disabled}
@@ -230,53 +206,6 @@ function openGitHub(repoFullName: string) {
   })
 }
 
-function SearchField({
-  value,
-  onChange,
-  onClose,
-}: {
-  value: string
-  onChange: (value: string) => void
-  onClose: () => void
-}) {
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
-
-  return (
-    <div className="flex items-center gap-1.5 rounded-[calc(var(--radius)*0.7)] border border-border-strong bg-background px-2 py-1">
-      <span className="text-muted-foreground">
-        <SearchIcon size={14} />
-      </span>
-      <input
-        ref={inputRef}
-        type="search"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.preventDefault()
-            onClose()
-          }
-        }}
-        placeholder="Search sessions"
-        aria-label="Search sessions"
-        className="min-w-0 flex-1 bg-transparent py-0.5 text-[13px] outline-none placeholder:text-muted-foreground"
-      />
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Close search"
-        className="rounded px-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-      >
-        Esc
-      </button>
-    </div>
-  )
-}
-
 function ProjectGroup({
   project,
   sessions,
@@ -360,7 +289,7 @@ function ProjectGroup({
                 <PullRequestStatusIcon pr={session.pullRequest} size={12} />
               ) : null}
               <span className="text-[11.5px] tabular-nums opacity-75">
-                {age(session.updatedAt)}
+                {relativeAge(session.updatedAt)}
               </span>
             </span>
           </button>
@@ -786,21 +715,6 @@ function SidebarAction({
       {children}
     </button>
   )
-}
-
-/**
- * How long ago, in as few characters as fit the sidebar.
- *
- * Exact times belong in the transcript; here the question is only whether
- * something is current.
- */
-function age(timestamp: number): string {
-  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000))
-
-  if (seconds < 60) return 'now'
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
-  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h`
-  return `${Math.floor(seconds / 86_400)}d`
 }
 
 function sessionRowLabel(session: SessionSummary): string {

@@ -25,6 +25,7 @@ import {
   type Connection,
 } from '@/lib/connection'
 import type { Settings, Theme } from '@/lib/settings'
+import { settingsCategoriesFor, type SettingsCategory } from '@/lib/settingsCategories'
 import type { UseUpdate } from '@/lib/useUpdate'
 
 /**
@@ -34,23 +35,8 @@ import type { UseUpdate } from '@/lib/useUpdate'
  * nav. The content column shows one section at a time — never nested deeper.
  */
 
-export type SettingsCategory =
-  'account' | 'git' | 'agents' | 'devices' | 'servers' | 'appearance' | 'updates'
-
-const CATEGORIES: { id: SettingsCategory; label: string; ownerOnly?: boolean }[] = [
-  { id: 'account', label: 'Account' },
-  { id: 'git', label: 'Git' },
-  { id: 'agents', label: 'Agents', ownerOnly: true },
-  { id: 'devices', label: 'Devices', ownerOnly: true },
-  { id: 'servers', label: 'Servers' },
-  { id: 'appearance', label: 'Appearance' },
-  { id: 'updates', label: 'Updates' },
-]
-
-export function settingsCategoriesFor(role: DeviceRole | null): typeof CATEGORIES {
-  if (role === 'owner') return CATEGORIES
-  return CATEGORIES.filter((category) => !category.ownerOnly)
-}
+export type { SettingsCategory } from '@/lib/settingsCategories'
+export { settingsCategoriesFor } from '@/lib/settingsCategories'
 
 interface SettingsNavProps {
   category: SettingsCategory

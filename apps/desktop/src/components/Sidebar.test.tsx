@@ -72,6 +72,7 @@ function renderSidebar({
       onOpenSettings={vi.fn()}
       onSelect={vi.fn()}
       onNewSession={onNewSession}
+      onSearch={vi.fn()}
       onConfigureEnvironment={onConfigureEnvironment}
       onManageEnvironments={onManageEnvironments}
       onArchive={onArchive}
@@ -146,6 +147,32 @@ describe('Sidebar', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'New session' }))
     expect(onNewSession).toHaveBeenCalledWith()
+  })
+
+  it('opens search without hiding New session', async () => {
+    const onSearch = vi.fn()
+    render(
+      <Sidebar
+        projects={[project]}
+        sessions={[session]}
+        selectedId={session.id}
+        identity={DEFAULT_COMMIT_IDENTITY}
+        role="owner"
+        onOpenSettings={vi.fn()}
+        onSelect={vi.fn()}
+        onNewSession={vi.fn()}
+        onSearch={onSearch}
+        onConfigureEnvironment={vi.fn()}
+        onManageEnvironments={vi.fn()}
+        onArchive={vi.fn()}
+        onRemoveProject={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'New session' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+    expect(onSearch).toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'New session' })).toBeInTheDocument()
   })
 
   it('opens environments from the project menu', async () => {
@@ -268,6 +295,7 @@ describe('Sidebar', () => {
           onOpenSettings={vi.fn()}
           onSelect={vi.fn()}
           onNewSession={vi.fn()}
+          onSearch={vi.fn()}
           onConfigureEnvironment={vi.fn()}
           onManageEnvironments={vi.fn()}
           onArchive={vi.fn()}

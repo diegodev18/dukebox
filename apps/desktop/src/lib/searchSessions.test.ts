@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ProjectSummary, SessionSummary } from '@dukebox/protocol'
-import { filterProjects, filterSessions, matchSession } from '@/lib/searchSessions'
+import { filterProjects, filterSessions, matchProject, matchSession } from '@/lib/searchSessions'
 
 const project = (
   overrides: Partial<ProjectSummary> & Pick<ProjectSummary, 'id' | 'repoFullName'>,
@@ -113,5 +113,18 @@ describe('filterProjects', () => {
 
   it('preserves the original project order', () => {
     expect(filterProjects('', projects, sessions)).toEqual(projects)
+  })
+})
+
+describe('matchProject', () => {
+  it('matches a repository name without needing a session', () => {
+    const empty = project({
+      id: '33333333-3333-4333-8333-333333333333',
+      repoFullName: 'diego/notes',
+      sessionCount: 0,
+    })
+    expect(matchProject('notes', empty)).toBe(true)
+    expect(matchProject('dukebox', empty)).toBe(false)
+    expect(matchProject('', empty)).toBe(true)
   })
 })

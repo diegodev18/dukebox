@@ -31,6 +31,16 @@ export function matchSession(query: string, entry: SearchableSession): boolean {
   return haystack.includes(needle)
 }
 
+/**
+ * A repository is its own search hit in the palette, even when none of its
+ * sessions match — unlike the sidebar filter, which hid empty groups.
+ */
+export function matchProject(query: string, project: ProjectSummary): boolean {
+  const needle = query.trim().toLowerCase()
+  if (needle === '') return true
+  return project.repoFullName.toLowerCase().includes(needle)
+}
+
 export function filterSessions(
   query: string,
   sessions: SessionSummary[],
