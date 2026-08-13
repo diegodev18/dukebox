@@ -202,7 +202,7 @@ export function Workspace({
               className="flex min-h-0 flex-1 flex-col"
             >
               <SandboxFiles
-                client={client}
+                client={client ?? null}
                 session={session}
                 revision={files.map((file) => file.path).join('\0')}
               />

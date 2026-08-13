@@ -302,7 +302,8 @@ function CodeView({ path, content }: { path: string; content: string }) {
     }
   }, [path, content])
 
-  const rendered = lines ?? content.split('\n').map((text) => [{ content: text || ' ' }])
+  const rendered: HighlightToken[][] =
+    lines ?? content.split('\n').map((text) => [{ content: text || ' ' }])
   const digits = String(Math.max(1, rendered.length)).length
 
   return (
