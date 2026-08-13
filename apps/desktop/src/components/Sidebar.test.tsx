@@ -5,14 +5,21 @@ import {
 } from '@dukebox/protocol'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@tauri-apps/plugin-opener', () => ({
   openUrl: vi.fn().mockResolvedValue(undefined),
 }))
 
+vi.mock('thinking-orbs', () => ({
+  ThinkingOrb: ({ state, 'aria-label': label }: { state?: string; 'aria-label'?: string }) => (
+    <span role="img" aria-label={label} data-orb-state={state} />
+  ),
+}))
+
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { Sidebar } from '@/components/Sidebar'
+import { VIEWED_SESSIONS_KEY } from '@/lib/viewedSessions'
 
 const project: ProjectSummary = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -42,6 +49,10 @@ const session: SessionSummary = {
   permissionMode: 'bypass',
 }
 
+afterEach(() => {
+  localStorage.clear()
+})
+
 function renderSidebar({
   onArchive = vi.fn(),
   onNewSession = vi.fn(),
@@ -50,6 +61,7 @@ function renderSidebar({
   onRemoveProject = vi.fn(),
   projectOverride = {},
   sessionOverride = {},
+  selectedId,
   disabled = false,
 }: {
   onArchive?: ReturnType<typeof vi.fn>
@@ -59,6 +71,7 @@ function renderSidebar({
   onRemoveProject?: ReturnType<typeof vi.fn>
   projectOverride?: Partial<ProjectSummary>
   sessionOverride?: Partial<SessionSummary>
+  selectedId?: string | null
   disabled?: boolean
 } = {}) {
   const row = { ...session, ...sessionOverride }
@@ -66,7 +79,7 @@ function renderSidebar({
     <Sidebar
       projects={[{ ...project, ...projectOverride }]}
       sessions={[row]}
-      selectedId={row.id}
+      selectedId={selectedId === undefined ? row.id : selectedId}
       identity={DEFAULT_COMMIT_IDENTITY}
       role="owner"
       onOpenSettings={vi.fn()}
@@ -278,5 +291,48 @@ describe('Sidebar', () => {
       expect(screen.getByRole('img', { name })).toBeInTheDocument()
       unmount()
     }
+  })
+
+  it('shows an orb while a session is in progress', () => {
+    renderSidebar({ sessionOverride: { status: 'running' } })
+
+    expect(screen.getByRole('img', { name: 'Running' })).toHaveAttribute(
+      'data-orb-state',
+      'working',
+    )
+    expect(screen.queryByRole('img', { name: 'Unread' })).not.toBeInTheDocument()
+  })
+
+  it('uses the listening orb while the agent is waiting', () => {
+    renderSidebar({ sessionOverride: { status: 'waiting_input' } })
+
+    expect(screen.getByRole('img', { name: 'Waiting for you' })).toHaveAttribute(
+      'data-orb-state',
+      'listening',
+    )
+  })
+
+  it('shows a reading mark on a finished session that has not been opened', () => {
+    renderSidebar({ selectedId: null })
+
+    expect(screen.getByRole('img', { name: 'Unread' })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'Done' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the indicator slot empty after the finished session has been opened', () => {
+    renderSidebar()
+
+    expect(screen.queryByRole('img', { name: 'Unread' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'Done' })).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /fix the demux bug/i, current: true }),
+    ).toBeInTheDocument()
+  })
+
+  it('hides the reading mark when this device has already viewed the seq', () => {
+    localStorage.setItem(VIEWED_SESSIONS_KEY, JSON.stringify({ [session.id]: session.lastSeq }))
+    renderSidebar({ selectedId: null })
+
+    expect(screen.queryByRole('img', { name: 'Unread' })).not.toBeInTheDocument()
   })
 })

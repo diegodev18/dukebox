@@ -6,12 +6,26 @@ import {
 } from '@dukebox/protocol'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useRef, useState } from 'react'
+import { ThinkingOrb } from 'thinking-orbs'
 import { filterProjects, filterSessions } from '@/lib/searchSessions'
 import { pullRequestStatus, pullRequestStatusAriaLabel } from '@/lib/pullRequest'
-import { StatusDot, statusLabel } from '@/screens/Session'
+import {
+  loadViewedSessions,
+  markViewed,
+  sessionNavIndicator,
+  type ViewedSessions,
+} from '@/lib/viewedSessions'
+import { statusLabel } from '@/screens/Session'
 import type { SettingsCategory } from '@/screens/Settings'
 import { PullRequestStatusIcon } from '@/components/PullRequestStatusIcon'
-import { BranchIcon, CloseIcon, PlusIcon, SearchIcon, SettingsIcon } from '@/components/icons'
+import {
+  BookOpenIcon,
+  BranchIcon,
+  CloseIcon,
+  PlusIcon,
+  SearchIcon,
+  SettingsIcon,
+} from '@/components/icons'
 import { UserMenu } from '@/components/UserMenu'
 
 /**
@@ -62,6 +76,20 @@ export function Sidebar({
   const [removing, setRemoving] = useState<ProjectSummary | null>(null)
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState('')
+  const [viewed, setViewed] = useState(() => {
+    const stored = loadViewedSessions()
+    if (!selectedId) return stored
+    const selected = sessions.find((session) => session.id === selectedId)
+    if (!selected) return stored
+    return markViewed(stored, selected.id, selected.lastSeq)
+  })
+
+  useEffect(() => {
+    if (!selectedId) return
+    const selected = sessions.find((session) => session.id === selectedId)
+    if (!selected) return
+    setViewed((current) => markViewed(current, selected.id, selected.lastSeq))
+  }, [selectedId, sessions])
 
   const visibleSessions = filterSessions(query, sessions, projects)
   const visibleProjects = filterProjects(query, projects, sessions)
@@ -116,6 +144,7 @@ export function Sidebar({
                 project={project}
                 sessions={visibleSessions.filter((session) => session.projectId === project.id)}
                 selectedId={selectedId}
+                viewed={viewed}
                 onSelect={(sessionId) => {
                   onSelect(sessionId)
                   // A pick from search is a destination, not a filter to keep
@@ -281,6 +310,7 @@ function ProjectGroup({
   project,
   sessions,
   selectedId,
+  viewed,
   onSelect,
   onConfigureEnvironment,
   onManageEnvironments,
@@ -291,6 +321,7 @@ function ProjectGroup({
   project: ProjectSummary
   sessions: SessionSummary[]
   selectedId: string | null
+  viewed: ViewedSessions
   onSelect: (sessionId: string) => void
   onConfigureEnvironment: () => void
   onManageEnvironments: () => void
@@ -350,10 +381,14 @@ function ProjectGroup({
               onOpenSessionMenu(session.id, rect.left, rect.bottom)
             }}
             aria-current={session.id === selectedId}
-            aria-label={sessionRowLabel(session)}
+            aria-label={sessionRowLabel(session, viewed[session.id])}
             className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2.5 py-1.5 pr-8 pl-7.5 text-left text-[13.5px] text-muted-foreground hover:bg-muted hover:text-foreground aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
           >
-            <StatusDot status={session.status} />
+            <SessionNavIndicator
+              status={session.status}
+              lastSeq={session.lastSeq}
+              viewedSeq={viewed[session.id]}
+            />
             <span className="truncate">{session.title}</span>
             <span className="flex items-center gap-1.5">
               {session.pullRequest ? (
@@ -803,10 +838,46 @@ function age(timestamp: number): string {
   return `${Math.floor(seconds / 86_400)}d`
 }
 
-function sessionRowLabel(session: SessionSummary): string {
+function sessionRowLabel(session: SessionSummary, viewedSeq?: number): string {
   const parts = [statusLabel(session.status), session.title]
+  if (sessionNavIndicator(session.status, session.lastSeq, viewedSeq) === 'unread') {
+    parts.push('Unread')
+  }
   if (session.pullRequest) {
     parts.push(pullRequestStatusAriaLabel(pullRequestStatus(session.pullRequest)))
   }
   return parts.join(', ')
+}
+
+/**
+ * Fixed-size mark to the left of the title so the text does not jump when the
+ * session goes from live → unread → read.
+ */
+function SessionNavIndicator({
+  status,
+  lastSeq,
+  viewedSeq,
+}: {
+  status: SessionSummary['status']
+  lastSeq: number
+  viewedSeq: number | undefined
+}) {
+  const kind = sessionNavIndicator(status, lastSeq, viewedSeq)
+
+  return (
+    <span className="grid size-5 flex-none place-items-center">
+      {kind === 'orb' ? (
+        <ThinkingOrb
+          state={status === 'waiting_input' ? 'listening' : 'working'}
+          size={20}
+          theme="auto"
+          aria-label={statusLabel(status)}
+        />
+      ) : kind === 'unread' ? (
+        <span role="img" aria-label="Unread">
+          <BookOpenIcon size={16} />
+        </span>
+      ) : null}
+    </span>
+  )
 }
