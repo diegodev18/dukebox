@@ -260,6 +260,12 @@ function openGitHub(repoFullName: string) {
   })
 }
 
+/**
+ * A long list under one repository buries the others. Five recent sessions
+ * are enough to scan; More reveals the rest, Less folds it back.
+ */
+const SIDEBAR_SESSION_LIMIT = 5
+
 function ProjectGroup({
   project,
   sessions,
@@ -283,6 +289,19 @@ function ProjectGroup({
   onOpenProjectMenu: (x: number, y: number) => void
   disabled?: boolean
 }) {
+  const selectedIndex = sessions.findIndex((session) => session.id === selectedId)
+  const [expanded, setExpanded] = useState(() => selectedIndex >= SIDEBAR_SESSION_LIMIT)
+  const canCollapse = sessions.length > SIDEBAR_SESSION_LIMIT
+  const visible =
+    expanded || !canCollapse ? sessions : sessions.slice(0, SIDEBAR_SESSION_LIMIT)
+
+  // Opening a session that sits past the fold (search, a deep link) should
+  // expand this group so the current row is on screen. Collapsing while that
+  // row is still selected is allowed — the person asked to see less.
+  useEffect(() => {
+    if (selectedIndex >= SIDEBAR_SESSION_LIMIT) setExpanded(true)
+  }, [selectedId, selectedIndex])
+
   return (
     <>
       <div
@@ -319,7 +338,7 @@ function ProjectGroup({
         )}
       </div>
 
-      {sessions.map((session) => (
+      {visible.map((session) => (
         <div key={session.id} className="group relative">
           <button
             type="button"
@@ -373,6 +392,16 @@ function ProjectGroup({
           </button>
         </div>
       ))}
+      {canCollapse && (
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          aria-expanded={expanded}
+          className="w-full py-1 pr-8 pl-7.5 text-left text-[12.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        >
+          {expanded ? 'Less' : 'More'}
+        </button>
+      )}
     </>
   )
 }
