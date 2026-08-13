@@ -20,6 +20,14 @@ interface Props {
   after?: number
   /** Size items to their content width (diffs), not the scroller. */
   wide?: boolean
+  /**
+   * Space between windowed rows, in pixels.
+   *
+   * Matches the flex `gap` the list has before it virtualizes. Absolute rows
+   * do not participate in that gap, so without this a stack of tool cards
+   * fuses into one block the moment the viewport is measured.
+   */
+  gap?: number
   children: (index: number) => ReactNode
 }
 
@@ -30,6 +38,7 @@ export function VirtualRows({
   overscan = 8,
   after = DEFAULT_VIRTUALIZE_AFTER,
   wide = false,
+  gap = 0,
   children,
 }: Props) {
   const [viewport, setViewport] = useState(0)
@@ -69,7 +78,7 @@ export function VirtualRows({
   const virtualizer = useVirtualizer({
     count: virtualize ? count : 0,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => estimateSize,
+    estimateSize: () => estimateSize + gap,
     overscan,
     enabled: virtualize,
   })
@@ -86,12 +95,14 @@ export function VirtualRows({
   }, [windowed, count, scrollRef])
 
   if (!windowed) {
+    const rows = Array.from({ length: count }, (_, index) => (
+      <Fragment key={index}>{children(index)}</Fragment>
+    ))
+    if (gap <= 0) return <>{rows}</>
     return (
-      <>
-        {Array.from({ length: count }, (_, index) => (
-          <Fragment key={index}>{children(index)}</Fragment>
-        ))}
-      </>
+      <div className="flex flex-col" style={{ gap: `${gap}px` }}>
+        {rows}
+      </div>
     )
   }
 
@@ -115,6 +126,7 @@ export function VirtualRows({
             left: 0,
             width: wide ? 'max-content' : '100%',
             minWidth: '100%',
+            paddingBottom: gap > 0 ? `${gap}px` : undefined,
             transform: `translateY(${item.start}px)`,
           }}
         >

@@ -124,7 +124,7 @@ export function Transcript({
         onScroll={handleScroll}
         className="min-h-0 flex-1 overflow-y-auto px-6 py-5.5"
       >
-        <div className="measure flex flex-col gap-4">
+        <div className="measure">
           {empty ? (
             <p className="text-[13px] text-muted-foreground">
               {loading
@@ -134,7 +134,13 @@ export function Transcript({
                   : 'Ask for a change to start.'}
             </p>
           ) : (
-            <VirtualRows count={itemCount} scrollRef={scroller} estimateSize={72} after={32}>
+            <VirtualRows
+              count={itemCount}
+              scrollRef={scroller}
+              estimateSize={72}
+              after={32}
+              gap={16}
+            >
               {(index) => {
                 if (index >= transcript.blocks.length) {
                   return <Working key="working" blocks={transcript.blocks} />
