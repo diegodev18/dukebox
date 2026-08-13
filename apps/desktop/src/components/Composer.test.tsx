@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { Composer } from '@/components/Composer'
@@ -93,5 +93,91 @@ describe('Composer', () => {
     await userEvent.click(screen.getByRole('option', { name: 'Auto' }))
 
     expect(onPermissionModeChange).toHaveBeenCalledWith('auto')
+  })
+
+  it('attaches files and sends them with the prompt', async () => {
+    const onSend = vi.fn()
+    const { container } = render(<Composer onSend={onSend} onInterrupt={vi.fn()} running={false} />)
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, {
+      target: { files: [new File(['hello'], 'notes.txt', { type: 'text/plain' })] },
+    })
+
+    expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText('Message'), 'read this')
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    expect(onSend).toHaveBeenCalledWith('read this', [
+      expect.objectContaining({
+        name: 'notes.txt',
+        data: expect.stringMatching(/^data:text\/plain;base64,/),
+      }),
+    ])
+    expect(screen.queryByText('notes.txt')).not.toBeInTheDocument()
+  })
+
+  it('attaches several files at once', async () => {
+    const { container } = render(
+      <Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />,
+    )
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, {
+      target: {
+        files: [
+          new File(['a'], 'one.txt', { type: 'text/plain' }),
+          new File(['b'], 'two.txt', { type: 'text/plain' }),
+        ],
+      },
+    })
+
+    expect(await screen.findByText('one.txt')).toBeInTheDocument()
+    expect(await screen.findByText('two.txt')).toBeInTheDocument()
+  })
+
+  it('removes an attached file from the draft', async () => {
+    const { container } = render(
+      <Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />,
+    )
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, {
+      target: { files: [new File(['x'], 'drop.txt', { type: 'text/plain' })] },
+    })
+
+    await screen.findByText('drop.txt')
+    await userEvent.click(screen.getByRole('button', { name: 'Remove drop.txt' }))
+
+    expect(screen.queryByText('drop.txt')).not.toBeInTheDocument()
+  })
+
+  it('restores attached files when a send is rejected', async () => {
+    const onSend = vi.fn()
+    const { container, rerender } = render(
+      <Composer onSend={onSend} onInterrupt={vi.fn()} running={false} error={null} />,
+    )
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, {
+      target: { files: [new File(['x'], 'report.pdf', { type: 'application/pdf' })] },
+    })
+    await screen.findByText('report.pdf')
+
+    await userEvent.type(screen.getByLabelText('Message'), 'look at this')
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(screen.queryByText('report.pdf')).not.toBeInTheDocument()
+
+    rerender(<Composer onSend={onSend} onInterrupt={vi.fn()} running={false} error="rejected" />)
+
+    expect(screen.getByLabelText('Message')).toHaveValue('look at this')
+    expect(screen.getByText('report.pdf')).toBeInTheDocument()
+  })
+
+  it('disables attaching while disconnected', () => {
+    render(<Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} disabled />)
+
+    expect(screen.getByRole('button', { name: 'Attach files' })).toBeDisabled()
   })
 })
