@@ -293,6 +293,7 @@ export function Session({
             sessions={sessions}
             selectedId={creating ? null : selected}
             identity={settings.commitIdentity ?? DEFAULT_COMMIT_IDENTITY}
+            serverName={connection.serverName}
             role={role}
             disabled={disconnected}
             onOpenSettings={openSettings}
