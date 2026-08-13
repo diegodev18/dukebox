@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObjec
 import type { DukeboxClient } from '@/lib/client'
 import { buildFileTree, type FileTreeNode } from '@/lib/fileTree'
 import { tokensForCode, type HighlightToken } from '@/lib/syntaxHighlight'
-import { VirtualRows } from '@/components/VirtualRows'
+import { LineWidthSizer, VirtualRows, longestLine } from '@/components/VirtualRows'
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -321,7 +321,11 @@ function CodeView({
 
   return (
     <div data-selectable className="inline-block min-w-full font-mono text-[12px] leading-[1.55]">
-      <VirtualRows count={rendered.length} scrollRef={scrollRef} estimateSize={19} after={80} wide>
+      <LineWidthSizer
+        text={longestLine(content.split('\n'))}
+        gutter={<span className="flex-none py-0 pr-3 pl-2" style={{ width: `${digits + 2}ch` }} />}
+      />
+      <VirtualRows count={rendered.length} scrollRef={scrollRef} estimateSize={19} after={80}>
         {(index) => {
           const tokens = rendered[index]!
           return (

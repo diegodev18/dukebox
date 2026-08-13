@@ -140,6 +140,7 @@ export function Transcript({
               estimateSize={72}
               after={32}
               gap={16}
+              stickToBottom
             >
               {(index) => {
                 if (index >= transcript.blocks.length) {

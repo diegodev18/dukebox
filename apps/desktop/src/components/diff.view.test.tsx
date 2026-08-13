@@ -82,4 +82,23 @@ describe('Diff', () => {
       { timeout: 15_000 },
     )
   })
+
+  it('keeps an in-flow sizer as wide as the longest line', async () => {
+    const long = `from '@/lib/connection' ${'x'.repeat(120)}`
+    render(
+      <Diff
+        file={{
+          path: 'a.ts',
+          before: 'short\nmid',
+          after: `short\n${long}`,
+        }}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(long).closest('[aria-busy="false"]')).not.toBeNull()
+    })
+    const sizer = document.querySelector('[data-line-width-sizer]')
+    expect(sizer).toHaveTextContent(long)
+  })
 })

@@ -9,7 +9,7 @@ import {
   type RefObject,
 } from 'react'
 import { cn } from '@/lib/utils'
-import { VirtualRows } from '@/components/VirtualRows'
+import { LineWidthSizer, VirtualRows, longestLine } from '@/components/VirtualRows'
 import { tokensForCode, type HighlightToken } from '@/lib/syntaxHighlight'
 
 export { MAX_LCS_LINES }
@@ -57,14 +57,23 @@ export function Diff({ file }: { file: FileChange }) {
         </p>
       )}
       {/* Wide enough for its longest line, so the row background spans the full
-          scrolled width rather than stopping at the panel edge. */}
+          scrolled width rather than stopping at the panel edge. Absolute
+          virtual rows cannot provide that width, so the sizer stays in flow. */}
       <div className="inline-block min-w-full font-mono text-[12px] leading-[1.55]">
+        <LineWidthSizer
+          text={longestLine(diffTexts(lines))}
+          gutter={
+            <span className="flex flex-none items-center gap-2 border-l-2 py-0 pl-2 pr-3">
+              <span className="inline-block" style={{ width: `${digits}ch` }} />
+              <span className="inline-block" style={{ width: `${digits}ch` }} />
+            </span>
+          }
+        />
         <VirtualRows
           count={rows.length}
           scrollRef={scrollRef as RefObject<HTMLElement | null>}
           estimateSize={20}
           after={80}
-          wide
         >
           {(index) => {
             const row = rows[index]!
@@ -113,6 +122,18 @@ function SkipHeader({
 }
 
 type FlatRow = { kind: 'skip'; line: SkipLine; index: number } | { kind: 'line'; line: SameLine }
+
+function diffTexts(lines: Line[]): string[] {
+  const texts: string[] = []
+  for (const line of lines) {
+    if (line.kind === 'skip') {
+      for (const hidden of line.hidden) texts.push(hidden.text)
+    } else {
+      texts.push(line.text)
+    }
+  }
+  return texts
+}
 
 function flattenDiffRows(lines: Line[], expanded: ReadonlySet<number>): FlatRow[] {
   const rows: FlatRow[] = []

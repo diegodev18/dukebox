@@ -7,6 +7,10 @@ import { Fragment, useLayoutEffect, useState, type ReactNode, type RefObject } f
  * Virtualizing before the scroller has a height paints an empty window — the
  * library cannot choose a visible range, so it mounts nothing. Short lists,
  * jsdom, and the first layout pass therefore render in full.
+ *
+ * Windowed rows are `position: absolute` and do not contribute width. A parent
+ * that must be as wide as its longest line (diffs, file preview) keeps a
+ * {@link LineWidthSizer} in flow beside this list.
  */
 
 export const DEFAULT_VIRTUALIZE_AFTER = 40
@@ -18,8 +22,6 @@ interface Props {
   overscan?: number
   /** Virtualize once the list is at least this long. */
   after?: number
-  /** Size items to their content width (diffs), not the scroller. */
-  wide?: boolean
   /**
    * Space between windowed rows, in pixels.
    *
@@ -28,7 +30,40 @@ interface Props {
    * fuses into one block the moment the viewport is measured.
    */
   gap?: number
+  /** Pin the scroller to the end as rows arrive. Transcripts, not diffs. */
+  stickToBottom?: boolean
   children: (index: number) => ReactNode
+}
+
+/**
+ * In-flow box as wide as `text` in the code font.
+ *
+ * Absolute virtual rows cannot grow their parent, so the longest line would
+ * overflow while every other row stayed panel-wide. Horizontal scroll then
+ * shows leftover slices of long lines and a void to the right. This sizer
+ * is the width those rows stretch to.
+ */
+export function LineWidthSizer({ text, gutter }: { text: string; gutter?: ReactNode }) {
+  return (
+    <div
+      data-line-width-sizer
+      aria-hidden
+      className="pointer-events-none h-0 w-max overflow-hidden font-mono text-[12px] leading-[1.55]"
+    >
+      <div className="flex">
+        {gutter}
+        <span className="whitespace-pre pr-3">{text || ' '}</span>
+      </div>
+    </div>
+  )
+}
+
+export function longestLine(texts: readonly string[]): string {
+  let best = ''
+  for (const text of texts) {
+    if (text.length > best.length) best = text
+  }
+  return best
 }
 
 export function VirtualRows({
@@ -37,8 +72,8 @@ export function VirtualRows({
   estimateSize,
   overscan = 8,
   after = DEFAULT_VIRTUALIZE_AFTER,
-  wide = false,
   gap = 0,
+  stickToBottom = false,
   children,
 }: Props) {
   const [viewport, setViewport] = useState(0)
@@ -87,12 +122,12 @@ export function VirtualRows({
   const windowed = virtualize && virtualItems.length > 0
 
   useLayoutEffect(() => {
-    if (!windowed) return
+    if (!windowed || !stickToBottom) return
     const element = scrollRef.current
     if (!element) return
     const distance = element.scrollHeight - element.scrollTop - element.clientHeight
     if (distance < 80) element.scrollTop = element.scrollHeight
-  }, [windowed, count, scrollRef])
+  }, [windowed, count, scrollRef, stickToBottom])
 
   if (!windowed) {
     const rows = Array.from({ length: count }, (_, index) => (
@@ -110,7 +145,7 @@ export function VirtualRows({
     <div
       style={{
         height: `${virtualizer.getTotalSize()}px`,
-        width: wide ? 'max-content' : '100%',
+        width: '100%',
         minWidth: '100%',
         position: 'relative',
       }}
@@ -124,7 +159,7 @@ export function VirtualRows({
             position: 'absolute',
             top: 0,
             left: 0,
-            width: wide ? 'max-content' : '100%',
+            width: '100%',
             minWidth: '100%',
             paddingBottom: gap > 0 ? `${gap}px` : undefined,
             transform: `translateY(${item.start}px)`,
