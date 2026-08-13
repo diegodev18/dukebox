@@ -14,10 +14,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AVAILABLE_AGENTS,
   AVAILABLE_MODELS,
-  AVAILABLE_PERMISSION_MODES,
   DEFAULT_MODEL,
-  DEFAULT_PERMISSION_MODE,
   agentHasPermissionModes,
+  coercePermissionMode,
   type AvailablePermissionModeId,
 } from '@/components/AgentIcon'
 import { modelsForProvider } from '@/components/OpenCodeProviders'
@@ -125,7 +124,9 @@ export function NewSession({
   const [environmentId, setEnvironmentId] = useState<string>(BASE_IMAGE_VALUE)
   const [agentId, setAgentId] = useState<string>(initialAgent)
   const [model, setModel] = useState<string>(initialModel(lastNewSession, initialAgent))
-  const [permissionMode, setPermissionMode] = useState(initialPermissionMode(lastNewSession))
+  const [permissionMode, setPermissionMode] = useState(
+    initialPermissionMode(lastNewSession, initialAgent),
+  )
   const [opencodeProviders, setOpencodeProviders] = useState<OpencodeProvider[]>([])
   const [opencodeProvidersStatus, setOpencodeProvidersStatus] = useState<
     'loading' | 'loaded' | 'failed'
@@ -375,6 +376,7 @@ export function NewSession({
 
   const selectAgent = (next: string) => {
     setAgentId(next)
+    setPermissionMode((current) => coercePermissionMode(next, current))
     if (next === 'opencode') {
       if (opencodeProvidersStatus === 'loaded' && opencodeProviders.length === 0) {
         onConfigureProviders()
@@ -756,6 +758,7 @@ function SessionMutablePickers({
       )}
       {showPermissionMode && agentHasPermissionModes(agentId) && (
         <PermissionModePicker
+          agentId={agentId}
           value={permissionMode}
           onChange={onPermissionModeChange}
           disabled={busy}
@@ -822,9 +825,9 @@ function initialProviderId(last: LastNewSession | null, agentId: string): string
   return slash === -1 ? '' : last.model.slice(0, slash)
 }
 
-function initialPermissionMode(last: LastNewSession | null): AvailablePermissionModeId {
-  return (
-    AVAILABLE_PERMISSION_MODES.find((mode) => mode.id === last?.permissionMode)?.id ??
-    DEFAULT_PERMISSION_MODE
-  )
+function initialPermissionMode(
+  last: LastNewSession | null,
+  agentId: string,
+): AvailablePermissionModeId {
+  return coercePermissionMode(agentId, last?.permissionMode)
 }

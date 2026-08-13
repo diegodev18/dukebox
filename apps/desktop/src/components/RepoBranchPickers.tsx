@@ -4,10 +4,11 @@ import {
   AgentIcon,
   AVAILABLE_AGENTS,
   AVAILABLE_MODELS,
-  AVAILABLE_PERMISSION_MODES,
   agentLabel,
+  coercePermissionMode,
   modelLabel,
   permissionModeLabel,
+  permissionModesForAgent,
 } from '@/components/AgentIcon'
 import { CheckIcon, ChevronDownIcon, FolderIcon, ServerIcon } from '@/components/icons'
 
@@ -433,13 +434,17 @@ export function PermissionModePicker({
   value,
   onChange,
   disabled,
+  agentId,
 }: {
   value: PermissionMode
   onChange: (mode: PermissionMode) => void
   disabled?: boolean
+  agentId: string
 }) {
   const [open, setOpen] = useState(false)
-  const label = permissionModeLabel(value) ?? value
+  const modes = permissionModesForAgent(agentId)
+  const selected = coercePermissionMode(agentId, value)
+  const label = permissionModeLabel(selected, agentId) ?? selected
 
   return (
     <PickerShell
@@ -450,10 +455,10 @@ export function PermissionModePicker({
       ariaLabel="Permission mode"
     >
       <div className="max-h-64 overflow-y-auto py-1">
-        {AVAILABLE_PERMISSION_MODES.map((mode) => (
+        {modes.map((mode) => (
           <PickerRow
             key={mode.id}
-            selected={mode.id === value}
+            selected={mode.id === selected}
             onSelect={() => {
               onChange(mode.id)
               setOpen(false)

@@ -64,6 +64,7 @@ describe('Composer', () => {
         running={false}
         permissionMode="plan"
         onPermissionModeChange={vi.fn()}
+        agentId="claude-code"
       />,
     )
 
@@ -86,6 +87,7 @@ describe('Composer', () => {
         running={false}
         permissionMode="plan"
         onPermissionModeChange={onPermissionModeChange}
+        agentId="claude-code"
       />,
     )
 
@@ -93,6 +95,30 @@ describe('Composer', () => {
     await userEvent.click(screen.getByRole('option', { name: 'Auto' }))
 
     expect(onPermissionModeChange).toHaveBeenCalledWith('auto')
+  })
+
+  it('offers OpenCode Plan and Build instead of Claude modes', async () => {
+    const onPermissionModeChange = vi.fn()
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        permissionMode="bypass"
+        onPermissionModeChange={onPermissionModeChange}
+        agentId="opencode"
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Permission mode' })).toHaveTextContent('Build')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Permission mode' }))
+    expect(screen.getByRole('option', { name: 'Plan' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Build' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Auto' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('option', { name: 'Plan' }))
+    expect(onPermissionModeChange).toHaveBeenCalledWith('plan')
   })
 
   it('attaches files and sends them with the prompt', async () => {

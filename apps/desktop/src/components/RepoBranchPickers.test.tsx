@@ -36,7 +36,7 @@ describe('picker placement', () => {
     HTMLElement.prototype.scrollIntoView = scrollIntoView
 
     try {
-      render(<PermissionModePicker value="bypass" onChange={vi.fn()} />)
+      render(<PermissionModePicker agentId="claude-code" value="bypass" onChange={vi.fn()} />)
       await userEvent.click(screen.getByRole('button', { name: 'Permission mode' }))
 
       expect(screen.getByRole('listbox', { name: 'Permission mode' })).toBeInTheDocument()
@@ -50,7 +50,7 @@ describe('picker placement', () => {
     vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(800)
     vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(1200)
 
-    render(<PermissionModePicker value="bypass" onChange={vi.fn()} />)
+    render(<PermissionModePicker agentId="claude-code" value="bypass" onChange={vi.fn()} />)
     const button = screen.getByRole('button', { name: 'Permission mode' })
     vi.spyOn(button, 'getBoundingClientRect').mockReturnValue({
       x: 24,
@@ -77,7 +77,7 @@ describe('picker placement', () => {
     vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(800)
     vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(1200)
 
-    render(<PermissionModePicker value="bypass" onChange={vi.fn()} />)
+    render(<PermissionModePicker agentId="claude-code" value="bypass" onChange={vi.fn()} />)
     const button = screen.getByRole('button', { name: 'Permission mode' })
     vi.spyOn(button, 'getBoundingClientRect').mockReturnValue({
       x: 24,
@@ -98,5 +98,54 @@ describe('picker placement', () => {
 
     expect(listbox.style.top).toBe('74px')
     expect(listbox.style.bottom).toBe('')
+  })
+})
+
+describe('permission modes per agent', () => {
+  it('offers Claude Code the four permission modes', async () => {
+    render(<PermissionModePicker agentId="claude-code" value="bypass" onChange={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: 'Permission mode' })).toHaveTextContent('Bypass')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Permission mode' }))
+    const modes = screen.getByRole('listbox', { name: 'Permission mode' })
+
+    expect(screen.getByRole('option', { name: 'Plan' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Auto' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Accept edits' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Bypass' })).toBeInTheDocument()
+    expect(modes.querySelectorAll('[role="option"]')).toHaveLength(4)
+  })
+
+  it('offers OpenCode Plan and Build only', async () => {
+    render(<PermissionModePicker agentId="opencode" value="bypass" onChange={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: 'Permission mode' })).toHaveTextContent('Build')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Permission mode' }))
+    const modes = screen.getByRole('listbox', { name: 'Permission mode' })
+
+    expect(screen.getByRole('option', { name: 'Plan' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Build' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Auto' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Accept edits' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Bypass' })).not.toBeInTheDocument()
+    expect(modes.querySelectorAll('[role="option"]')).toHaveLength(2)
+  })
+
+  it('shows Build when OpenCode is holding a Claude-only mode', () => {
+    render(<PermissionModePicker agentId="opencode" value="auto" onChange={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: 'Permission mode' })).toHaveTextContent('Build')
+  })
+
+  it('sends bypass when OpenCode Build is picked', async () => {
+    const onChange = vi.fn()
+    render(<PermissionModePicker agentId="opencode" value="plan" onChange={onChange} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Permission mode' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Build' }))
+
+    expect(onChange).toHaveBeenCalledWith('bypass')
   })
 })

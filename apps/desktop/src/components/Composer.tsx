@@ -33,6 +33,8 @@ interface Props {
   error?: string | null
   permissionMode?: PermissionMode | null
   onPermissionModeChange?: (mode: PermissionMode) => void
+  /** Used to offer only the modes that agent actually exposes. */
+  agentId?: string
   /**
    * A prompt loaded from the transcript (Edit). `key` changes when the same
    * text is edited again, so the field refills rather than looking unchanged.
@@ -49,6 +51,7 @@ export const Composer = memo(function Composer({
   error,
   permissionMode,
   onPermissionModeChange,
+  agentId,
   draft,
 }: Props) {
   const [text, setText] = useState('')
@@ -185,6 +188,7 @@ export const Composer = memo(function Composer({
             </button>
             {permissionMode && onPermissionModeChange ? (
               <PermissionModePicker
+                agentId={agentId ?? 'claude-code'}
                 value={permissionMode}
                 onChange={onPermissionModeChange}
                 {...(disabled ? { disabled: true } : {})}

@@ -669,6 +669,7 @@ function SessionColumn({
           ? {
               permissionMode: transcript.permissionMode ?? session.permissionMode,
               onPermissionModeChange: live.setPermissionMode,
+              agentId: session.agentId,
             }
           : {})}
         {...(session.purpose === 'environment_setup'

@@ -53,7 +53,8 @@ export function isTerminal(status: SessionStatus): boolean {
  * the rest.
  *
  * Names are agent-agnostic; adapters map them onto native flags (Claude Code
- * `bypassPermissions`, `plan`, `auto`, `acceptEdits`).
+ * `bypassPermissions`, `plan`, `auto`, `acceptEdits`; OpenCode `plan` vs the
+ * default build agent).
  */
 export const permissionMode = z.enum(['bypass', 'plan', 'auto', 'acceptEdits'])
 
@@ -233,7 +234,7 @@ export const sessionSummary = z.object({
   /**
    * How the agent is allowed to act, or null when it has no modes.
    *
-   * Null hides the picker (OpenCode). Claude Code always carries a mode;
+   * Null hides the picker. Claude Code and OpenCode always carry a mode;
    * absent on a pre-migration row is treated as `bypass` by the server.
    */
   permissionMode: permissionMode.nullable(),

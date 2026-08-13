@@ -655,6 +655,7 @@ function Preview() {
                 ? {
                     permissionMode: 'auto' as const,
                     onPermissionModeChange: (mode) => console.log('mode', mode),
+                    agentId: 'claude-code',
                   }
                 : {})}
               {...(view === 'setup' ? { placeholder: 'Add context for the setup agent…' } : {})}

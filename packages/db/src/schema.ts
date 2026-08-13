@@ -323,8 +323,8 @@ export const sessions = pgTable(
     /**
      * How the agent is allowed to act.
      *
-     * Null when the agent has no modes (OpenCode). Claude Code stores
-     * `bypass`, `plan`, `auto`, or `acceptEdits`.
+     * Null when the agent has no modes. Claude Code stores `bypass`, `plan`,
+     * `auto`, or `acceptEdits`. OpenCode stores `plan` or `bypass` (Build).
      */
     permissionMode: text('permission_mode'),
 

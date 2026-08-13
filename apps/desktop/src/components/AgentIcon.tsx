@@ -47,10 +47,40 @@ export const AVAILABLE_PERMISSION_MODES = [
 
 export type AvailablePermissionModeId = (typeof AVAILABLE_PERMISSION_MODES)[number]['id']
 
+export type PermissionModeOption = {
+  id: AvailablePermissionModeId
+  label: string
+}
+
 export const DEFAULT_PERMISSION_MODE: AvailablePermissionModeId = 'bypass'
 
-export function permissionModeLabel(mode: string): string | undefined {
-  return AVAILABLE_PERMISSION_MODES.find((entry) => entry.id === mode)?.label
+/**
+ * OpenCode's native agents are Plan and Build. Build is the unattended
+ * default, stored as `bypass` so the protocol stays agent-agnostic.
+ */
+const OPENCODE_PERMISSION_MODES: readonly PermissionModeOption[] = [
+  { id: 'plan', label: 'Plan' },
+  { id: 'bypass', label: 'Build' },
+]
+
+export function permissionModesForAgent(agentId: string): readonly PermissionModeOption[] {
+  if (agentId === 'opencode') return OPENCODE_PERMISSION_MODES
+  return AVAILABLE_PERMISSION_MODES
+}
+
+export function permissionModeLabel(mode: string, agentId?: string): string | undefined {
+  const modes = agentId ? permissionModesForAgent(agentId) : AVAILABLE_PERMISSION_MODES
+  return modes.find((entry) => entry.id === mode)?.label
+}
+
+/** Map a stored mode onto one the agent actually exposes. */
+export function coercePermissionMode(
+  agentId: string,
+  mode: string | null | undefined,
+): AvailablePermissionModeId {
+  const allowed = permissionModesForAgent(agentId)
+  const match = allowed.find((entry) => entry.id === mode)
+  return match?.id ?? DEFAULT_PERMISSION_MODE
 }
 
 export function agentHasPermissionModes(agentId: string): boolean {
