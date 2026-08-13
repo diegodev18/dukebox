@@ -364,6 +364,18 @@ describe('NewSession permission mode', () => {
     expect(within(modes).getByRole('option', { name: 'Bypass' })).toBeInTheDocument()
   })
 
+  it('cycles the permission mode with Shift+Tab', async () => {
+    renderScreen(makeClient())
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Permission mode' })).toHaveTextContent('Bypass'),
+    )
+
+    await userEvent.type(screen.getByLabelText(/what should it do/i), '{Shift>}{Tab}{/Shift}')
+
+    expect(screen.getByRole('button', { name: 'Permission mode' })).toHaveTextContent('Plan')
+  })
+
   it('sends the selected mode when starting a Claude Code session', async () => {
     const client = makeClient()
     renderScreen(client)
