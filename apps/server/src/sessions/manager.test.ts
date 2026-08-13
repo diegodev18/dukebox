@@ -8,7 +8,12 @@ import { EventBus } from '../events/bus.js'
 import type { GitHubClient } from '../github/client.js'
 import { close, db, prepareDatabase, resetDatabase } from '../testing/database.js'
 import { closeRedis, redis } from '../testing/redis.js'
-import { SessionManager, SessionError, MergeConflictError } from './manager.js'
+import {
+  SessionManager,
+  SessionError,
+  MergeConflictError,
+  RESTART_CONTINUATION_PROMPT,
+} from './manager.js'
 
 /**
  * Sessions are tested against a real Docker daemon and a real database, with a
@@ -45,6 +50,11 @@ class FakeAdapter implements AgentAdapter {
 
   async start(context: SessionContext): Promise<void> {
     this.started = context
+    // A resume after pause/stop is a new agent process. Without this, the
+    // previous `stop` left the event stream ended and consume would exit
+    // immediately.
+    this.ended = false
+    this.stopped = false
   }
 
   async send(message: UserMessage): Promise<void> {
@@ -236,6 +246,20 @@ async function waitForPrompt(prompt: string, timeoutMs = 90_000) {
   throw new Error(`initial prompt was not delivered in time`)
 }
 
+async function waitForAgentSessionId(sessionId: string, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const [row] = await db
+      .select({ agentSessionId: sessions.agentSessionId })
+      .from(sessions)
+      .where(eq(sessions.id, sessionId))
+
+    if (row?.agentSessionId) return row.agentSessionId
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  throw new Error('agentSessionId was not persisted in time')
+}
+
 async function waitForMatchingPromptCount(pattern: RegExp, count: number, timeoutMs = 90_000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -401,8 +425,8 @@ describe('agent events', () => {
   })
 
   it('opens the log with the prompt that started the session', async () => {
-    // The first prompt is sent while the session provisions, so this log is the
-    // only place it is ever recorded.
+    // Recorded as soon as the row exists, so a crash mid-provision still has
+    // the text needed to retry.
     const session = await startSession('rename the widget')
     await waitForStatus(session.id, 'running')
 
@@ -435,6 +459,15 @@ describe('agent events', () => {
 
     adapter.emit({ type: 'done', reason: 'completed' })
     await waitForStatus(session.id, 'done', 20_000)
+  })
+
+  it('records the agent session id as soon as the session starts', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+
+    adapter.emit({ type: 'session_started', agentId: 'fake' })
+
+    expect(await waitForAgentSessionId(session.id)).toBe('fake-agent-session')
   })
 
   it('records the agent session id, which is what resume needs', async () => {
@@ -621,6 +654,151 @@ describe('prompt, interrupt, and stop', () => {
 
   it('tolerates stopping a session that is not running', async () => {
     await expect(manager.stop('00000000-0000-4000-8000-000000000000')).resolves.toBeUndefined()
+  })
+})
+
+describe('restart recovery', () => {
+  function managerAfterRestart() {
+    return new SessionManager({
+      db,
+      bus,
+      sandbox,
+      cloneUrl: () => originUrl,
+      createAdapter: () => adapter,
+    })
+  }
+
+  it('pauses without marking sessions stopped', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+
+    await manager.pauseAll()
+
+    const [row] = await db
+      .select({ status: sessions.status })
+      .from(sessions)
+      .where(eq(sessions.id, session.id))
+
+    expect(row?.status).toBe('running')
+    expect(manager.isRunning(session.id)).toBe(false)
+    expect(await (await sandbox.get(session.id))?.isRunning()).toBe(false)
+  })
+
+  it('restores a running session and asks the agent to continue', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+    adapter.emit({ type: 'session_started', agentId: 'fake' })
+    await waitForAgentSessionId(session.id)
+
+    await manager.pauseAll()
+
+    const afterRestart = managerAfterRestart()
+    await afterRestart.restoreAfterRestart()
+
+    expect(adapter.started?.resumeFrom).toBe('fake-agent-session')
+    expect(adapter.prompts.at(-1)?.text).toBe(RESTART_CONTINUATION_PROMPT)
+    expect((await bus.replay(session.id)).map((event) => event.event)).toContainEqual({
+      type: 'done',
+      reason: 'interrupted',
+    })
+
+    const [row] = await db
+      .select({ status: sessions.status })
+      .from(sessions)
+      .where(eq(sessions.id, session.id))
+
+    expect(row?.status).toBe('running')
+    await afterRestart.stopAll()
+  })
+
+  it('fails a running session whose container is gone', async () => {
+    const project = await createTestProject()
+    const [orphan] = await db
+      .insert(sessions)
+      .values({
+        projectId: project.id,
+        agentId: 'fake',
+        title: 'Orphan',
+        baseBranch: 'main',
+        branch: 'duke/orphan',
+        status: 'running',
+      })
+      .returning()
+
+    await manager.restoreAfterRestart()
+
+    const [updated] = await db
+      .select({ status: sessions.status, errorMessage: sessions.errorMessage })
+      .from(sessions)
+      .where(eq(sessions.id, orphan!.id))
+
+    expect(updated?.status).toBe('failed')
+    expect(updated?.errorMessage).toMatch(/no longer exists/)
+  })
+
+  it('does not restore a session the user stopped', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+    await manager.stop(session.id)
+
+    await managerAfterRestart().restoreAfterRestart()
+
+    const [row] = await db
+      .select({ status: sessions.status })
+      .from(sessions)
+      .where(eq(sessions.id, session.id))
+
+    expect(row?.status).toBe('stopped')
+  })
+
+  it('retries provisioning when the original prompt is in the log', async () => {
+    const project = await createTestProject()
+    const [orphan] = await db
+      .insert(sessions)
+      .values({
+        projectId: project.id,
+        agentId: 'fake',
+        title: 'finish the clone',
+        baseBranch: 'main',
+        branch: '',
+        status: 'provisioning',
+      })
+      .returning()
+
+    createdSessions.push(orphan!.id)
+    await bus.append(orphan!.id, { type: 'user_prompt', text: 'finish the clone' })
+
+    const afterRestart = managerAfterRestart()
+    await afterRestart.restoreAfterRestart()
+
+    await waitForStatus(orphan!.id, 'running')
+    expect(adapter.prompts.filter((prompt) => prompt.text === 'finish the clone')).toHaveLength(1)
+    await afterRestart.stopAll()
+  })
+
+  it('fails provisioning that has no recorded prompt', async () => {
+    const project = await createTestProject()
+    const [orphan] = await db
+      .insert(sessions)
+      .values({
+        projectId: project.id,
+        agentId: 'fake',
+        title: 'Lost',
+        baseBranch: 'main',
+        branch: '',
+        status: 'provisioning',
+      })
+      .returning()
+
+    await manager.restoreAfterRestart()
+
+    const [updated] = await db
+      .select({ status: sessions.status, errorMessage: sessions.errorMessage })
+      .from(sessions)
+      .where(eq(sessions.id, orphan!.id))
+
+    expect(updated?.status).toBe('failed')
+    expect(updated?.errorMessage).toMatch(/original prompt was not recorded/)
   })
 })
 
@@ -959,38 +1137,6 @@ describe('pull requests', () => {
       .returning()
 
     await expect(afterRestart.prompt(orphan!.id, 'hello')).rejects.toThrow(/no longer exists/)
-  })
-
-  it('marks in-progress sessions stopped after a restart', async () => {
-    // A crash leaves rows as `running` with no process holding them. The next
-    // start has to say so, or the app keeps showing a turn that can never finish.
-    const { manager: afterRestart } = managerWithGitHub()
-    const project = await createTestProject()
-
-    const [orphan] = await db
-      .insert(sessions)
-      .values({
-        projectId: project.id,
-        agentId: 'fake',
-        title: 'Orphan',
-        baseBranch: 'main',
-        branch: 'duke/orphan',
-        status: 'running',
-      })
-      .returning()
-
-    await afterRestart.reclaimAfterRestart()
-
-    const [updated] = await db
-      .select({ status: sessions.status })
-      .from(sessions)
-      .where(eq(sessions.id, orphan!.id))
-
-    expect(updated?.status).toBe('stopped')
-    expect((await bus.replay(orphan!.id)).map((event) => event.event)).toContainEqual({
-      type: 'done',
-      reason: 'interrupted',
-    })
   })
 
   it('opens one for work the agent committed itself', async () => {
