@@ -4,6 +4,7 @@ import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
   ArrowUp01Icon,
+  BookOpen01Icon,
   Cancel01Icon,
   CheckmarkCircle01Icon,
   Download01Icon,
@@ -69,3 +70,5 @@ export const CloseIcon = icon(Cancel01Icon)
 export const DownloadIcon = icon(Download01Icon)
 /** Sending a prompt. */
 export const SendIcon = icon(ArrowUp01Icon)
+/** A finished session the person has not opened yet. */
+export const BookOpenIcon = icon(BookOpen01Icon)
