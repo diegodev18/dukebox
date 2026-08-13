@@ -132,16 +132,72 @@ const script: EnvelopedEvent[] = [
 
   // Enough turns to overflow the column. A transcript that grows the window
   // instead of scrolling is only visible once there is more than fits.
-  ...Array.from({ length: 12 }, (_, turn) => [
+  ...Array.from({ length: 12 }, (_, turn) =>
     event({ type: 'assistant_text', delta: `Turn ${turn + 1}: checking the next call site.` }),
-    event({
-      type: 'tool_call',
-      id: `loop-${turn}`,
-      name: 'Grep',
-      input: { pattern: 'execStream', path: 'packages/sandbox' },
-    }),
-    event({ type: 'tool_result', id: `loop-${turn}`, output: '3 matches', isError: false }),
-  ]).flat(),
+  ),
+
+  // Consecutive tools fold into one group. Mix of kinds so the summary is
+  // "N actions"; the last call stays open so the group auto-expands.
+  event({
+    type: 'tool_call',
+    id: 'explore-read',
+    name: 'Read',
+    input: { file_path: 'packages/sandbox/src/exec.ts' },
+  }),
+  event({
+    type: 'tool_result',
+    id: 'explore-read',
+    output: 'export async function execStream() {}',
+    isError: false,
+  }),
+  event({
+    type: 'tool_call',
+    id: 'explore-glob',
+    name: 'Glob',
+    input: { pattern: '**/*.{ts,tsx}', path: 'packages/sandbox' },
+  }),
+  event({
+    type: 'tool_result',
+    id: 'explore-glob',
+    output: 'container.ts\ndemux.test.ts',
+    isError: false,
+  }),
+  event({
+    type: 'tool_call',
+    id: 'explore-grep',
+    name: 'Grep',
+    input: { pattern: 'execStream', path: 'packages/sandbox' },
+  }),
+  event({
+    type: 'tool_result',
+    id: 'explore-grep',
+    output: '3 matches',
+    isError: false,
+  }),
+  event({
+    type: 'tool_call',
+    id: 'explore-bash',
+    name: 'Bash',
+    input: { command: 'pnpm test sandbox' },
+  }),
+  event({
+    type: 'tool_result',
+    id: 'explore-bash',
+    output: 'PASS  12 tests',
+    isError: false,
+  }),
+  event({
+    type: 'tool_call',
+    id: 'explore-edit',
+    name: 'Edit',
+    input: { file_path: 'packages/sandbox/src/container.ts' },
+  }),
+  event({
+    type: 'tool_result',
+    id: 'explore-edit',
+    output: 'updated',
+    isError: false,
+  }),
 
   // And enough files to overflow the workspace panel, which has the same
   // shrink-to-fit problem and needs the same check.
@@ -154,8 +210,8 @@ const script: EnvelopedEvent[] = [
     }),
   ),
 
-  // Leave one tool open so the transcript shows a live thinking-orb on the
-  // tool row and another at the tail while `running` is true.
+  // Last call in the exploration group stays open so the group auto-expands
+  // with a thinking-orb; another orb sits at the tail while `running` is true.
   event({
     type: 'tool_call',
     id: 'grep-live',

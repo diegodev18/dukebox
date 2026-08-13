@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { Transcript } from '@/components/Transcript'
 
 vi.mock('thinking-orbs', () => ({
-  ThinkingOrb: () => null,
+  ThinkingOrb: ({ 'aria-label': label }: { 'aria-label'?: string }) =>
+    label ? <span aria-label={label} /> : null,
 }))
 
 vi.mock('@tauri-apps/plugin-opener', () => ({
@@ -277,5 +278,218 @@ describe('Transcript', () => {
     )
 
     expect(document.querySelector('strong')).not.toBeNull()
+  })
+})
+
+function done(output = 'ok'): { output: string; isError: boolean } {
+  return { output, isError: false }
+}
+
+describe('Transcript tool groups', () => {
+  it('collapses consecutive search tools into one summary', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [
+            {
+              kind: 'tool',
+              id: 'r',
+              name: 'Read',
+              input: { file_path: 'packages/sandbox/src/container.ts' },
+              result: done(),
+            },
+            {
+              kind: 'tool',
+              id: 'g',
+              name: 'Grep',
+              input: { pattern: 'execStream', path: 'packages/sandbox' },
+              result: done('3 matches'),
+            },
+            {
+              kind: 'tool',
+              id: 'gl',
+              name: 'Glob',
+              input: { pattern: '**/*.ts' },
+              result: done(),
+            },
+          ],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Explored 3 files')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show Read' })).not.toBeInTheDocument()
+  })
+
+  it('reveals individual rows when a group is expanded', async () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [
+            {
+              kind: 'tool',
+              id: 'r',
+              name: 'Read',
+              input: { file_path: 'packages/sandbox/src/container.ts' },
+              result: done(),
+            },
+            {
+              kind: 'tool',
+              id: 'g',
+              name: 'Grep',
+              input: { pattern: 'execStream' },
+              result: done('3 matches'),
+            },
+          ],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Show Explored 2 files' }))
+
+    expect(screen.getByRole('button', { name: 'Show Read' })).toBeInTheDocument()
+    expect(screen.getByText('container.ts')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show Grep' })).toBeInTheDocument()
+  })
+
+  it('does not wrap a single tool in a group', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [
+            {
+              kind: 'tool',
+              id: 'r',
+              name: 'Read',
+              input: { file_path: 'packages/sandbox/src/container.ts' },
+              result: done(),
+            },
+          ],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText(/Explored/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show Read' })).toBeInTheDocument()
+    expect(screen.getByText('container.ts')).toBeInTheDocument()
+    expect(screen.queryByText('packages/sandbox/src/container.ts')).not.toBeInTheDocument()
+  })
+
+  it('does not group tools split by assistant text', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [
+            {
+              kind: 'tool',
+              id: 'r',
+              name: 'Read',
+              input: { file_path: 'a.ts' },
+              result: done(),
+            },
+            { kind: 'text', id: 't', text: 'Looking further.' },
+            {
+              kind: 'tool',
+              id: 'g',
+              name: 'Grep',
+              input: { pattern: 'x' },
+              result: done(),
+            },
+          ],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText(/Explored/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show Read' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show Grep' })).toBeInTheDocument()
+  })
+
+  it('auto-expands a live group and shows the running tool', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          running: true,
+          blocks: [
+            {
+              kind: 'tool',
+              id: 'r',
+              name: 'Read',
+              input: { file_path: 'a.ts' },
+              result: done(),
+            },
+            { kind: 'tool', id: 'g', name: 'Grep', input: { pattern: 'demuxStream' } },
+          ],
+        })}
+        onRespond={vi.fn()}
+        status="running"
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Hide Searched demuxStream' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show Read' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show Grep' })).toBeInTheDocument()
+    expect(screen.getAllByLabelText('Grep running').length).toBeGreaterThan(0)
+  })
+
+  it('marks a group failed when any tool errored', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [
+            {
+              kind: 'tool',
+              id: 'r',
+              name: 'Read',
+              input: { file_path: 'a.ts' },
+              result: done(),
+            },
+            {
+              kind: 'tool',
+              id: 'b',
+              name: 'Bash',
+              input: { command: 'pnpm test' },
+              result: { output: 'FAIL', isError: true },
+            },
+          ],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('2 actions')).toBeInTheDocument()
+    expect(screen.getByText('failed')).toBeInTheDocument()
+  })
+
+  it('summarises a shell-only run as commands', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [
+            {
+              kind: 'tool',
+              id: 'a',
+              name: 'Bash',
+              input: { command: 'ls' },
+              result: done(),
+            },
+            {
+              kind: 'tool',
+              id: 'b',
+              name: 'Bash',
+              input: { command: 'pnpm test' },
+              result: done(),
+            },
+          ],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Ran 2 commands')).toBeInTheDocument()
   })
 })

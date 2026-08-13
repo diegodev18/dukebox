@@ -6,17 +6,21 @@ import type {
   Transcript as TranscriptData,
 } from '@dukebox/protocol'
 import { EXIT_PLAN_MODE_ACTION, isTerminal } from '@dukebox/protocol'
-import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ThinkingOrb } from 'thinking-orbs'
 import type { StreamStatus } from '@/lib/stream'
-import { activityBlock, mapOrbState, orbStateForTool } from '@/lib/orbState'
+import { activityBlock, mapOrbState, orbStateForTool, toolCategory } from '@/lib/orbState'
 import {
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   CopyIcon,
   EditIcon,
+  FileIcon,
+  GlobeIcon,
+  SearchIcon,
   SetupIcon,
+  TerminalIcon,
 } from '@/components/icons'
 import { Markdown } from '@/components/Markdown'
 import { VirtualRows } from '@/components/VirtualRows'
@@ -114,8 +118,8 @@ export function Transcript({
   const streamingTextId = turnActive && last?.kind === 'text' ? last.id : undefined
   const streamingThinkingId = turnActive && last?.kind === 'thinking' ? last.id : undefined
   const settled = status !== undefined && isTerminal(status)
-
-  const itemCount = transcript.blocks.length + (showWorking ? 1 : 0)
+  const items = useMemo(() => groupTranscriptItems(transcript.blocks), [transcript.blocks])
+  const itemCount = items.length + (showWorking ? 1 : 0)
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -136,11 +140,16 @@ export function Transcript({
           ) : (
             <VirtualRows count={itemCount} scrollRef={scroller} estimateSize={72} after={32}>
               {(index) => {
-                if (index >= transcript.blocks.length) {
+                if (index >= items.length) {
                   return <Working key="working" blocks={transcript.blocks} />
                 }
 
-                const block = transcript.blocks[index]!
+                const item = items[index]!
+                if (item.kind === 'tools') {
+                  return <ToolRun key={item.id} tools={item.tools} settled={settled} />
+                }
+
+                const block = item.block
                 return (
                   <BlockView
                     key={block.id}
@@ -150,7 +159,6 @@ export function Transcript({
                     disabled={disabled}
                     onEdit={onEdit}
                     streaming={block.id === streamingTextId || block.id === streamingThinkingId}
-                    settled={block.kind === 'tool' ? settled : undefined}
                     running={block.id === setupPromptId ? running : undefined}
                     status={block.id === setupPromptId ? status : undefined}
                   />
@@ -184,9 +192,8 @@ const BlockView = memo(function BlockView({
   disabled = false,
   onEdit,
   streaming = false,
-  settled = false,
 }: {
-  block: Block
+  block: Exclude<Block, ToolBlock>
   onRespond: Props['onRespond']
   compactSetup?: boolean
   running?: boolean | undefined
@@ -194,7 +201,6 @@ const BlockView = memo(function BlockView({
   disabled?: boolean
   onEdit?: Props['onEdit'] | undefined
   streaming?: boolean
-  settled?: boolean | undefined
 }) {
   switch (block.kind) {
     case 'prompt':
@@ -227,9 +233,6 @@ const BlockView = memo(function BlockView({
 
     case 'thinking':
       return <Thinking text={block.text} streaming={streaming} />
-
-    case 'tool':
-      return <Tool block={block} settled={settled} />
 
     case 'permission':
       return <Permission block={block} onRespond={onRespond} disabled={disabled} />
@@ -422,34 +425,97 @@ function Thinking({ text, streaming = false }: { text: string; streaming?: boole
 }
 
 /**
- * A tool call with its outcome.
+ * Consecutive tool calls, folded into one row of the transcript.
  *
- * Collapsed to one line by default: the name and target answer "what is it
- * doing" for almost every call, and a session doing real work makes dozens.
+ * A single call stays a compact line. A run of them collapses to a summary
+ * so an exploration does not become a tower of identical cards.
  */
-function Tool({ block, settled }: { block: ToolBlock; settled?: boolean }) {
-  const [open, setOpen] = useState(false)
-  const running = block.result === undefined && !settled
-  const failed = block.result?.isError === true
+const ToolRun = memo(function ToolRun({
+  tools,
+  settled = false,
+}: {
+  tools: ToolBlock[]
+  settled?: boolean
+}) {
+  if (tools.length === 1) return <Tool block={tools[0]!} settled={settled} />
+  return <ToolGroup tools={tools} settled={settled} />
+})
+
+function ToolGroup({ tools, settled = false }: { tools: ToolBlock[]; settled?: boolean }) {
+  const live = !settled && tools.some((tool) => tool.result === undefined)
+  const failed = tools.some((tool) => tool.result?.isError === true)
+  const [userOpen, setUserOpen] = useState<boolean | null>(null)
+  const open = userOpen ?? live
+  const label = groupLabel(tools, settled)
+  const running = tools.find((tool) => tool.result === undefined && !settled)
 
   return (
-    <div className="rounded-[var(--radius)] border border-border text-[13px]">
+    <div className="text-[13px] text-muted-foreground">
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setUserOpen((value) => !(value ?? live))}
         aria-expanded={open}
-        aria-label={open ? `Hide ${block.name}` : `Show ${block.name}`}
-        className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left"
+        aria-label={open ? `Hide ${label}` : `Show ${label}`}
+        className="flex w-full min-w-0 items-center gap-1.5 text-left hover:text-foreground"
       >
         {open ? (
           <ChevronDownIcon size={13} className="flex-none text-muted-foreground" />
         ) : (
           <ChevronRightIcon size={13} className="flex-none text-muted-foreground" />
         )}
-        <span className="font-medium">{block.name}</span>
-        <span className="min-w-0 flex-1 truncate text-muted-foreground">
-          {summarize(block.input)}
-        </span>
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        {live && running && (
+          <ThinkingOrb
+            state={orbStateForTool(running.name)}
+            size={20}
+            theme="auto"
+            className="flex-none"
+            aria-label={`${running.name} running`}
+          />
+        )}
+        {failed && <span className="flex-none text-[12px] text-destructive">failed</span>}
+      </button>
+
+      {open && (
+        <div className="mt-1 flex flex-col">
+          {tools.map((tool) => (
+            <Tool key={tool.id} block={tool} settled={settled} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A tool call with its outcome.
+ *
+ * One compact line: an icon, a short verb, and the target. Output stays
+ * behind a click — a session doing real work makes dozens of these.
+ */
+function Tool({ block, settled }: { block: ToolBlock; settled?: boolean }) {
+  const [open, setOpen] = useState(false)
+  const running = block.result === undefined && !settled
+  const failed = block.result?.isError === true
+  const verb = toolVerb(block.name)
+  const summary = summarize(block.input)
+
+  return (
+    <div className="text-[13px]">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-label={open ? `Hide ${block.name}` : `Show ${block.name}`}
+        className="flex w-full min-w-0 items-center gap-2 py-1 text-left"
+      >
+        <ToolGlyph name={block.name} />
+        <span className="font-medium">{verb}</span>
+        {summary ? (
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">{summary}</span>
+        ) : (
+          <span className="min-w-0 flex-1" />
+        )}
 
         {running && (
           <ThinkingOrb
@@ -464,21 +530,35 @@ function Tool({ block, settled }: { block: ToolBlock; settled?: boolean }) {
       </button>
 
       {open && running && (
-        <p className="border-t border-border px-3 py-2.5 text-[12.5px] text-muted-foreground">
-          Running…
-        </p>
+        <p className="px-5 pb-1.5 text-[12.5px] text-muted-foreground">Running…</p>
       )}
 
       {open && block.result && (
         <pre
           data-selectable
-          className="max-h-80 overflow-auto border-t border-border px-3 py-2.5 font-mono text-[12px] whitespace-pre-wrap text-muted-foreground"
+          className="mb-1.5 max-h-80 overflow-auto rounded-[var(--radius)] border border-border bg-surface px-3 py-2.5 font-mono text-[12px] whitespace-pre-wrap text-muted-foreground"
         >
           {block.result.output || '(no output)'}
         </pre>
       )}
     </div>
   )
+}
+
+function ToolGlyph({ name }: { name: string }) {
+  const className = 'flex-none text-muted-foreground'
+  switch (toolCategory(name)) {
+    case 'searching':
+      return <SearchIcon size={13} className={className} />
+    case 'shaping':
+      return <EditIcon size={13} className={className} />
+    case 'working':
+      return <TerminalIcon size={13} className={className} />
+    case 'connecting':
+      return <GlobeIcon size={13} className={className} />
+    default:
+      return <FileIcon size={13} className={className} />
+  }
 }
 
 /**
@@ -578,21 +658,90 @@ function Working({ blocks }: { blocks: Block[] }) {
 }
 
 /**
+ * Consecutive tools become one transcript row; everything else stays itself.
+ *
+ * Presentation only — the protocol reducer still stores one block per call.
+ */
+function groupTranscriptItems(blocks: Block[]): TranscriptItem[] {
+  const items: TranscriptItem[] = []
+  for (const block of blocks) {
+    if (block.kind !== 'tool') {
+      items.push({ kind: 'block', block })
+      continue
+    }
+    const last = items.at(-1)
+    if (last?.kind === 'tools') last.tools.push(block)
+    else items.push({ kind: 'tools', id: block.id, tools: [block] })
+  }
+  return items
+}
+
+type TranscriptItem =
+  | { kind: 'block'; block: Exclude<Block, ToolBlock> }
+  | { kind: 'tools'; id: string; tools: ToolBlock[] }
+
+/** Short verb for a tool row. The original name stays on the aria-label. */
+function toolVerb(name: string): string {
+  const key = name.toLowerCase()
+  if (/read/.test(key)) return 'Read'
+  if (/search|grep|glob|find|list|ls|look/.test(key)) return 'Searched'
+  if (/write|edit|apply|patch|create|update|str_replace|strreplace/.test(key)) return 'Edited'
+  if (/bash|shell|terminal|exec|run_command|command/.test(key)) return 'Ran'
+  if (/fetch|http|web|url|browser|download/.test(key)) return 'Fetched'
+  return name
+}
+
+function groupLabel(tools: ToolBlock[], settled: boolean): string {
+  const running = settled ? undefined : tools.find((tool) => tool.result === undefined)
+  if (running) {
+    const verb = toolVerb(running.name)
+    const target = summarize(running.input)
+    return target ? `${verb} ${target}` : verb
+  }
+
+  const categories = new Set(tools.map((tool) => toolCategory(tool.name)))
+  const count = tools.length
+  if (categories.size === 1) {
+    switch ([...categories][0]) {
+      case 'searching':
+        return `Explored ${count} files`
+      case 'working':
+        return `Ran ${count} commands`
+      case 'shaping':
+        return `Edited ${count} files`
+      case 'connecting':
+        return `Fetched ${count} URLs`
+    }
+  }
+
+  return `${count} actions`
+}
+
+/**
  * The one detail worth showing next to a tool name.
  *
  * Tool inputs vary by agent and by tool, so this looks for the fields that
  * carry meaning and falls back to nothing rather than dumping JSON into a line
- * that has to stay one line.
+ * that has to stay one line. Paths shrink to the basename so a long tree
+ * does not eat the row.
  */
 function summarize(input: unknown): string {
-  if (typeof input === 'string') return input
+  if (typeof input === 'string') return basenameIfPath(input)
   if (typeof input !== 'object' || input === null) return ''
 
   const record = input as Record<string, unknown>
   for (const key of ['file_path', 'path', 'command', 'pattern', 'query', 'url']) {
     const value = record[key]
-    if (typeof value === 'string' && value) return value
+    if (typeof value !== 'string' || !value) continue
+    if (key === 'file_path' || key === 'path') return basenameIfPath(value)
+    return value
   }
 
   return ''
+}
+
+function basenameIfPath(value: string): string {
+  if (/\s/.test(value)) return value
+  if (!/[/\\]/.test(value)) return value
+  return value.split(/[/\\]/).pop() || value
 }
