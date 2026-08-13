@@ -77,7 +77,7 @@ export const DownloadIcon = icon(Download01Icon)
 export const SendIcon = icon(ArrowUp01Icon)
 /** A finished session the person has not opened yet. */
 export const BookOpenIcon = icon(BookOpen01Icon)
-/** Copy a transcript message to the clipboard. */
+/** Copy a user prompt to the clipboard. */
 export const CopyIcon = icon(Copy01Icon)
 /** Load a user prompt into the composer to edit and resend. */
 export const EditIcon = icon(PencilEdit01Icon)

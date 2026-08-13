@@ -208,10 +208,7 @@ describe('Transcript', () => {
     expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument()
   })
 
-  it('copies assistant text and does not offer edit', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.assign(navigator, { clipboard: { writeText } })
-
+  it('does not offer copy or edit on assistant text', () => {
     render(
       <Transcript
         transcript={transcript({
@@ -222,9 +219,8 @@ describe('Transcript', () => {
       />,
     )
 
-    await userEvent.click(screen.getByRole('button', { name: 'Copy' }))
-
-    expect(writeText).toHaveBeenCalledWith('I found the bug.')
+    expect(screen.getByText('I found the bug.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
   })
 

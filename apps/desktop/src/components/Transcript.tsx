@@ -198,11 +198,7 @@ function BlockView({
       )
 
     case 'text':
-      return (
-        <MessageBlock text={block.text}>
-          <Markdown>{block.text}</Markdown>
-        </MessageBlock>
-      )
+      return <Markdown>{block.text}</Markdown>
 
     case 'thinking':
       return <Thinking text={block.text} />
@@ -227,7 +223,7 @@ function BlockView({
 }
 
 /**
- * A user prompt or assistant reply, with copy (and, for prompts, edit) on hover.
+ * A user prompt, with copy and edit on hover.
  *
  * Edit loads the text into the composer rather than rewriting history: the
  * protocol has no rewind, so a follow-up is the honest action.
