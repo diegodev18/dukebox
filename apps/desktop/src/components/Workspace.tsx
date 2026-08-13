@@ -1,17 +1,11 @@
 import type { FileChange, SessionSummary } from '@dukebox/protocol'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { DukeboxClient } from '@/lib/client'
 import type { TerminalState } from '@/lib/useTerminals'
-import { Diff, changeCounts } from '@/components/Diff'
 import { EnvironmentReview } from '@/components/EnvironmentReview'
+import { FileChangeList } from '@/components/FileChangeList'
 import { PullRequestPanel, type PullRequestTab } from '@/components/PullRequest'
-import {
-  CommitIcon,
-  ChevronDownIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  FileIcon,
-} from '@/components/icons'
+import { CommitIcon, ChevronLeftIcon, ChevronRightIcon, FileIcon } from '@/components/icons'
 import { SandboxFiles } from '@/components/SandboxFiles'
 import { Terminal } from '@/components/Terminal'
 import { pullRequestTabLabel } from '@/lib/pullRequest'
@@ -24,9 +18,11 @@ import { pullRequestTabLabel } from '@/lib/pullRequest'
  * of counts. Without a surface of its own it reads as a summary in the margin
  * rather than as a second sidebar competing with the one on the left.
  *
- * `min-h-0` on the column is load-bearing: a flex item defaults to
- * `min-height: auto` and refuses to shrink below its content, so without it a
- * long file list grows the window instead of scrolling inside the panel.
+ * `min-h-0` and `overflow-hidden` on the column are load-bearing: a flex item
+ * defaults to `min-height: auto` and refuses to shrink below its content, so
+ * without them a long file list grows the window instead of scrolling inside
+ * the panel. Tabs, a pull request title, and file names stay put; only the
+ * diff moves.
  */
 
 const COLLAPSED_KEY = 'dukebox:workspace-collapsed'
@@ -148,7 +144,7 @@ export function Workspace({
     <aside
       aria-label="Workspace"
       {...(collapsed ? { 'data-collapsed': true } : {})}
-      className={`flex min-h-0 min-w-0 flex-col ${collapsed ? '' : 'border-l border-border bg-surface'}`}
+      className={`flex min-h-0 min-w-0 flex-col overflow-hidden ${collapsed ? '' : 'border-l border-border bg-surface'}`}
     >
       <header
         className={`flex items-center gap-2 py-2.5 pr-3 pl-3.5 ${
@@ -190,7 +186,7 @@ export function Workspace({
               role="tabpanel"
               id="workspace-panel-changes"
               aria-labelledby="workspace-tab-changes"
-              className="flex min-h-0 flex-1 flex-col"
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
             >
               <Panels session={session} files={files} />
             </div>
@@ -419,51 +415,10 @@ function Metric({
 }
 
 /**
- * The files a session changed, and what changed in them.
- *
- * One list rather than a tree: a session's diff is a handful of files, and a
- * tree of three entries is a widget pretending there is more to navigate than
- * there is. The sandbox file tree lives on the Files tab; the preview tab
- * arrives later.
+ * Empty states for the Changes tab. The scrolling list itself is shared
+ * with the pull request tab so both keep chrome still and only the diff moves.
  */
 function Panels({ session, files }: { session: SessionSummary | null; files: FileChange[] }) {
-  const [open, setOpen] = useState<string | null>(null)
-  const autoOpened = useRef(false)
-  const panel = useRef<HTMLDivElement>(null)
-
-  // Open the first file when the list goes from empty to having something.
-  // Later files arriving must not steal the file someone is already reading.
-  useEffect(() => {
-    if (files.length === 0) {
-      autoOpened.current = false
-      setOpen(null)
-      return
-    }
-
-    if (!autoOpened.current) {
-      autoOpened.current = true
-      setOpen(files[0]!.path)
-      return
-    }
-
-    setOpen((current) =>
-      current && files.some((file) => file.path === current) ? current : files[0]!.path,
-    )
-  }, [files])
-
-  // Sticky headers need the *visible* panel width. `100%` is the scrolled
-  // content, so a long line makes the name as wide as the diff and sticky
-  // left does nothing. `clientWidth` is the viewport of this scroller.
-  useLayoutEffect(() => {
-    const el = panel.current
-    if (!el) return
-    const sync = () => el.style.setProperty('--workspace-files-width', `${el.clientWidth}px`)
-    sync()
-    const observer = new ResizeObserver(sync)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [session, files.length])
-
   if (!session) {
     return (
       <p className="px-4 py-4 text-[12.5px] text-muted-foreground">
@@ -480,51 +435,7 @@ function Panels({ session, files }: { session: SessionSummary | null; files: Fil
     )
   }
 
-  return (
-    // One scroller for the list: a per-file `overflow-x` hid the horizontal
-    // bar under the last hunk, so a tall diff had to be scrolled to the
-    // bottom before a long line could be read. The inner `w-max` box is as
-    // wide as the longest line — without it the file row is only the panel
-    // wide, sticky left cannot travel, and the name pans away with the code.
-    <div ref={panel} className="min-h-0 flex-1 overflow-auto">
-      <div className="w-max min-w-full">
-        {files.map((file) => {
-          const expanded = open === file.path
-
-          return (
-            <div key={file.path} className="border-b border-border last:border-b-0">
-              <button
-                type="button"
-                onClick={() => setOpen(expanded ? null : file.path)}
-                aria-expanded={expanded}
-                aria-label={basename(file.path)}
-                className="sticky top-0 left-0 z-10 box-border flex w-[var(--workspace-files-width)] min-w-0 items-center gap-2 bg-surface px-3 py-2 text-left text-[12.5px] hover:bg-muted"
-              >
-                {expanded ? (
-                  <ChevronDownIcon size={13} className="flex-none text-muted-foreground" />
-                ) : (
-                  <ChevronRightIcon size={13} className="flex-none text-muted-foreground" />
-                )}
-                {/* The name leads and the directory trails: the name is what
-                  someone is looking for, and paths are too long to lead with. */}
-                <span className="truncate font-medium">{basename(file.path)}</span>
-                <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                  {dirname(file.path)}
-                </span>
-                <Badge file={file} />
-              </button>
-
-              {expanded && (
-                <div className="border-t border-border py-1.5">
-                  <Diff file={file} />
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
+  return <FileChangeList key={session.id} files={files} />
 }
 
 /**
@@ -769,38 +680,4 @@ function TerminalTabName({
       {title}
     </button>
   )
-}
-
-/** Whether a file was created, deleted, or edited — plus how much. */
-function Badge({ file }: { file: FileChange }) {
-  const [label, tone] =
-    file.before === null
-      ? ['new', 'text-added']
-      : file.after === null
-        ? ['deleted', 'text-removed']
-        : ['edited', 'text-muted-foreground']
-
-  const { added, removed } = changeCounts(file.before, file.after)
-
-  return (
-    <span className={`flex-none text-[11.5px] ${tone}`}>
-      {label}
-      {(added > 0 || removed > 0) && (
-        <span className="ml-1.5 font-mono tabular-nums">
-          {added > 0 && <span className="text-added">+{added}</span>}
-          {added > 0 && removed > 0 && ' '}
-          {removed > 0 && <span className="text-removed">−{removed}</span>}
-        </span>
-      )}
-    </span>
-  )
-}
-
-function basename(path: string): string {
-  return path.slice(path.lastIndexOf('/') + 1)
-}
-
-function dirname(path: string): string {
-  const cut = path.lastIndexOf('/')
-  return cut === -1 ? '' : path.slice(0, cut)
 }

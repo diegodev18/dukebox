@@ -9,6 +9,11 @@ vi.mock('@tauri-apps/plugin-opener', () => ({
   openUrl: vi.fn(),
 }))
 
+vi.mock('@/lib/syntaxHighlight', () => ({
+  tokensForCode: async (_path: string, code: string) =>
+    code.split('\n').map((content) => [{ content: content || ' ' }]),
+}))
+
 const session: SessionSummary = {
   id: '11111111-1111-4111-8111-111111111111',
   projectId: '22222222-2222-4222-8222-222222222222',
@@ -208,5 +213,34 @@ describe('PullRequestPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Confirm merge' }))
     expect(screen.getByRole('button', { name: 'Resolve conflicts' })).toBeInTheDocument()
     expect(client.resolvePullRequestConflicts).not.toHaveBeenCalled()
+  })
+
+  it('keeps the pull request chrome still and scrolls only the diff', () => {
+    render(
+      <PullRequestPanel
+        client={{} as never}
+        session={sessionWithPr()}
+        files={[
+          {
+            path: 'packages/sandbox/src/container.ts',
+            before: 'return raw',
+            after: 'return demuxed',
+          },
+        ]}
+        onUpdated={vi.fn()}
+      />,
+    )
+
+    const panel = document.getElementById('workspace-panel-pr')
+    expect(panel?.className).toMatch(/overflow-hidden/)
+
+    const merge = screen.getByRole('button', { name: 'Merge' })
+    expect(merge.closest('.overflow-auto')).toBeNull()
+    expect(screen.getByText('Add a health check').closest('.overflow-auto')).toBeNull()
+
+    const file = screen.getByRole('button', { name: 'container.ts' })
+    expect(file.className).toMatch(/\bsticky\b/)
+    expect(file.closest('.overflow-auto')).not.toBeNull()
+    expect(screen.getByText('return demuxed')).toBeInTheDocument()
   })
 })
