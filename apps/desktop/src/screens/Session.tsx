@@ -5,15 +5,18 @@ import {
   type ProjectSummary,
   type SessionSummary,
 } from '@dukebox/protocol'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { DukeboxClient, isAuthFailure } from '@/lib/client'
 import { removeConnection, type Connection } from '@/lib/connection'
 import { lastNewSessionFromSummary, type Settings } from '@/lib/settings'
 import { INITIAL_RETRY_MS, MAX_RETRY_MS, isStreamConnected } from '@/lib/stream'
+import { NAV_DEFAULT, NAV_MIN, WORKSPACE_MIN } from '@/lib/columnWidths'
+import { useColumnWidths } from '@/lib/useColumnWidths'
 import type { UseUpdate } from '@/lib/useUpdate'
 import { AgentIcon, hasAgentIcon } from '@/components/AgentIcon'
 import { Composer } from '@/components/Composer'
 import { EnvironmentsPanel } from '@/components/EnvironmentsPanel'
+import { ResizeHandle } from '@/components/ResizeHandle'
 import { SessionInfo } from '@/components/SessionInfo'
 import { SearchPalette } from '@/components/SearchPalette'
 import { Sidebar } from '@/components/Sidebar'
@@ -208,6 +211,16 @@ export function Session({
   const composing =
     !loading && (creating || managingProjectId !== null || settingsOpen || current === null)
 
+  const {
+    containerRef,
+    navWidth,
+    workspaceWidth,
+    navMax,
+    workspaceMax,
+    setNavWidth,
+    setWorkspaceWidth,
+  } = useColumnWidths(composing)
+
   const onSessionCreated = (session: SessionSummary, project: ProjectSummary | null) => {
     // Added locally rather than refetched: the session exists but its
     // container is still building, and a list that only updates on the
@@ -273,135 +286,155 @@ export function Session({
     // panels (`Transcript`, sidebar list, workspace files) own their scroll.
     <div className="flex h-full flex-col overflow-hidden">
       <ConnectionBanner status={live.status} />
+      {/* Widths are variables so a drag updates them without rebuilding the
+          template. Collapsing the workspace still snaps to the 244px rail. */}
       <div
+        ref={containerRef}
         className={`grid min-h-0 flex-1 overflow-hidden ${
           composing
-            ? 'grid-cols-[236px_minmax(0,1fr)]'
-            : 'grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)] has-[[data-collapsed]]:grid-cols-[236px_minmax(0,1fr)_244px]'
+            ? 'grid-cols-[var(--nav-width)_minmax(0,1fr)]'
+            : 'grid-cols-[var(--nav-width)_minmax(0,1fr)_var(--workspace-width)] has-[[data-collapsed]]:grid-cols-[var(--nav-width)_minmax(0,1fr)_244px]'
         }`}
+        style={
+          {
+            '--nav-width': `${navWidth}px`,
+            '--workspace-width': `${workspaceWidth}px`,
+          } as CSSProperties
+        }
       >
-        {settingsOpen ? (
-          <SettingsNav
-            category={settingsCategory}
-            role={role}
-            onCategoryChange={setSettingsCategory}
-            onBack={() => setSettingsOpen(false)}
-          />
-        ) : (
-          <Sidebar
-            projects={projects}
-            sessions={sessions}
-            selectedId={creating ? null : selected}
-            identity={settings.commitIdentity ?? DEFAULT_COMMIT_IDENTITY}
-            serverName={connection.serverName}
-            role={role}
-            disabled={disconnected}
-            onOpenSettings={openSettings}
-            onSelect={selectSession}
-            onNewSession={startNewSession}
-            onSearch={() => setSearchOpen(true)}
-            onConfigureEnvironment={(projectId) => {
-              setSetupProjectId(projectId)
-              setPreferProjectId(null)
-              setManagingProjectId(null)
-              setPreferAgentId(null)
-              setSettingsOpen(false)
-              setCreating(true)
-            }}
-            onManageEnvironments={(projectId) => {
-              setCreating(false)
-              setSettingsOpen(false)
-              setSetupProjectId(null)
-              setPreferProjectId(null)
-              setPreferAgentId(null)
-              setManagingProjectId(projectId)
-            }}
-            archiveError={archiveError}
-            onDelete={(sessionId) => {
-              void (async () => {
-                try {
-                  await client.deleteSession(sessionId)
-                  setArchiveError(null)
-                } catch (error) {
-                  // Same as archive: a failed delete that vanishes from the
-                  // list looks like the session was removed when it was not.
-                  setArchiveError(
-                    error instanceof Error ? error.message : 'Could not delete the session.',
-                  )
-                  return
-                }
-
-                let fallback: string | null = null
-                setSessions((current) => {
-                  const next = current.filter((session) => session.id !== sessionId)
-                  fallback = next[0]?.id ?? null
-                  return next
-                })
-                setSelected((currentSelected) =>
-                  currentSelected === sessionId ? fallback : currentSelected,
-                )
-              })()
-            }}
-            onRemoveProject={(projectId) => {
-              void (async () => {
-                try {
-                  await client.deleteProject(projectId)
-                  setArchiveError(null)
-                } catch (error) {
-                  setArchiveError(
-                    error instanceof Error ? error.message : 'Could not remove the project.',
-                  )
-                  return
-                }
-
-                const remaining = sessions.filter((session) => session.projectId !== projectId)
-                setProjects((current) => current.filter((project) => project.id !== projectId))
-                setSessions(remaining)
-                setSelected((currentSelected) => {
-                  if (!currentSelected) return currentSelected
-                  if (remaining.some((session) => session.id === currentSelected)) {
-                    return currentSelected
+        <div className="relative z-10 flex min-h-0 min-w-0 flex-col">
+          {settingsOpen ? (
+            <SettingsNav
+              category={settingsCategory}
+              role={role}
+              onCategoryChange={setSettingsCategory}
+              onBack={() => setSettingsOpen(false)}
+            />
+          ) : (
+            <Sidebar
+              projects={projects}
+              sessions={sessions}
+              selectedId={creating ? null : selected}
+              identity={settings.commitIdentity ?? DEFAULT_COMMIT_IDENTITY}
+              serverName={connection.serverName}
+              role={role}
+              disabled={disconnected}
+              onOpenSettings={openSettings}
+              onSelect={selectSession}
+              onNewSession={startNewSession}
+              onSearch={() => setSearchOpen(true)}
+              onConfigureEnvironment={(projectId) => {
+                setSetupProjectId(projectId)
+                setPreferProjectId(null)
+                setManagingProjectId(null)
+                setPreferAgentId(null)
+                setSettingsOpen(false)
+                setCreating(true)
+              }}
+              onManageEnvironments={(projectId) => {
+                setCreating(false)
+                setSettingsOpen(false)
+                setSetupProjectId(null)
+                setPreferProjectId(null)
+                setPreferAgentId(null)
+                setManagingProjectId(projectId)
+              }}
+              archiveError={archiveError}
+              onDelete={(sessionId) => {
+                void (async () => {
+                  try {
+                    await client.deleteSession(sessionId)
+                    setArchiveError(null)
+                  } catch (error) {
+                    // Same as archive: a failed delete that vanishes from the
+                    // list looks like the session was removed when it was not.
+                    setArchiveError(
+                      error instanceof Error ? error.message : 'Could not delete the session.',
+                    )
+                    return
                   }
-                  return remaining[0]?.id ?? null
-                })
-                if (managingProjectId === projectId) setManagingProjectId(null)
-                if (setupProjectId === projectId) {
-                  setSetupProjectId(null)
-                  setCreating(false)
-                }
-                if (preferProjectId === projectId) {
-                  setPreferProjectId(null)
-                  setCreating(false)
-                }
-              })()
-            }}
-            onArchive={(sessionId) => {
-              void (async () => {
-                try {
-                  await client.archiveSession(sessionId)
-                  setArchiveError(null)
-                } catch (error) {
-                  // Leave the row where it is: a failed archive that vanishes
-                  // from the list looks like the session was deleted.
-                  setArchiveError(
-                    error instanceof Error ? error.message : 'Could not archive the session.',
-                  )
-                  return
-                }
 
-                let fallback: string | null = null
-                setSessions((current) => {
-                  const next = current.filter((session) => session.id !== sessionId)
-                  fallback = next[0]?.id ?? null
-                  return next
-                })
-                setSelected((currentSelected) =>
-                  currentSelected === sessionId ? fallback : currentSelected,
-                )
-              })()
-            }}
+                  let fallback: string | null = null
+                  setSessions((current) => {
+                    const next = current.filter((session) => session.id !== sessionId)
+                    fallback = next[0]?.id ?? null
+                    return next
+                  })
+                  setSelected((currentSelected) =>
+                    currentSelected === sessionId ? fallback : currentSelected,
+                  )
+                })()
+              }}
+              onRemoveProject={(projectId) => {
+                void (async () => {
+                  try {
+                    await client.deleteProject(projectId)
+                    setArchiveError(null)
+                  } catch (error) {
+                    setArchiveError(
+                      error instanceof Error ? error.message : 'Could not remove the project.',
+                    )
+                    return
+                  }
+
+                  const remaining = sessions.filter((session) => session.projectId !== projectId)
+                  setProjects((current) => current.filter((project) => project.id !== projectId))
+                  setSessions(remaining)
+                  setSelected((currentSelected) => {
+                    if (!currentSelected) return currentSelected
+                    if (remaining.some((session) => session.id === currentSelected)) {
+                      return currentSelected
+                    }
+                    return remaining[0]?.id ?? null
+                  })
+                  if (managingProjectId === projectId) setManagingProjectId(null)
+                  if (setupProjectId === projectId) {
+                    setSetupProjectId(null)
+                    setCreating(false)
+                  }
+                  if (preferProjectId === projectId) {
+                    setPreferProjectId(null)
+                    setCreating(false)
+                  }
+                })()
+              }}
+              onArchive={(sessionId) => {
+                void (async () => {
+                  try {
+                    await client.archiveSession(sessionId)
+                    setArchiveError(null)
+                  } catch (error) {
+                    // Leave the row where it is: a failed archive that vanishes
+                    // from the list looks like the session was deleted.
+                    setArchiveError(
+                      error instanceof Error ? error.message : 'Could not archive the session.',
+                    )
+                    return
+                  }
+
+                  let fallback: string | null = null
+                  setSessions((current) => {
+                    const next = current.filter((session) => session.id !== sessionId)
+                    fallback = next[0]?.id ?? null
+                    return next
+                  })
+                  setSelected((currentSelected) =>
+                    currentSelected === sessionId ? fallback : currentSelected,
+                  )
+                })()
+              }}
+            />
+          )}
+          <ResizeHandle
+            value={navWidth}
+            min={NAV_MIN}
+            max={navMax}
+            defaultValue={NAV_DEFAULT}
+            edge="end"
+            label="Resize sessions"
+            onChange={setNavWidth}
           />
-        )}
+        </div>
 
         {loading ? (
           <p role="status" className="grid place-items-center text-[13px] text-muted-foreground">
@@ -455,6 +488,10 @@ export function Session({
             <Workspace
               session={current}
               files={live.transcript.files}
+              width={workspaceWidth}
+              onWidthChange={setWorkspaceWidth}
+              widthMin={WORKSPACE_MIN}
+              widthMax={workspaceMax}
               client={client}
               terminals={live.terminals}
               disabled={disconnected}
