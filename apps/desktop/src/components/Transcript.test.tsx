@@ -154,4 +154,95 @@ describe('Transcript', () => {
 
     expect(screen.queryByRole('status', { name: 'Working' })).not.toBeInTheDocument()
   })
+
+  it('copies a user prompt to the clipboard', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [{ kind: 'prompt', id: 'p', text: 'fix the parser' }],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Copy' }))
+
+    expect(writeText).toHaveBeenCalledWith('fix the parser')
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument()
+  })
+
+  it('loads a user prompt into the composer when edited', async () => {
+    const onEdit = vi.fn()
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [{ kind: 'prompt', id: 'p', text: 'rename the widget' }],
+        })}
+        onRespond={vi.fn()}
+        onEdit={onEdit}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
+
+    expect(onEdit).toHaveBeenCalledWith('rename the widget')
+  })
+
+  it('does not offer edit on the seeded environment-setup prompt', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [{ kind: 'prompt', id: 'setup', text: 'Configure the sandbox.' }],
+        })}
+        onRespond={vi.fn()}
+        onEdit={vi.fn()}
+        purpose="environment_setup"
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Configure environment' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument()
+  })
+
+  it('copies assistant text and does not offer edit', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [{ kind: 'text', id: 't', text: 'I found the bug.' }],
+        })}
+        onRespond={vi.fn()}
+        onEdit={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Copy' }))
+
+    expect(writeText).toHaveBeenCalledWith('I found the bug.')
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
+  })
+
+  it('does not edit a prompt while disconnected', async () => {
+    const onEdit = vi.fn()
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [{ kind: 'prompt', id: 'p', text: 'try again' }],
+        })}
+        onRespond={vi.fn()}
+        onEdit={onEdit}
+        disabled
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(onEdit).not.toHaveBeenCalled()
+  })
 })

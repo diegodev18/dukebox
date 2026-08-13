@@ -4,15 +4,18 @@ import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
   ArrowUp01Icon,
+  Attachment01Icon,
   BookOpen01Icon,
   Cancel01Icon,
   CheckmarkCircle01Icon,
+  Copy01Icon,
   Download01Icon,
   File01Icon,
   Folder01Icon,
   GitBranchIcon,
   GitCommitIcon,
   GitPullRequestIcon,
+  PencilEdit01Icon,
   PlusSignIcon,
   Refresh01Icon,
   Search01Icon,
@@ -62,6 +65,8 @@ export const PullRequestIcon = icon(GitPullRequestIcon)
 export const ServerIcon = icon(ServerStack01Icon)
 export const FolderIcon = icon(Folder01Icon)
 export const FileIcon = icon(File01Icon)
+/** Attaching files to a prompt. */
+export const AttachIcon = icon(Attachment01Icon)
 /** Environment-setup work, shown in the transcript. */
 export const SetupIcon = icon(Wrench01Icon)
 /** Dismiss or remove, e.g. closing the session header popover. */
@@ -72,3 +77,7 @@ export const DownloadIcon = icon(Download01Icon)
 export const SendIcon = icon(ArrowUp01Icon)
 /** A finished session the person has not opened yet. */
 export const BookOpenIcon = icon(BookOpen01Icon)
+/** Copy a transcript message to the clipboard. */
+export const CopyIcon = icon(Copy01Icon)
+/** Load a user prompt into the composer to edit and resend. */
+export const EditIcon = icon(PencilEdit01Icon)

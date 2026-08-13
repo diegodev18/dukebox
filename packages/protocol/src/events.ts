@@ -17,9 +17,9 @@ import { permissionMode } from './session.js'
  *
  * Recorded because the conversation is half the record: a transcript that shows
  * only the agent's side reads as answers to questions nobody asked. Appended by
- * the control plane at the moment it forwards the prompt, which is also the
- * only place that sees the first one — that one is sent while the session is
- * still provisioning, before any client is watching.
+ * the control plane when it records the prompt: the first one when the session
+ * is created, so a crash mid-provision still has the text needed to retry, and
+ * follow-ups at the moment they are forwarded.
  */
 export const userPromptEvent = z.object({
   type: z.literal('user_prompt'),

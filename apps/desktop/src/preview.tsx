@@ -4,13 +4,16 @@ import {
   type EnvelopedEvent,
   type SessionSummary,
 } from '@dukebox/protocol'
-import { StrictMode, useState } from 'react'
+import { StrictMode, useState, type CSSProperties } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AgentIcon } from '@/components/AgentIcon'
 import { Composer } from '@/components/Composer'
+import { ResizeHandle } from '@/components/ResizeHandle'
 import { SearchPalette } from '@/components/SearchPalette'
 import { Transcript } from '@/components/Transcript'
 import { Workspace } from '@/components/Workspace'
+import { NAV_DEFAULT, NAV_MIN, WORKSPACE_MIN } from '@/lib/columnWidths'
+import { useColumnWidths } from '@/lib/useColumnWidths'
 import {
   applyTerminalMessage,
   drainTab,
@@ -42,6 +45,10 @@ const event = (event: EnvelopedEvent['event']): EnvelopedEvent => ({
 const script: EnvelopedEvent[] = [
   event({ type: 'session_started', agentId: 'claude-code', model: 'claude-opus-4' }),
   event({ type: 'permission_mode', mode: 'plan' }),
+  event({
+    type: 'user_prompt',
+    text: 'The JSON parser is choking on docker exec output. Find it and fix it.',
+  }),
   event({ type: 'thinking', delta: 'The parser drops the frame header. ' }),
   event({ type: 'thinking', delta: 'Worth checking how exec differs from execStream.' }),
   event({
@@ -433,7 +440,18 @@ function Preview() {
   const setupTranscript = applyEvents(emptyTranscript(), setupScript)
   const [view, setView] = useState<'new' | 'coding' | 'setup'>('setup')
   const [searchOpen, setSearchOpen] = useState(false)
+  const [composerDraft, setComposerDraft] = useState<{ text: string; key: number } | null>(null)
   const terminals = usePreviewTerminals()
+  const composing = view === 'new'
+  const {
+    containerRef,
+    navWidth,
+    workspaceWidth,
+    navMax,
+    workspaceMax,
+    setNavWidth,
+    setWorkspaceWidth,
+  } = useColumnWidths(composing)
 
   const codingSession = {
     id: SESSION,
@@ -504,14 +522,21 @@ function Preview() {
 
   return (
     <div
+      ref={containerRef}
       className={`grid h-full overflow-hidden ${
         view === 'new'
-          ? 'grid-cols-[236px_minmax(0,1fr)]'
-          : 'grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)]'
+          ? 'grid-cols-[var(--nav-width)_minmax(0,1fr)]'
+          : 'grid-cols-[var(--nav-width)_minmax(0,1fr)_var(--workspace-width)]'
       }`}
-      style={{ width: 1440 }}
+      style={
+        {
+          width: 1440,
+          '--nav-width': `${navWidth}px`,
+          '--workspace-width': `${workspaceWidth}px`,
+        } as CSSProperties
+      }
     >
-      <div className="border-r border-border bg-surface p-2">
+      <div className="relative z-10 flex min-h-0 min-w-0 flex-col border-r border-border bg-surface p-2">
         <button
           type="button"
           onClick={() => setView('new')}
@@ -540,6 +565,15 @@ function Preview() {
         >
           Configure environment
         </button>
+        <ResizeHandle
+          value={navWidth}
+          min={NAV_MIN}
+          max={navMax}
+          defaultValue={NAV_DEFAULT}
+          edge="end"
+          label="Resize sessions"
+          onChange={setNavWidth}
+        />
       </div>
 
       {searchOpen && (
@@ -606,6 +640,7 @@ function Preview() {
             <Transcript
               transcript={{ ...activeTranscript, running: view === 'coding' }}
               onRespond={(id, allow) => console.log('respond', id, allow)}
+              onEdit={(text) => setComposerDraft({ text, key: Date.now() })}
               purpose={activeSession.purpose}
               running={view === 'coding'}
               status={activeSession.status}
@@ -615,6 +650,7 @@ function Preview() {
               onSend={(text) => console.log('send', text)}
               onInterrupt={() => console.log('interrupt')}
               running={false}
+              {...(composerDraft ? { draft: composerDraft } : {})}
               {...(view === 'coding'
                 ? {
                     permissionMode: 'auto' as const,
@@ -629,6 +665,10 @@ function Preview() {
             session={activeSession}
             files={activeTranscript.files}
             client={fakeClient}
+            width={workspaceWidth}
+            onWidthChange={setWorkspaceWidth}
+            widthMin={WORKSPACE_MIN}
+            widthMax={workspaceMax}
             {...terminals}
             environmentReview={
               view === 'setup'

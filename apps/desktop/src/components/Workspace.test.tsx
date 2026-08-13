@@ -1,7 +1,7 @@
 import type { SessionSummary } from '@dukebox/protocol'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TerminalState } from '@/lib/useTerminals'
 
 vi.mock('@/components/Terminal', () => ({
@@ -278,5 +278,48 @@ describe('Workspace Changes and Files tabs', () => {
     expect(
       await screen.findByText('This file is binary and cannot be previewed.'),
     ).toBeInTheDocument()
+  })
+})
+
+describe('Workspace resize', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    localStorage.clear()
+  })
+
+  it('exposes a splitter on the expanded panel', () => {
+    render(
+      <Workspace
+        session={session}
+        files={[]}
+        terminals={terminals}
+        width={400}
+        widthMax={640}
+        onWidthChange={vi.fn()}
+        {...terminalHandlers}
+      />,
+    )
+
+    expect(screen.getByRole('separator', { name: 'Resize workspace' })).toBeInTheDocument()
+  })
+
+  it('hides the splitter while the panel is collapsed', async () => {
+    render(
+      <Workspace
+        session={session}
+        files={[]}
+        terminals={terminals}
+        width={400}
+        widthMax={640}
+        onWidthChange={vi.fn()}
+        {...terminalHandlers}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse workspace' }))
+    expect(screen.queryByRole('separator', { name: 'Resize workspace' })).not.toBeInTheDocument()
   })
 })

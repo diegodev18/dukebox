@@ -34,7 +34,7 @@ export interface LiveSession {
   status: StreamStatus
   /** Set when a command the app sent came back rejected. */
   error: string | null
-  send: (text: string) => void
+  send: (text: string, files?: { name: string; data: string }[]) => void
   interrupt: () => void
   respond: (id: string, allow: boolean) => void
   setPermissionMode: (mode: PermissionMode) => void
@@ -150,7 +150,7 @@ export function useSession(
   }, [sessionId])
 
   const send = useCallback(
-    (text: string) => {
+    (text: string, files?: { name: string; data: string }[]) => {
       if (!sessionId) return
 
       setError(null)
@@ -158,7 +158,7 @@ export function useSession(
       // The prompt comes back as a `user_prompt` event and is folded in like
       // anything else. Appending it here too would show it twice, and the local
       // copy is the one that would not survive a reload.
-      streamRef.current?.prompt(sessionId, text)
+      streamRef.current?.prompt(sessionId, text, undefined, files)
     },
     [sessionId],
   )

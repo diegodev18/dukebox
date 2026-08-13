@@ -95,8 +95,8 @@ async function main() {
 
   // In-progress sessions in the database predate this process. Their
   // containers may still be up, but this process has no adapter for them.
-  // Marked stopped so the app does not show a turn that can never finish.
-  await sessions.reclaimAfterRestart()
+  // Restored so a turn that was still working continues after the restart.
+  await sessions.restoreAfterRestart()
 
   const endpoint = await transport.advertisedEndpoint(config.server.port)
 
@@ -131,9 +131,9 @@ async function main() {
   })
 
   const shutdown = async () => {
-    // Sessions first: their containers are stopped rather than removed, so a
-    // restart resumes them instead of re-cloning every workspace.
-    await sessions.stopAll()
+    // Sessions first: their containers are paused rather than removed, and
+    // their rows stay in-progress so the next process continues the turn.
+    await sessions.pauseAll()
 
     wss.clients.forEach((socket) => socket.terminate())
     wss.close()

@@ -24,6 +24,7 @@ import {
   ENVIRONMENT_SETUP_IMAGE_MISMATCH,
   type EnvironmentProposal,
   type EnvironmentSetupVerification,
+  type EnvelopedEvent,
 } from '@dukebox/protocol'
 import {
   CONTAINER_SOCKET_DIR,
@@ -38,7 +39,7 @@ import {
   type TerminalHandle,
   type WorkspaceFile,
 } from '@dukebox/sandbox'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { rm } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { join } from 'node:path'
@@ -242,6 +243,16 @@ function permissionModeContext(
 /** Statuses that mean a turn was in flight when this process started. */
 const IN_PROGRESS_STATUSES: SessionStatus[] = ['provisioning', 'running', 'waiting_input']
 
+/**
+ * What the agent is told after a control-plane restart.
+ *
+ * The in-flight process is gone; this is how the turn continues rather than
+ * waiting for the user to send a dummy follow-up. Logged as a `user_prompt`
+ * so every device sees why work resumed.
+ */
+export const RESTART_CONTINUATION_PROMPT =
+  'The server restarted. Continue the previous task from where you left off. The workspace is unchanged.'
+
 export class SessionManager {
   private readonly running = new Map<string, RunningSession>()
 
@@ -283,6 +294,18 @@ export class SessionManager {
       .returning()
 
     if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
+  }
+
+  private async persistAgentSessionId(
+    sessionId: string,
+    agentSessionId: string | undefined,
+  ): Promise<void> {
+    if (!agentSessionId) return
+
+    await this.deps.db
+      .update(sessions)
+      .set({ agentSessionId, updatedAt: new Date() })
+      .where(eq(sessions.id, sessionId))
   }
 
   /**
@@ -340,6 +363,11 @@ export class SessionManager {
       .returning()
 
     if (!session) throw new SessionError('failed to create session')
+
+    // Recorded before provisioning starts, so a crash mid-clone still has the
+    // text needed to retry, and the client sees the prompt while the workspace
+    // is coming up rather than only after the agent is already running.
+    await this.deps.bus.append(session.id, { type: 'user_prompt', text: prompt })
 
     // Deliberately not awaited: provisioning is slow, and its progress reaches
     // the client as events rather than as a blocked request.
@@ -494,12 +522,8 @@ export class SessionManager {
     // Started before the first prompt so no early output is missed.
     void this.consume(session.id, adapter)
 
-    // Appended before it is sent, so the prompt is the first thing in the log
-    // rather than arriving after the agent's reply to it. This is the only
-    // record of the first prompt: it is sent from here while the session is
-    // still provisioning, with no client watching to remember it.
-    await this.deps.bus.append(session.id, { type: 'user_prompt', text: prompt })
-
+    // The prompt is already in the log — appended when the row was created,
+    // so a crash mid-provision still has the text needed to retry.
     await adapter.send({ text: prompt })
   }
 
@@ -516,6 +540,12 @@ export class SessionManager {
 
         if (event.type === 'permission_mode') {
           await this.persistPermissionMode(sessionId, event.mode)
+        }
+
+        if (event.type === 'session_started') {
+          // As soon as it is known, not at turn end: a crash mid-turn would
+          // otherwise lose the id that `--resume` / `--session` needs.
+          await this.persistAgentSessionId(sessionId, adapter.agentSessionId())
         }
 
         if (event.type === 'done') {
@@ -1329,6 +1359,9 @@ export class SessionManager {
     const workspace = new Workspace(container)
     if (credentials) await workspace.installCredentialHelper()
 
+    const purpose = (session.purpose as SessionPurpose) || 'coding'
+    const config = await this.configFor(session.environmentId)
+
     const adapter = this.createAdapter(session.agentId)
     await adapter.start({
       sessionId,
@@ -1337,6 +1370,7 @@ export class SessionManager {
       // Hands the agent its own prior session, so it answers with the
       // conversation rather than from nothing.
       ...(session.agentSessionId ? { resumeFrom: session.agentSessionId } : {}),
+      ...(config.instructions && purpose === 'coding' ? { instructions: config.instructions } : {}),
       ...permissionModeContext(session),
     })
 
@@ -1348,7 +1382,7 @@ export class SessionManager {
       // check still measure against the same point they did before.
       baseCommit: await this.baseCommitFor(session, workspace),
       repoFullName: project.repoFullName,
-      purpose: (session.purpose as SessionPurpose) || 'coding',
+      purpose,
       setupVerifyAttempts: 0,
       ...(credentials ? { credentials } : {}),
     }
@@ -1396,8 +1430,8 @@ export class SessionManager {
   ): Promise<TerminalHandle> {
     const running = await this.ensureRunning(sessionId)
 
-    // A session marked stopped was interrupted by a restart. Opening a shell
-    // means someone is using it again; `done` is the idle state a warm
+    // A session marked stopped was archived or explicitly stopped. Opening a
+    // shell means someone is using it again; `done` is the idle state a warm
     // container already has after a normal turn.
     const [session] = await this.deps.db
       .select({ status: sessions.status })
@@ -1465,13 +1499,13 @@ export class SessionManager {
   }
 
   /**
-   * Stop a session.
+   * Park a session without marking it stopped.
    *
-   * The container is stopped, not removed: a follow-up resumes in place rather
-   * than re-cloning and re-installing, which is the difference between seconds
-   * and minutes.
+   * The container stays on disk and the row stays in-progress so the next
+   * process can continue the turn. Distinct from `stop`, which is what the
+   * user asked for.
    */
-  async stop(sessionId: string): Promise<void> {
+  private async pause(sessionId: string): Promise<void> {
     const running = this.running.get(sessionId)
     if (!running) return
 
@@ -1480,13 +1514,21 @@ export class SessionManager {
     await running.adapter.stop()
     await running.container.stop()
 
-    // Before the status write, so a client reacting to the status change never
-    // finds a terminal that is still listed but already dead.
     await this.deps.onSessionStopped?.(sessionId).catch(() => undefined)
-
-    // Stopped with the session: a socket left listening would keep answering
-    // credential requests for a session that is over.
     await running.credentials?.stop().catch(() => undefined)
+  }
+
+  /**
+   * Stop a session.
+   *
+   * The container is stopped, not removed: a follow-up resumes in place rather
+   * than re-cloning and re-installing, which is the difference between seconds
+   * and minutes.
+   */
+  async stop(sessionId: string): Promise<void> {
+    if (!this.running.has(sessionId)) return
+
+    await this.pause(sessionId)
 
     const [session] = await this.deps.db
       .select({ status: sessions.status })
@@ -1494,7 +1536,7 @@ export class SessionManager {
       .where(eq(sessions.id, sessionId))
 
     if (session && !isTerminal(session.status as SessionStatus)) {
-      // Recorded so a client replaying after a restart does not keep showing
+      // Recorded so a client replaying after a user stop does not keep showing
       // a turn that can never finish: tools without results, the Working
       // spinner, a Stop button that cannot interrupt an agent that is gone.
       await this.deps.bus
@@ -1562,44 +1604,129 @@ export class SessionManager {
     await this.deps.db.delete(sessions).where(eq(sessions.id, sessionId))
   }
 
-  /** Stop every running session. Called on shutdown. */
+  /** Stop every running session this process holds. Explicit: marks each one stopped. */
   async stopAll(): Promise<void> {
     await Promise.all([...this.running.keys()].map((sessionId) => this.stop(sessionId)))
   }
 
   /**
-   * Repair sessions left in-flight by a previous process.
+   * Park every running session for a process restart.
+   *
+   * Containers stay on disk and rows stay in-progress so the next process can
+   * continue the turn. Distinct from `stopAll`, which is a user-facing stop.
+   */
+  async pauseAll(): Promise<void> {
+    await Promise.all([...this.running.keys()].map((sessionId) => this.pause(sessionId)))
+  }
+
+  /**
+   * Continue sessions left in-flight by a previous process.
    *
    * `running` starts empty. Rows still marked provisioning/running/waiting_input
-   * belong to a turn whose agent died with the last process. Without this, the
-   * app shows that turn as still working, and a terminal open fails with
-   * "not running" until someone sends a dummy prompt.
+   * belong to a turn whose agent died with the last process. The workspace is
+   * still on disk; this brings the container back and asks the agent to
+   * continue rather than marking the session stopped.
    */
-  async reclaimAfterRestart(): Promise<void> {
+  async restoreAfterRestart(): Promise<void> {
     const live = await this.deps.db
-      .select({ id: sessions.id })
+      .select()
       .from(sessions)
-      .where(inArray(sessions.status, IN_PROGRESS_STATUSES))
+      .where(and(inArray(sessions.status, IN_PROGRESS_STATUSES), isNull(sessions.archivedAt)))
 
-    for (const session of live) {
-      try {
-        const container = await this.deps.sandbox.get(session.id)
-        await container?.stop().catch(() => undefined)
-      } catch {
-        // Docker unreachable. The status rewrite still tells clients the truth.
+    await Promise.all(live.map((session) => this.restoreOne(session)))
+  }
+
+  private async restoreOne(session: Session): Promise<void> {
+    try {
+      if (session.status === 'provisioning' && !session.baseCommit) {
+        await this.retryProvision(session)
+        return
       }
 
+      await this.continueAfterRestart(session.id)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`restore session ${session.id}:`, message)
       await this.deps.bus
-        .append(session.id, { type: 'done', reason: 'interrupted' })
+        .append(session.id, { type: 'error', message, fatal: true })
         .catch(() => undefined)
-
-      await this.setStatus(session.id, 'stopped', { endedAt: new Date() })
+      await this.setStatus(session.id, 'failed', { errorMessage: message }).catch(() => undefined)
     }
+  }
+
+  /**
+   * Re-run provisioning after a crash that never finished the clone.
+   *
+   * The leftover container is half-baked and is removed rather than resumed.
+   * The original prompt is already in the log from `start`.
+   */
+  private async retryProvision(session: Session): Promise<void> {
+    const prompt = firstUserPrompt(await this.deps.bus.replay(session.id))
+    if (!prompt) {
+      throw new SessionError(
+        'this session was interrupted while starting, and the original prompt was not recorded',
+      )
+    }
+
+    const leftover = await this.deps.sandbox.get(session.id)
+    await leftover?.remove().catch(() => undefined)
+
+    const [project] = await this.deps.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, session.projectId))
+
+    if (!project) throw new SessionError('no such project')
+
+    await this.provision(session, project.repoFullName, prompt)
+  }
+
+  /**
+   * Resume a workspace whose turn was in flight and ask the agent to continue.
+   *
+   * The previous agent process is gone. Open tools and permission prompts in
+   * the transcript are closed with `done: interrupted`, then a new adapter is
+   * started with the stored conversation id when we have one.
+   */
+  private async continueAfterRestart(sessionId: string): Promise<void> {
+    const running = await this.ensureRunning(sessionId)
+    const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
+
+    const events = await this.deps.bus.replay(sessionId)
+    const last = events.at(-1)?.event
+    if (last?.type !== 'done') {
+      await this.deps.bus.append(sessionId, { type: 'done', reason: 'interrupted' })
+    }
+
+    await this.setStatus(sessionId, 'running')
+
+    if (session?.agentSessionId) {
+      await this.deps.bus.append(sessionId, {
+        type: 'user_prompt',
+        text: RESTART_CONTINUATION_PROMPT,
+      })
+      await running.adapter.send({ text: RESTART_CONTINUATION_PROMPT })
+      return
+    }
+
+    // No conversation to resume: the agent never got far enough to record an
+    // id. Send the original task again without logging a second copy.
+    const prompt = firstUserPrompt(events)
+    if (!prompt) {
+      throw new SessionError('this session was interrupted before the original prompt was recorded')
+    }
+
+    await running.adapter.send({ text: prompt })
   }
 
   isRunning(sessionId: string): boolean {
     return this.running.has(sessionId)
   }
+}
+
+function firstUserPrompt(events: EnvelopedEvent[]): string | undefined {
+  const prompt = events.find((envelope) => envelope.event.type === 'user_prompt')
+  return prompt?.event.type === 'user_prompt' ? prompt.event.text : undefined
 }
 
 /**
