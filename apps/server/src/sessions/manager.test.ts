@@ -221,6 +221,22 @@ async function waitForStatus(sessionId: string, status: string, timeoutMs = 90_0
 }
 
 /**
+ * Wait for the initial prompt to reach the fake adapter.
+ *
+ * The status flips to `running` just before the prompt is sent, so checking
+ * `prompts[0]` the moment the row reads `running` races the tail of
+ * provisioning — the bus append that precedes `send` can still be in flight.
+ */
+async function waitForPrompt(prompt: string, timeoutMs = 90_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (adapter.prompts.some((message) => message.text === prompt)) return
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  throw new Error(`initial prompt was not delivered in time`)
+}
+
+/**
  * Wait for provisioning to leave the database connection alone, whichever way
  * it goes.
  *
@@ -275,7 +291,7 @@ describe('start', () => {
     const session = await startSession('add a multiply function')
     await waitForStatus(session.id, 'running')
 
-    expect(adapter.prompts[0]?.text).toBe('add a multiply function')
+    await waitForPrompt('add a multiply function')
   })
 
   it('records the container id, so it can be found again after a restart', async () => {
