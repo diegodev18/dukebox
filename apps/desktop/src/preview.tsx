@@ -42,6 +42,10 @@ const event = (event: EnvelopedEvent['event']): EnvelopedEvent => ({
 const script: EnvelopedEvent[] = [
   event({ type: 'session_started', agentId: 'claude-code', model: 'claude-opus-4' }),
   event({ type: 'permission_mode', mode: 'plan' }),
+  event({
+    type: 'user_prompt',
+    text: 'The JSON parser is choking on docker exec output. Find it and fix it.',
+  }),
   event({ type: 'thinking', delta: 'The parser drops the frame header. ' }),
   event({ type: 'thinking', delta: 'Worth checking how exec differs from execStream.' }),
   event({
@@ -433,6 +437,7 @@ function Preview() {
   const setupTranscript = applyEvents(emptyTranscript(), setupScript)
   const [view, setView] = useState<'new' | 'coding' | 'setup'>('setup')
   const [searchOpen, setSearchOpen] = useState(false)
+  const [composerDraft, setComposerDraft] = useState<{ text: string; key: number } | null>(null)
   const terminals = usePreviewTerminals()
 
   const codingSession = {
@@ -606,6 +611,7 @@ function Preview() {
             <Transcript
               transcript={{ ...activeTranscript, running: view === 'coding' }}
               onRespond={(id, allow) => console.log('respond', id, allow)}
+              onEdit={(text) => setComposerDraft({ text, key: Date.now() })}
               purpose={activeSession.purpose}
               running={view === 'coding'}
               status={activeSession.status}
@@ -615,6 +621,7 @@ function Preview() {
               onSend={(text) => console.log('send', text)}
               onInterrupt={() => console.log('interrupt')}
               running={false}
+              {...(composerDraft ? { draft: composerDraft } : {})}
               {...(view === 'coding'
                 ? {
                     permissionMode: 'auto' as const,

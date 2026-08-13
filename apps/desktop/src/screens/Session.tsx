@@ -450,7 +450,7 @@ export function Session({
           />
         ) : current ? (
           <>
-            <SessionColumn session={current} live={live} connection={connection} />
+            <SessionColumn key={current.id} session={current} live={live} connection={connection} />
             <Workspace
               session={current}
               files={live.transcript.files}
@@ -533,6 +533,7 @@ function SessionColumn({
   // agent is running, and a Stop button that cannot interrupt anything is how
   // that used to read as "stuck processing".
   const working = live.transcript.running && !isTerminal(session.status)
+  const [composerDraft, setComposerDraft] = useState<{ text: string; key: number } | null>(null)
 
   return (
     // `min-h-0` is what makes the transcript scroll instead of the window
@@ -575,6 +576,7 @@ function SessionColumn({
       <Transcript
         transcript={live.transcript}
         onRespond={live.respond}
+        onEdit={(text) => setComposerDraft({ text, key: Date.now() })}
         purpose={session.purpose}
         running={working}
         status={session.status}
@@ -588,6 +590,7 @@ function SessionColumn({
         running={working}
         disabled={!isStreamConnected(live.status)}
         error={live.error}
+        {...(composerDraft ? { draft: composerDraft } : {})}
         {...(session.purpose !== 'environment_setup' && session.permissionMode
           ? {
               permissionMode: live.transcript.permissionMode ?? session.permissionMode,

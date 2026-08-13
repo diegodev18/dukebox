@@ -180,4 +180,45 @@ describe('Composer', () => {
 
     expect(screen.getByRole('button', { name: 'Attach files' })).toBeDisabled()
   })
+
+  it('fills the field when a transcript prompt is edited', () => {
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        draft={{ text: 'fix the parser', key: 1 }}
+      />,
+    )
+
+    const field = screen.getByLabelText('Message')
+    expect(field).toHaveValue('fix the parser')
+    expect(field).toHaveFocus()
+  })
+
+  it('refills the field when the same prompt is edited again', () => {
+    const { rerender } = render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        draft={{ text: 'first', key: 1 }}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'typed over' } })
+    expect(screen.getByLabelText('Message')).toHaveValue('typed over')
+
+    rerender(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        draft={{ text: 'first', key: 2 }}
+      />,
+    )
+
+    expect(screen.getByLabelText('Message')).toHaveValue('first')
+    expect(screen.getByLabelText('Message')).toHaveFocus()
+  })
 })
