@@ -49,6 +49,7 @@ interface Props {
   onConfigureEnvironment: (projectId: string) => void
   onManageEnvironments: (projectId: string) => void
   onArchive: (sessionId: string) => void
+  onDelete: (sessionId: string) => void
   onRemoveProject: (projectId: string) => void
   onSearch: () => void
   /** Set when an archive or remove request failed; the row stays put. */
@@ -69,6 +70,7 @@ export function Sidebar({
   onConfigureEnvironment,
   onManageEnvironments,
   onArchive,
+  onDelete,
   onRemoveProject,
   onSearch,
   archiveError,
@@ -76,6 +78,7 @@ export function Sidebar({
 }: Props) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [removing, setRemoving] = useState<ProjectSummary | null>(null)
+  const [deleting, setDeleting] = useState<SessionSummary | null>(null)
   const [viewed, setViewed] = useState(() => {
     const stored = loadViewedSessions()
     if (!selectedId) return stored
@@ -175,6 +178,11 @@ export function Sidebar({
             onArchive(menu.sessionId)
             setMenu(null)
           }}
+          onDelete={() => {
+            const session = sessions.find((candidate) => candidate.id === menu.sessionId)
+            setMenu(null)
+            if (session) setDeleting(session)
+          }}
           onDismiss={() => setMenu(null)}
         />
       )}
@@ -211,13 +219,30 @@ export function Sidebar({
       )}
 
       {removing && (
-        <RemoveProjectDialog
-          repoFullName={removing.repoFullName}
+        <ConfirmDeleteDialog
+          title={`Remove ${removing.repoFullName}?`}
+          description="This removes the project and its sessions from Dukebox. Nothing on GitHub is touched."
+          typedLabel={removing.repoFullName}
+          confirmLabel="Remove"
           onConfirm={() => {
             onRemoveProject(removing.id)
             setRemoving(null)
           }}
           onDismiss={() => setRemoving(null)}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmDeleteDialog
+          title="Delete this session?"
+          description="This permanently deletes the session and its transcript from Dukebox. It cannot be undone."
+          typedLabel={deleting.title}
+          confirmLabel="Delete"
+          onConfirm={() => {
+            onDelete(deleting.id)
+            setDeleting(null)
+          }}
+          onDismiss={() => setDeleting(null)}
         />
       )}
     </nav>
@@ -362,19 +387,23 @@ function SessionContextMenu({
   x,
   y,
   onArchive,
+  onDelete,
   onDismiss,
 }: {
   x: number
   y: number
   onArchive: () => void
+  onDelete: () => void
   onDismiss: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const dismiss = useRef(onDismiss)
   const archive = useRef(onArchive)
+  const del = useRef(onDelete)
   const [confirming, setConfirming] = useState(false)
   dismiss.current = onDismiss
   archive.current = onArchive
+  del.current = onDelete
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -461,14 +490,25 @@ function SessionContextMenu({
           </button>
         </>
       ) : (
-        <button
-          type="button"
-          role="menuitem"
-          onClick={() => setConfirming(true)}
-          className="flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-muted data-[highlighted]:bg-muted"
-        >
-          Archive
-        </button>
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => setConfirming(true)}
+            className="flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-muted data-[highlighted]:bg-muted"
+          >
+            Archive
+          </button>
+          <div className="my-1 border-t border-border" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => del.current()}
+            className="flex w-full items-center px-3 py-1.5 text-left text-[13px] text-destructive hover:bg-muted data-[highlighted]:bg-muted"
+          >
+            Delete
+          </button>
+        </>
       )}
     </div>
   )
@@ -591,17 +631,24 @@ function ProjectContextMenu({
 }
 
 /**
- * Type-to-confirm before deleting a project.
+ * Type-to-confirm before a permanent removal.
  *
  * A menu that closes the moment focus drifts is the wrong container for
- * typing a repository name. Same dialog chrome as session details.
+ * typing a repository name or session title. Same dialog chrome as session
+ * details.
  */
-function RemoveProjectDialog({
-  repoFullName,
+function ConfirmDeleteDialog({
+  title,
+  description,
+  typedLabel,
+  confirmLabel,
   onConfirm,
   onDismiss,
 }: {
-  repoFullName: string
+  title: string
+  description: string
+  typedLabel: string
+  confirmLabel: string
   onConfirm: () => void
   onDismiss: () => void
 }) {
@@ -610,7 +657,7 @@ function RemoveProjectDialog({
   const input = useRef<HTMLInputElement>(null)
   const dismiss = useRef(onDismiss)
   dismiss.current = onDismiss
-  const matches = typed === repoFullName
+  const matches = typed === typedLabel
 
   useEffect(() => {
     input.current?.focus()
@@ -666,13 +713,13 @@ function RemoveProjectDialog({
         ref={panel}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="remove-project-title"
+        aria-labelledby="confirm-remove-title"
         tabIndex={-1}
         className="w-full max-w-sm overflow-hidden rounded-[calc(var(--radius)*1.1)] border border-border bg-background shadow-lg outline-none"
       >
         <div className="flex items-start gap-2.5 border-b border-border px-4 py-3">
-          <h2 id="remove-project-title" className="min-w-0 flex-1 font-medium">
-            Remove {repoFullName}?
+          <h2 id="confirm-remove-title" className="min-w-0 flex-1 font-medium">
+            {title}
           </h2>
           <button
             type="button"
@@ -691,16 +738,14 @@ function RemoveProjectDialog({
             if (matches) onConfirm()
           }}
         >
-          <p className="text-[13px] text-muted-foreground">
-            This removes the project and its sessions from Dukebox. Nothing on GitHub is touched.
-          </p>
+          <p className="text-[13px] text-muted-foreground">{description}</p>
           <label className="mt-3 block text-[12px] text-muted-foreground">
-            Type <span className="font-medium text-foreground">{repoFullName}</span> to confirm
+            Type <span className="font-medium text-foreground">{typedLabel}</span> to confirm
             <input
               ref={input}
               value={typed}
               onChange={(event) => setTyped(event.target.value)}
-              aria-label={`Type ${repoFullName} to confirm`}
+              aria-label={`Type ${typedLabel} to confirm`}
               autoComplete="off"
               spellCheck={false}
               className="mt-1 w-full rounded-[calc(var(--radius)*0.6)] border border-border-strong bg-background px-2.5 py-1.5 text-[13px] text-foreground outline-none"
@@ -719,7 +764,7 @@ function RemoveProjectDialog({
               disabled={!matches}
               className="rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12px] font-medium text-destructive hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent"
             >
-              Remove
+              {confirmLabel}
             </button>
           </div>
         </form>

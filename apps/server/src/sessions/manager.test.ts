@@ -600,6 +600,55 @@ describe('prompt, interrupt, and stop', () => {
   })
 })
 
+describe('delete', () => {
+  it('removes the session row and its events', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+    await bus.append(session.id, { type: 'assistant_text', delta: 'hello' })
+
+    await manager.delete(session.id)
+
+    expect(await db.select().from(sessions).where(eq(sessions.id, session.id))).toHaveLength(0)
+    expect(await bus.replay(session.id)).toHaveLength(0)
+  })
+
+  it('removes the container, unlike stopping', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+
+    await manager.delete(session.id)
+
+    expect(await sandbox.get(session.id)).toBeNull()
+  })
+
+  it('stops a running session before removing it', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+
+    await manager.delete(session.id)
+
+    expect(adapter.stopped).toBe(true)
+  })
+
+  it('removes a finished session that has no live turn', async () => {
+    const session = await startSession()
+    await waitForStatus(session.id, 'running')
+
+    adapter.emit({ type: 'done', reason: 'completed' })
+    await waitForStatus(session.id, 'done', 20_000)
+
+    await manager.delete(session.id)
+
+    expect(await db.select().from(sessions).where(eq(sessions.id, session.id))).toHaveLength(0)
+  })
+
+  it('throws for an unknown session', async () => {
+    await expect(manager.delete('00000000-0000-4000-8000-000000000000')).rejects.toThrow(
+      SessionError,
+    )
+  })
+})
+
 describe('terminals', () => {
   it('opens a shell in a running session', async () => {
     const session = await startSession()

@@ -372,6 +372,17 @@ export class DukeboxClient {
     await this.request(`/api/sessions/${sessionId}/archive`, { method: 'POST' })
   }
 
+  /**
+   * Permanently delete a session and its history.
+   *
+   * Unlike stop (the container stays for a follow-up) or archive (the row stays
+   * for history), this removes everything. The UI asks for the title before
+   * calling it.
+   */
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.request(`/api/sessions/${sessionId}/delete`, { method: 'POST' })
+  }
+
   async agentCredentialsConfigured(): Promise<boolean> {
     const body = await this.request<{ configured: boolean }>('/api/agent-credentials')
     return body.configured

@@ -55,6 +55,7 @@ afterEach(() => {
 
 function renderSidebar({
   onArchive = vi.fn(),
+  onDelete = vi.fn(),
   onNewSession = vi.fn(),
   onConfigureEnvironment = vi.fn(),
   onManageEnvironments = vi.fn(),
@@ -65,6 +66,7 @@ function renderSidebar({
   disabled = false,
 }: {
   onArchive?: ReturnType<typeof vi.fn>
+  onDelete?: ReturnType<typeof vi.fn>
   onNewSession?: ReturnType<typeof vi.fn>
   onConfigureEnvironment?: ReturnType<typeof vi.fn>
   onManageEnvironments?: ReturnType<typeof vi.fn>
@@ -89,12 +91,14 @@ function renderSidebar({
       onConfigureEnvironment={onConfigureEnvironment}
       onManageEnvironments={onManageEnvironments}
       onArchive={onArchive}
+      onDelete={onDelete}
       onRemoveProject={onRemoveProject}
       disabled={disabled}
     />,
   )
   return {
     onArchive,
+    onDelete,
     onNewSession,
     onConfigureEnvironment,
     onManageEnvironments,
@@ -127,6 +131,28 @@ describe('Sidebar', () => {
 
     expect(screen.getByRole('menu', { name: 'Session' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Archive' })).toBeInTheDocument()
+  })
+
+  it('does not delete a session until its title is typed', async () => {
+    const { onDelete } = renderSidebar()
+
+    await userEvent.click(screen.getByRole('button', { name: /session actions/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+
+    const dialog = screen.getByRole('dialog', { name: /delete this session/i })
+    const confirm = within(dialog).getByRole('button', { name: 'Delete' })
+    expect(confirm).toBeDisabled()
+
+    await userEvent.type(within(dialog).getByRole('textbox'), 'some other title')
+    expect(confirm).toBeDisabled()
+    expect(onDelete).not.toHaveBeenCalled()
+
+    await userEvent.clear(within(dialog).getByRole('textbox'))
+    await userEvent.type(within(dialog).getByRole('textbox'), session.title)
+    expect(confirm).toBeEnabled()
+
+    await userEvent.click(confirm)
+    expect(onDelete).toHaveBeenCalledWith(session.id)
   })
 
   it('opens a project menu on right-click of the repository', () => {
@@ -178,6 +204,7 @@ describe('Sidebar', () => {
         onConfigureEnvironment={vi.fn()}
         onManageEnvironments={vi.fn()}
         onArchive={vi.fn()}
+        onDelete={vi.fn()}
         onRemoveProject={vi.fn()}
       />,
     )
@@ -312,6 +339,7 @@ describe('Sidebar', () => {
           onConfigureEnvironment={vi.fn()}
           onManageEnvironments={vi.fn()}
           onArchive={vi.fn()}
+          onDelete={vi.fn()}
           onRemoveProject={vi.fn()}
         />,
       )

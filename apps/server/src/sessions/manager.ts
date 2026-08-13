@@ -34,6 +34,7 @@ import {
   type WorkspaceFile,
 } from '@dukebox/sandbox'
 import { and, eq, inArray } from 'drizzle-orm'
+import { rm } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { join } from 'node:path'
 import type { EventBus } from '../events/bus.js'
@@ -1311,6 +1312,41 @@ export class SessionManager {
       .update(sessions)
       .set({ archivedAt: new Date(), updatedAt: new Date() })
       .where(eq(sessions.id, sessionId))
+  }
+
+  /**
+   * Permanently delete a session.
+   *
+   * Unlike `stop` (the container stays for a follow-up) or `archive` (the row
+   * stays for history), this removes everything: the container, the credential
+   * socket directory, the Redis stream, and the row itself — messages cascade.
+   * The client makes the user type the session title to confirm before calling
+   * it, because there is no coming back from it.
+   */
+  async delete(sessionId: string): Promise<void> {
+    const [session] = await this.deps.db
+      .select({ id: sessions.id })
+      .from(sessions)
+      .where(eq(sessions.id, sessionId))
+
+    if (!session) throw new SessionError(`no such session: ${sessionId}`)
+
+    // Stop the agent and container the way `stop` does, so a running session's
+    // work is halted and its terminals are cleaned up before anything goes.
+    await this.stop(sessionId)
+
+    // Removed, not just stopped: a deleted session has no follow-up to resume.
+    const container = await this.deps.sandbox.get(sessionId)
+    await container?.remove().catch(() => undefined)
+
+    // A socket left behind would keep answering credential requests for a
+    // session that no longer exists.
+    await rm(this.socketDirFor(sessionId), { recursive: true, force: true }).catch(() => undefined)
+
+    // Redis serves this session's recent events; the row and messages are gone.
+    await this.deps.bus.clearStream(sessionId).catch(() => undefined)
+
+    await this.deps.db.delete(sessions).where(eq(sessions.id, sessionId))
   }
 
   /** Stop every running session. Called on shutdown. */
