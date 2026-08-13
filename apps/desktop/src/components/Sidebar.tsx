@@ -97,7 +97,7 @@ export function Sidebar({
   return (
     <nav
       aria-label="Sessions"
-      className="flex min-h-0 flex-col overflow-hidden border-r border-border bg-surface"
+      className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border bg-surface"
     >
       <div className="px-2 pt-2.5 pb-1">
         <SidebarAction
@@ -296,7 +296,7 @@ function ProjectGroup({
         <span className="min-w-0 flex-1 truncate">{project.repoFullName}</span>
         {/* One affordance, two jobs: with nothing configured the useful action
             is to run setup, and once environments exist it is to manage the
-            list. Showing both would put two links in a 236px row. */}
+            list. Showing both would put two links in a narrow nav row. */}
         {project.environmentCount === 0 ? (
           <button
             type="button"

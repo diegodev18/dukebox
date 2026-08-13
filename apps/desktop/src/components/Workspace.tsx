@@ -14,7 +14,9 @@ import {
 } from '@/components/icons'
 import { SandboxFiles } from '@/components/SandboxFiles'
 import { Terminal } from '@/components/Terminal'
+import { ResizeHandle } from '@/components/ResizeHandle'
 import { pullRequestTabLabel } from '@/lib/pullRequest'
+import { WORKSPACE_DEFAULT, WORKSPACE_MIN } from '@/lib/columnWidths'
 
 /**
  * What the session is changing: files, diffs, a terminal, a preview.
@@ -83,6 +85,11 @@ interface Props extends TerminalProps {
   environmentReview?: EnvironmentReviewTab | null
   /** When set, the Pull request tab can open, mark ready, and merge. */
   pullRequest?: PullRequestTab | null
+  /** Expanded column width. When omitted, the panel is not resizable. */
+  width?: number
+  widthMin?: number
+  widthMax?: number
+  onWidthChange?: (width: number) => void
 }
 
 export function Workspace({
@@ -91,6 +98,10 @@ export function Workspace({
   client,
   environmentReview,
   pullRequest,
+  width,
+  widthMin = WORKSPACE_MIN,
+  widthMax,
+  onWidthChange,
   ...terminalProps
 }: Props) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === 'true')
@@ -148,8 +159,19 @@ export function Workspace({
     <aside
       aria-label="Workspace"
       {...(collapsed ? { 'data-collapsed': true } : {})}
-      className={`flex min-h-0 min-w-0 flex-col ${collapsed ? '' : 'border-l border-border bg-surface'}`}
+      className={`relative z-10 flex min-h-0 min-w-0 flex-col ${collapsed ? '' : 'border-l border-border bg-surface'}`}
     >
+      {!collapsed && onWidthChange && width !== undefined && widthMax !== undefined && (
+        <ResizeHandle
+          value={width}
+          min={widthMin}
+          max={widthMax}
+          defaultValue={WORKSPACE_DEFAULT}
+          edge="start"
+          label="Resize workspace"
+          onChange={onWidthChange}
+        />
+      )}
       <header
         className={`flex items-center gap-2 py-2.5 pr-3 pl-3.5 ${
           collapsed ? 'justify-end' : 'border-b border-border'

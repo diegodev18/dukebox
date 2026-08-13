@@ -51,7 +51,7 @@ export function SettingsNav({ category, role, onCategoryChange, onBack }: Settin
   return (
     <nav
       aria-label="Settings"
-      className="flex min-h-0 flex-col overflow-hidden border-r border-border bg-surface"
+      className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border bg-surface"
     >
       <div className="px-2 pt-2.5 pb-1">
         <button
