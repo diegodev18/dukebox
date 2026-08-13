@@ -6,11 +6,18 @@ import type {
   Transcript as TranscriptData,
 } from '@dukebox/protocol'
 import { EXIT_PLAN_MODE_ACTION, isTerminal } from '@dukebox/protocol'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ThinkingOrb } from 'thinking-orbs'
 import type { StreamStatus } from '@/lib/stream'
 import { activityBlock, mapOrbState, orbStateForTool } from '@/lib/orbState'
-import { ChevronDownIcon, ChevronRightIcon, SetupIcon } from '@/components/icons'
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  EditIcon,
+  SetupIcon,
+} from '@/components/icons'
 import { Markdown } from '@/components/Markdown'
 
 /**
@@ -32,6 +39,11 @@ interface Props {
   streamStatus?: StreamStatus
   /** Permission answers cannot reach the server while the socket is down. */
   disabled?: boolean
+  /**
+   * Load a user prompt into the composer. Edit does not rewind the agent
+   * conversation — the edited text is sent as a follow-up.
+   */
+  onEdit?: (text: string) => void
 }
 
 export function Transcript({
@@ -42,6 +54,7 @@ export function Transcript({
   status,
   streamStatus,
   disabled = false,
+  onEdit,
 }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -120,6 +133,7 @@ export function Transcript({
                 onRespond={onRespond}
                 compactSetup={block.id === setupPromptId}
                 disabled={disabled}
+                {...(onEdit ? { onEdit } : {})}
                 {...(running !== undefined ? { running } : {})}
                 {...(status !== undefined ? { status } : {})}
               />
@@ -151,6 +165,7 @@ function BlockView({
   running,
   status,
   disabled = false,
+  onEdit,
 }: {
   block: Block
   onRespond: Props['onRespond']
@@ -158,6 +173,7 @@ function BlockView({
   running?: boolean
   status?: SessionStatus
   disabled?: boolean
+  onEdit?: Props['onEdit']
 }) {
   switch (block.kind) {
     case 'prompt':
@@ -171,16 +187,22 @@ function BlockView({
         )
       }
       return (
-        <p
-          data-selectable
-          className="rounded-[var(--radius)] bg-surface px-3.5 py-2.5 whitespace-pre-wrap"
-        >
-          {block.text}
-        </p>
+        <MessageBlock text={block.text} editDisabled={disabled} {...(onEdit ? { onEdit } : {})}>
+          <p
+            data-selectable
+            className="rounded-[var(--radius)] bg-surface px-3.5 py-2.5 whitespace-pre-wrap"
+          >
+            {block.text}
+          </p>
+        </MessageBlock>
       )
 
     case 'text':
-      return <Markdown>{block.text}</Markdown>
+      return (
+        <MessageBlock text={block.text}>
+          <Markdown>{block.text}</Markdown>
+        </MessageBlock>
+      )
 
     case 'thinking':
       return <Thinking text={block.text} />
@@ -202,6 +224,88 @@ function BlockView({
         </p>
       )
   }
+}
+
+/**
+ * A user prompt or assistant reply, with copy (and, for prompts, edit) on hover.
+ *
+ * Edit loads the text into the composer rather than rewriting history: the
+ * protocol has no rewind, so a follow-up is the honest action.
+ */
+function MessageBlock({
+  text,
+  onEdit,
+  editDisabled = false,
+  children,
+}: {
+  text: string
+  onEdit?: (text: string) => void
+  editDisabled?: boolean
+  children: ReactNode
+}) {
+  return (
+    <div className="group flex flex-col items-start gap-1">
+      {children}
+      <MessageActions text={text} {...(onEdit ? { onEdit } : {})} editDisabled={editDisabled} />
+    </div>
+  )
+}
+
+function MessageActions({
+  text,
+  onEdit,
+  editDisabled = false,
+}: {
+  text: string
+  onEdit?: (text: string) => void
+  editDisabled?: boolean
+}) {
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!copied) return
+    const timer = window.setTimeout(() => setCopied(false), 1500)
+    return () => window.clearTimeout(timer)
+  }, [copied])
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+    } catch {
+      // Clipboard can be missing in a locked-down webview; selection still works.
+    }
+  }
+
+  return (
+    <div
+      className={`flex gap-0.5 ${
+        copied ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => void copy()}
+        aria-label={copied ? 'Copied' : 'Copy'}
+        title={copied ? 'Copied' : 'Copy'}
+        className="grid size-6 place-items-center rounded-[calc(var(--radius)*0.5)] text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+      </button>
+      {onEdit ? (
+        <button
+          type="button"
+          onClick={() => onEdit(text)}
+          disabled={editDisabled}
+          aria-label="Edit"
+          title="Edit"
+          className="grid size-6 place-items-center rounded-[calc(var(--radius)*0.5)] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+        >
+          <EditIcon size={13} />
+        </button>
+      ) : null}
+    </div>
+  )
 }
 
 /**

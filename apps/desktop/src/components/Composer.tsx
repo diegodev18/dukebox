@@ -33,6 +33,11 @@ interface Props {
   error?: string | null
   permissionMode?: PermissionMode | null
   onPermissionModeChange?: (mode: PermissionMode) => void
+  /**
+   * A prompt loaded from the transcript (Edit). `key` changes when the same
+   * text is edited again, so the field refills rather than looking unchanged.
+   */
+  draft?: { text: string; key: number }
 }
 
 export function Composer({
@@ -44,6 +49,7 @@ export function Composer({
   error,
   permissionMode,
   onPermissionModeChange,
+  draft,
 }: Props) {
   const [text, setText] = useState('')
   const [files, setFiles] = useState<ComposerFile[]>([])
@@ -65,13 +71,20 @@ export function Composer({
   useEffect(() => {
     if (!error || !lastSent.current) return
 
-    const draft = lastSent.current
+    const restored = lastSent.current
     const draftFiles = lastSentFiles.current
     lastSent.current = ''
     lastSentFiles.current = []
-    setText((current) => (current.trim() === '' ? draft : current))
+    setText((current) => (current.trim() === '' ? restored : current))
     setFiles((current) => (current.length === 0 ? draftFiles : current))
   }, [error])
+
+  useEffect(() => {
+    if (!draft) return
+
+    setText(draft.text)
+    field.current?.focus()
+  }, [draft])
 
   const submit = () => {
     const trimmed = text.trim()
