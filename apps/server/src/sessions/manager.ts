@@ -100,7 +100,7 @@ export interface StartSessionOptions {
    * How the agent is allowed to act.
    *
    * Ignored by agents without permission modes. Absent means bypass for
-   * Claude Code.
+   * Claude Code and OpenCode.
    */
   permissionMode?: PermissionMode
   purpose?: SessionPurpose
@@ -152,8 +152,10 @@ export function createAgentAdapter(agentId: string): AgentAdapter {
 }
 
 function storedPermissionMode(agentId: string, requested?: PermissionMode): string | null {
-  if (agentId !== 'claude-code') return null
-  return requested ?? DEFAULT_PERMISSION_MODE
+  if (agentId === 'claude-code' || agentId === 'opencode') {
+    return requested ?? DEFAULT_PERMISSION_MODE
+  }
+  return null
 }
 
 function permissionModeContext(
@@ -170,7 +172,9 @@ function permissionModeContext(
     return { permissionMode: candidate }
   }
 
-  if (session.agentId === 'claude-code') return { permissionMode: DEFAULT_PERMISSION_MODE }
+  if (session.agentId === 'claude-code' || session.agentId === 'opencode') {
+    return { permissionMode: DEFAULT_PERMISSION_MODE }
+  }
   return {}
 }
 

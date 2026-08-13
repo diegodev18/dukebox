@@ -282,10 +282,10 @@ describe('NewSession OpenCode', () => {
         expect.objectContaining({
           agentId: 'opencode',
           model: 'openai/gpt-5.2',
+          permissionMode: 'bypass',
         }),
       ),
     )
-    expect(client.startSession.mock.calls[0][0]).not.toHaveProperty('permissionMode')
   })
 
   it('opens provider settings when OpenCode is selected with no providers', async () => {
@@ -382,7 +382,7 @@ describe('NewSession permission mode', () => {
     )
   })
 
-  it('hides the mode picker for OpenCode', async () => {
+  it('offers the permission modes for OpenCode', async () => {
     const client = makeClient({
       listOpencodeProviders: vi.fn().mockResolvedValue([
         {
@@ -399,7 +399,35 @@ describe('NewSession permission mode', () => {
     await userEvent.click(within(agents).getByRole('option', { name: /OpenCode/ }))
 
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Permission mode' })).not.toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: 'Permission mode' })).toBeInTheDocument(),
+    )
+  })
+
+  it('sends a chosen mode when starting an OpenCode session', async () => {
+    const client = makeClient({
+      listOpencodeProviders: vi.fn().mockResolvedValue([
+        {
+          id: 'openai',
+          kind: 'openai',
+          name: 'OpenAI',
+          models: [{ id: 'gpt-5.2', label: 'GPT-5.2' }],
+        },
+      ]),
+    })
+    renderScreen(client)
+
+    const agents = await openPicker('Agent')
+    await userEvent.click(within(agents).getByRole('option', { name: /OpenCode/ }))
+
+    const modes = await openPicker('Permission mode')
+    await userEvent.click(within(modes).getByRole('option', { name: 'Plan' }))
+    await userEvent.type(screen.getByLabelText(/what should it do/i), 'do a thing')
+    await userEvent.click(screen.getByRole('button', { name: /start session/i }))
+
+    await waitFor(() =>
+      expect(client.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({ agentId: 'opencode', permissionMode: 'plan' }),
+      ),
     )
   })
 })

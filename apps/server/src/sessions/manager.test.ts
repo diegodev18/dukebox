@@ -1226,6 +1226,47 @@ describe('permission mode', () => {
     expect(adapter.started?.permissionMode).toBe('auto')
   })
 
+  it('defaults OpenCode to bypass', async () => {
+    const project = await createTestProject()
+    const session = await manager.start({
+      projectId: project.id,
+      agentId: 'opencode',
+      prompt: 'do a thing',
+    })
+    createdSessions.push(session.id)
+
+    expect(session.permissionMode).toBe('bypass')
+    await waitForSettled(session.id)
+  })
+
+  it('stores the requested mode for OpenCode on create', async () => {
+    const project = await createTestProject()
+    const session = await manager.start({
+      projectId: project.id,
+      agentId: 'opencode',
+      prompt: 'do a thing',
+      permissionMode: 'plan',
+    })
+    createdSessions.push(session.id)
+
+    expect(session.permissionMode).toBe('plan')
+    await waitForSettled(session.id)
+  })
+
+  it('hands the stored OpenCode mode to the adapter', async () => {
+    const project = await createTestProject()
+    const session = await manager.start({
+      projectId: project.id,
+      agentId: 'opencode',
+      prompt: 'do a thing',
+      permissionMode: 'plan',
+    })
+    createdSessions.push(session.id)
+    await waitForStatus(session.id, 'running')
+
+    expect(adapter.started?.permissionMode).toBe('plan')
+  })
+
   it('forwards a mid-session change to the adapter', async () => {
     const session = await startSession()
     await waitForStatus(session.id, 'running')

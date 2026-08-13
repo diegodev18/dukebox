@@ -54,7 +54,7 @@ export function permissionModeLabel(mode: string): string | undefined {
 }
 
 export function agentHasPermissionModes(agentId: string): boolean {
-  return agentId === 'claude-code'
+  return agentId === 'claude-code' || agentId === 'opencode'
 }
 
 /** Human name for a model id, when one is known. */

@@ -50,6 +50,22 @@ describe('buildRunArgs', () => {
     const args = buildRunArgs({ text: 'first\nsecond' })
     expect(args.filter((arg) => arg.includes('first'))).toEqual(['first\nsecond'])
   })
+
+  it('runs under the plan agent for plan mode', () => {
+    const args = buildRunArgs({ text: 'hello', permissionMode: 'plan' })
+
+    expect(args[args.indexOf('--agent') + 1]).toBe('plan')
+  })
+
+  it('does not select an agent for the other modes', () => {
+    for (const mode of ['bypass', 'auto', 'acceptEdits'] as const) {
+      expect(buildRunArgs({ text: 'hello', permissionMode: mode })).not.toContain('--agent')
+    }
+  })
+
+  it('defaults to the build agent when no mode is given', () => {
+    expect(buildRunArgs({ text: 'hello' })).not.toContain('--agent')
+  })
 })
 
 describe('OpenCodeAdapter', () => {
@@ -89,7 +105,7 @@ describe('OpenCodeAdapter', () => {
     expect(adapter.capabilities.thinking).toBe(true)
     expect(adapter.capabilities.interrupt).toBe(true)
     expect(adapter.capabilities.permissions).toBe(false)
-    expect(adapter.capabilities.permissionModes).toBe(false)
+    expect(adapter.capabilities.permissionModes).toBe(true)
   })
 
   it('yields events parsed from the process output', async () => {
@@ -321,5 +337,75 @@ describe('OpenCodeAdapter', () => {
     expect(second?.[0]).toEqual(
       expect.arrayContaining([expect.stringContaining('DUKEBOX_OPENCODE_INSTRUCTIONS')]),
     )
+  })
+
+  it('emits the session permission mode on start, defaulting to bypass', async () => {
+    const execStream = vi.fn(async () => new PassThrough())
+    const exec = vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' }))
+    const adapter = new OpenCodeAdapter()
+
+    await adapter.start({
+      sessionId: 'session-1',
+      workingDir: '/workspace/repo',
+      permissionMode: 'plan',
+      container: { exec, execStream } as unknown as SessionContext['container'],
+    })
+
+    const events = await collectUntil(adapter, 1)
+    expect(events[0]).toEqual({ type: 'permission_mode', mode: 'plan' })
+  })
+
+  it('runs the first send under the mode from start', async () => {
+    const execStream = vi.fn(async () => new PassThrough())
+    const exec = vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' }))
+    const adapter = new OpenCodeAdapter()
+
+    await adapter.start({
+      sessionId: 'session-1',
+      workingDir: '/workspace/repo',
+      permissionMode: 'plan',
+      container: { exec, execStream } as unknown as SessionContext['container'],
+    })
+
+    await adapter.send({ text: 'hello' })
+
+    expect(execStream.mock.calls[0]?.[0]).toEqual(
+      expect.arrayContaining(['--agent', 'plan', 'hello']),
+    )
+  })
+
+  it('applies a mid-session mode change to the next run', async () => {
+    const first = new PassThrough()
+    const second = new PassThrough()
+    const execStream = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second)
+    const exec = vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' }))
+    const adapter = new OpenCodeAdapter()
+    const collected: AgentEvent[] = []
+    const consuming = (async () => {
+      for await (const event of adapter.events()) collected.push(event)
+    })()
+
+    await adapter.start({
+      sessionId: 'session-1',
+      workingDir: '/workspace/repo',
+      container: { exec, execStream } as unknown as SessionContext['container'],
+    })
+
+    await adapter.send({ text: 'first' })
+    first.write(`${JSON.stringify({ type: 'step_start', sessionID: 'ses_live' })}\n`)
+    first.end()
+    await vi.waitFor(() =>
+      expect(collected).toContainEqual({ type: 'permission_mode', mode: 'bypass' }),
+    )
+
+    await adapter.setPermissionMode('plan')
+    await adapter.send({ text: 'second' })
+
+    const [command] = execStream.mock.calls[1] as unknown as [string[], unknown]
+    expect(command).toEqual(expect.arrayContaining(['--agent', 'plan', 'second']))
+
+    second.end()
+    await adapter.stop()
+    await consuming
   })
 })

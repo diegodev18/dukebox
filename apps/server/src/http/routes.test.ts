@@ -557,7 +557,7 @@ describe('GET /api/sessions', () => {
     expect(body.sessions[0]?.permissionMode).toBe('plan')
   })
 
-  it('hides permission mode for an agent that has none', async () => {
+  it('reports bypass for an OpenCode session with no stored mode', async () => {
     const project = await createProject()
     await createSession(project.id, { agentId: 'opencode' })
 
@@ -565,7 +565,7 @@ describe('GET /api/sessions', () => {
       sessions: { permissionMode: string | null }[]
     }
 
-    expect(body.sessions[0]?.permissionMode).toBeNull()
+    expect(body.sessions[0]?.permissionMode).toBe('bypass')
   })
 
   it('reports no pull request until one is opened', async () => {

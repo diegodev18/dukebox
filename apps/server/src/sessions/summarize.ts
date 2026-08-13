@@ -57,7 +57,7 @@ function parsePermissionMode(raw: string | null, agentId: string): PermissionMod
     if (parsed.success) return parsed.data
   }
 
-  // Pre-migration Claude Code sessions always ran in bypass.
-  if (agentId === 'claude-code') return 'bypass'
+  // Pre-migration Claude Code and OpenCode sessions always ran in bypass.
+  if (agentId === 'claude-code' || agentId === 'opencode') return 'bypass'
   return null
 }
