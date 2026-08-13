@@ -572,7 +572,25 @@ describe('commands', () => {
     client.send({ type: 'prompt', sessionId, text: 'hello' })
     await client.waitFor(() => onPrompt.mock.calls.length === 1)
 
-    expect(onPrompt).toHaveBeenCalledWith(sessionId, 'hello', undefined)
+    expect(onPrompt).toHaveBeenCalledWith(sessionId, 'hello', undefined, undefined)
+    client.close()
+  })
+
+  it('forwards attached files with a prompt', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({
+      type: 'prompt',
+      sessionId,
+      text: 'read this',
+      files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
+    })
+    await client.waitFor(() => onPrompt.mock.calls.length === 1)
+
+    expect(onPrompt).toHaveBeenCalledWith(sessionId, 'read this', undefined, [
+      { name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' },
+    ])
     client.close()
   })
 

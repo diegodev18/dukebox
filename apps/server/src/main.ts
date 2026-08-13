@@ -119,7 +119,7 @@ async function main() {
   const wss = attachWebSocketServer(server as unknown as Server, {
     db,
     bus,
-    onPrompt: (sessionId, text, images) => sessions.prompt(sessionId, text, images),
+    onPrompt: (sessionId, text, images, files) => sessions.prompt(sessionId, text, images, files),
     onInterrupt: (sessionId) => sessions.interrupt(sessionId),
     onPermissionResponse: (sessionId, id, allow) =>
       sessions.respondToPermission(sessionId, id, allow),

@@ -2,6 +2,7 @@ import type { AgentCapabilities, AgentEvent, PermissionMode } from '@dukebox/pro
 import type { Duplex } from 'node:stream'
 import { JsonlReader } from '../jsonl.js'
 import type { AgentAdapter, SessionContext, UserMessage } from '../types.js'
+import { extensionFor, parseDataUri, stageUpload } from '../uploads.js'
 import { OpenCodeMapper } from './mapper.js'
 
 /**
@@ -221,7 +222,7 @@ export class OpenCodeAdapter implements AgentAdapter {
     this.sawDone = false
     this.interrupted = false
 
-    const files = await this.stageImages(message)
+    const files = await this.stageUploads(message)
     const sessionId = this.mapper.agentSessionId || this.context.resumeFrom
     const args = buildRunArgs({
       text: message.text,
@@ -243,31 +244,51 @@ export class OpenCodeAdapter implements AgentAdapter {
   }
 
   /**
-   * Write attached images into the container so `--file` can point at them.
+   * Write attached images and files into the sandbox so `--file` can point at
+   * them.
    *
-   * OpenCode takes filesystem paths, not data URIs. A URI that is not a
-   * data URI is skipped rather than passed through as a path that will 404.
+   * OpenCode takes filesystem paths, not data URIs. A URI that is not a data
+   * URI is skipped rather than passed through as a path that will 404.
    */
-  private async stageImages(message: UserMessage): Promise<string[]> {
+  private async stageUploads(message: UserMessage): Promise<string[]> {
     if (!this.context) return []
 
     const files: string[] = []
 
     for (const [index, image] of (message.images ?? []).entries()) {
-      const match = /^data:([^;]+);base64,(.+)$/.exec(image)
-      if (!match) continue
+      const path = await this.stageDataUri(image, `image-${index}`, true)
+      if (path) files.push(path)
+    }
 
-      const path = `/tmp/dukebox-image-${index}`
-      const data = match[2]
-      if (!data) continue
-      await this.context.container.exec(
-        ['sh', '-c', `printf '%s' "$DUKEBOX_IMAGE" | base64 -d > ${path}`],
-        { env: { DUKEBOX_IMAGE: data } },
-      )
-      files.push(path)
+    for (const file of message.files ?? []) {
+      const path = await this.stageDataUri(file.data, file.name, false)
+      if (path) files.push(path)
     }
 
     return files
+  }
+
+  /**
+   * Decode one data URI into `/tmp/imgs/` and return its container path.
+   *
+   * Images get a media-type extension so the agent still recognizes them;
+   * uploaded files keep their own name.
+   */
+  private async stageDataUri(
+    data: string,
+    name: string,
+    image: boolean,
+  ): Promise<string | undefined> {
+    if (!this.context) return undefined
+
+    const parsed = parseDataUri(data)
+    if (!parsed) return undefined
+
+    const extension = image ? extensionFor(parsed.mime) : undefined
+    const path = await stageUpload(this.context.container, name, parsed.payload, {
+      ...(extension ? { extension } : {}),
+    })
+    return path
   }
 
   async respondToPermission(): Promise<void> {

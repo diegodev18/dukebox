@@ -38,6 +38,13 @@ export const promptCommand = z.object({
   text: z.string().min(1),
   /** Base64 data URIs. Agents without image support reject these. */
   images: z.array(z.string()).optional(),
+  /**
+   * Files to stage into the sandbox before the prompt runs.
+   *
+   * `data` is a base64 data URI; the agent sees the decoded bytes at
+   * `/tmp/imgs/<name>`.
+   */
+  files: z.array(z.object({ name: z.string().min(1), data: z.string().min(1) })).optional(),
 })
 
 /** Answer a permission_request. `id` matches the request. */

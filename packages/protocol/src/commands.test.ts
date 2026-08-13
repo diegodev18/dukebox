@@ -3,6 +3,46 @@ import { clientCommand, serverMessage } from './commands.js'
 
 const sessionId = '11111111-1111-4111-8111-111111111111'
 
+describe('prompt', () => {
+  it('parses a prompt with attached files', () => {
+    const result = clientCommand.safeParse({
+      type: 'prompt',
+      sessionId,
+      text: 'read this',
+      files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.files).toEqual([
+        { name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' },
+      ])
+    }
+  })
+
+  it('rejects an attached file without a name', () => {
+    const result = clientCommand.safeParse({
+      type: 'prompt',
+      sessionId,
+      text: 'read this',
+      files: [{ data: 'data:text/plain;base64,aGVsbG8=' }],
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects an attached file with empty data', () => {
+    const result = clientCommand.safeParse({
+      type: 'prompt',
+      sessionId,
+      text: 'read this',
+      files: [{ name: 'notes.txt', data: '' }],
+    })
+
+    expect(result.success).toBe(false)
+  })
+})
+
 describe('permission mode', () => {
   it('parses set_permission_mode', () => {
     const result = clientCommand.safeParse({

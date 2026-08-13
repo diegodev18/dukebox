@@ -156,8 +156,19 @@ export class SessionStream {
     this.send({ type: 'unsubscribe', sessionId })
   }
 
-  prompt(sessionId: string, text: string, images?: string[]): void {
-    this.send({ type: 'prompt', sessionId, text, ...(images ? { images } : {}) })
+  prompt(
+    sessionId: string,
+    text: string,
+    images?: string[],
+    files?: { name: string; data: string }[],
+  ): void {
+    this.send({
+      type: 'prompt',
+      sessionId,
+      text,
+      ...(images ? { images } : {}),
+      ...(files ? { files } : {}),
+    })
   }
 
   interrupt(sessionId: string): void {

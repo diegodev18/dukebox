@@ -1054,7 +1054,12 @@ export class SessionManager {
   }
 
   /** Send a follow-up prompt to a running session. */
-  async prompt(sessionId: string, text: string, images?: string[]): Promise<void> {
+  async prompt(
+    sessionId: string,
+    text: string,
+    images?: string[],
+    files?: { name: string; data: string }[],
+  ): Promise<void> {
     const running = await this.ensureRunning(sessionId)
 
     await this.setStatus(sessionId, 'running')
@@ -1063,7 +1068,11 @@ export class SessionManager {
     // reaches every other device watching this session.
     await this.deps.bus.append(sessionId, { type: 'user_prompt', text })
 
-    await running.adapter.send({ text, ...(images ? { images } : {}) })
+    await running.adapter.send({
+      text,
+      ...(images ? { images } : {}),
+      ...(files ? { files } : {}),
+    })
   }
 
   /**

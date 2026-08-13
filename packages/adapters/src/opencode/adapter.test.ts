@@ -46,6 +46,18 @@ describe('buildRunArgs', () => {
     expect(args.at(-1)).toBe('what is this')
   })
 
+  it('passes every staged upload as its own --file', () => {
+    const args = buildRunArgs({
+      text: 'review these',
+      files: ['/tmp/imgs/image-0.png', '/tmp/imgs/spec.pdf'],
+    })
+
+    expect(args.filter((arg) => arg === '--file')).toHaveLength(2)
+    expect(args).toContain('/tmp/imgs/image-0.png')
+    expect(args).toContain('/tmp/imgs/spec.pdf')
+    expect(args.at(-1)).toBe('review these')
+  })
+
   it('keeps a multi-line prompt as a single argument', () => {
     const args = buildRunArgs({ text: 'first\nsecond' })
     expect(args.filter((arg) => arg.includes('first'))).toEqual(['first\nsecond'])
@@ -298,6 +310,47 @@ describe('OpenCodeAdapter', () => {
 
     expect(execStream.mock.calls[0]?.[0]).toEqual(
       expect.arrayContaining(['--session', 'ses_prior', 'continue']),
+    )
+  })
+
+  it('stages images and files into /tmp/imgs and passes them as --file', async () => {
+    const stream = new PassThrough()
+    const exec = vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' }))
+    const execStream = vi.fn(async () => stream)
+    const adapter = new OpenCodeAdapter()
+
+    await adapter.start({
+      sessionId: 'session-1',
+      workingDir: '/workspace/repo',
+      container: { exec, execStream } as unknown as SessionContext['container'],
+    })
+
+    await adapter.send({
+      text: 'review these',
+      images: ['data:image/png;base64,QUFB'],
+      files: [{ name: 'spec.pdf', data: 'data:application/pdf;base64,REVF' }],
+    })
+
+    expect(exec).toHaveBeenCalledWith(
+      [
+        'sh',
+        '-c',
+        'mkdir -p /tmp/imgs && printf \'%s\' "$DUKEBOX_FILE" | base64 -d > /tmp/imgs/image-0.png',
+      ],
+      { env: { DUKEBOX_FILE: 'QUFB' } },
+    )
+    expect(exec).toHaveBeenCalledWith(
+      [
+        'sh',
+        '-c',
+        'mkdir -p /tmp/imgs && printf \'%s\' "$DUKEBOX_FILE" | base64 -d > /tmp/imgs/spec.pdf',
+      ],
+      { env: { DUKEBOX_FILE: 'REVF' } },
+    )
+
+    const [command] = execStream.mock.calls[0] as unknown as [string[], unknown]
+    expect(command).toEqual(
+      expect.arrayContaining(['--file', '/tmp/imgs/image-0.png', '--file', '/tmp/imgs/spec.pdf']),
     )
   })
 

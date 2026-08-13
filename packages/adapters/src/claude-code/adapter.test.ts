@@ -1,6 +1,6 @@
 import type { AgentEvent } from '@dukebox/protocol'
 import { PassThrough } from 'node:stream'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { SessionContext } from '../types.js'
 import {
   buildArgs,
@@ -125,6 +125,21 @@ describe('encodeUserMessage', () => {
     expect(JSON.parse(encoded).message.content).toEqual([
       { type: 'text', text: 'what is this' },
       { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } },
+    ])
+  })
+
+  it('references staged files from their own text blocks', () => {
+    const encoded = encodeUserMessage(
+      {
+        text: 'read these',
+        files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
+      },
+      ['/tmp/imgs/notes.txt'],
+    )
+
+    expect(JSON.parse(encoded).message.content).toEqual([
+      { type: 'text', text: 'read these' },
+      { type: 'text', text: '[Attached file: /tmp/imgs/notes.txt]' },
     ])
   })
 
@@ -271,6 +286,50 @@ describe('ClaudeCodeAdapter', () => {
 
   it('rejects send before start', async () => {
     await expect(new ClaudeCodeAdapter().send({ text: 'hi' })).rejects.toThrow('not started')
+  })
+
+  it('stages attached files into /tmp/imgs before sending', async () => {
+    const stream = new PassThrough()
+    const exec = vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' }))
+    const adapter = new ClaudeCodeAdapter()
+
+    await adapter.start({
+      sessionId: 'session-1',
+      workingDir: '/workspace/repo',
+      container: {
+        exec,
+        execStream: vi.fn(async () => stream),
+      } as unknown as SessionContext['container'],
+    })
+
+    const written: string[] = []
+    stream.write = ((chunk: string) => {
+      written.push(String(chunk))
+      return true
+    }) as typeof stream.write
+
+    await adapter.send({
+      text: 'read this',
+      files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
+    })
+
+    expect(exec).toHaveBeenCalledWith(
+      [
+        'sh',
+        '-c',
+        'mkdir -p /tmp/imgs && printf \'%s\' "$DUKEBOX_FILE" | base64 -d > /tmp/imgs/notes.txt',
+      ],
+      { env: { DUKEBOX_FILE: 'aGVsbG8=' } },
+    )
+    expect(written).toEqual([
+      encodeUserMessage(
+        {
+          text: 'read this',
+          files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
+        },
+        ['/tmp/imgs/notes.txt'],
+      ),
+    ])
   })
 
   it('answers a permission over the control channel', async () => {
