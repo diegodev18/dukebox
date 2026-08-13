@@ -182,7 +182,6 @@ describe('NewSession environment picker', () => {
     })
     renderScreen(client, { environmentCount: 0 })
 
-    // Exact, since "Reconfigure environment" sits in the composer too.
     await userEvent.click(await screen.findByRole('button', { name: 'Configure environment' }))
     await userEvent.click(await screen.findByRole('button', { name: /start setup/i }))
 
@@ -207,7 +206,6 @@ describe('NewSession environment picker', () => {
     const client = makeClient({ listEnvironments: vi.fn().mockResolvedValue([]) })
     renderScreen(client, { environmentCount: 0 })
 
-    // Exact, since "Reconfigure environment" sits in the composer too.
     await userEvent.click(await screen.findByRole('button', { name: 'Configure environment' }))
     // A branch with no slash cannot suggest a family, so it offers the catch-all.
     expect(screen.getByLabelText(/branches/i)).toHaveValue('**')
@@ -624,5 +622,85 @@ describe('NewSession last session', () => {
         }),
       ),
     )
+  })
+})
+
+function promptComposer() {
+  const field = screen.getByLabelText(/what should it do/i)
+  const box = field.parentElement
+  if (!box) throw new Error('expected the prompt composer')
+  return box
+}
+
+describe('NewSession picker placement', () => {
+  it('keeps session-fixed pickers above the prompt and mutable ones inside', async () => {
+    renderScreen(makeClient())
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Model' })).toBeInTheDocument())
+
+    const inside = within(promptComposer())
+    expect(inside.getByRole('button', { name: 'Model' })).toBeInTheDocument()
+    expect(inside.getByRole('button', { name: 'Permission mode' })).toBeInTheDocument()
+    expect(inside.queryByRole('button', { name: 'Repository' })).not.toBeInTheDocument()
+    expect(inside.queryByRole('button', { name: 'Agent' })).not.toBeInTheDocument()
+    expect(inside.queryByRole('button', { name: 'Instance' })).not.toBeInTheDocument()
+    expect(inside.queryByRole('button', { name: 'Environment' })).not.toBeInTheDocument()
+
+    expect(screen.getByRole('button', { name: 'Repository' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Agent' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Instance' })).toBeInTheDocument()
+  })
+
+  it('puts OpenCode provider, model, and permission mode inside the prompt', async () => {
+    const client = makeClient({
+      listOpencodeProviders: vi.fn().mockResolvedValue([
+        {
+          id: 'openai',
+          kind: 'openai',
+          name: 'OpenAI',
+          models: [{ id: 'gpt-5.2', label: 'GPT-5.2' }],
+        },
+      ]),
+    })
+    renderScreen(client)
+
+    const agents = await openPicker('Agent')
+    await userEvent.click(within(agents).getByRole('option', { name: /OpenCode/ }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Provider' })).toHaveTextContent('OpenAI'),
+    )
+
+    const inside = within(promptComposer())
+    expect(inside.getByRole('button', { name: 'Provider' })).toBeInTheDocument()
+    expect(inside.getByRole('button', { name: 'Model' })).toBeInTheDocument()
+    expect(inside.getByRole('button', { name: 'Permission mode' })).toBeInTheDocument()
+    expect(inside.queryByRole('button', { name: 'Agent' })).not.toBeInTheDocument()
+  })
+
+  it('keeps Reconfigure environment outside the prompt', async () => {
+    renderScreen(makeClient())
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Environment' })).toHaveTextContent('Default'),
+    )
+
+    expect(
+      within(promptComposer()).queryByRole('button', { name: 'Reconfigure environment' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reconfigure environment' })).toBeInTheDocument()
+  })
+
+  it('keeps mutable pickers on the environment setup form', async () => {
+    const client = makeClient({ listEnvironments: vi.fn().mockResolvedValue([]) })
+    renderScreen(client, { environmentCount: 0 })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Configure environment' }))
+
+    const form = screen.getByRole('heading', { name: 'Configure environment' }).closest('div')
+    expect(form).not.toBeNull()
+    expect(within(form!).getByRole('button', { name: 'Model' })).toBeInTheDocument()
+    expect(within(form!).getByRole('button', { name: 'Permission mode' })).toBeInTheDocument()
+    expect(within(form!).queryByRole('button', { name: 'Agent' })).not.toBeInTheDocument()
   })
 })
