@@ -1,8 +1,8 @@
 import type { FileChange, PullRequestSummary, SessionSummary } from '@dukebox/protocol'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ApiFailure, type DukeboxClient } from '@/lib/client'
-import { Diff, changeCounts } from '@/components/Diff'
+import { Diff, changeCounts, expandedPaths } from '@/components/Diff'
 import { BranchIcon, ChevronDownIcon, ChevronRightIcon, FileIcon } from '@/components/icons'
 import { PullRequestStatusIcon } from '@/components/PullRequestStatusIcon'
 import { pullRequestStatus, pullRequestStatusLabel } from '@/lib/pullRequest'
@@ -259,7 +259,13 @@ function StatusBadge({ pr }: { pr: PullRequestSummary }) {
 }
 
 function PrDiffs({ files }: { files: FileChange[] }) {
-  const [open, setOpen] = useState<string | null>(files[0]?.path ?? null)
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set())
+
+  // Diffs default to open, and files that arrive later are open too. Only a
+  // diff the user collapsed stays closed.
+  useEffect(() => {
+    setOpen((current) => (files.length === 0 ? new Set() : expandedPaths(current, files)))
+  }, [files])
 
   if (files.length === 0) {
     return (
@@ -272,14 +278,21 @@ function PrDiffs({ files }: { files: FileChange[] }) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       {files.map((file) => {
-        const expanded = open === file.path
+        const expanded = open.has(file.path)
         const counts = changeCounts(file.before, file.after)
 
         return (
           <div key={file.path} className="border-b border-border last:border-b-0">
             <button
               type="button"
-              onClick={() => setOpen(expanded ? null : file.path)}
+              onClick={() =>
+                setOpen((current) => {
+                  const next = new Set(current)
+                  if (next.has(file.path)) next.delete(file.path)
+                  else next.add(file.path)
+                  return next
+                })
+              }
               aria-expanded={expanded}
               className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-[12.5px] hover:bg-muted"
             >

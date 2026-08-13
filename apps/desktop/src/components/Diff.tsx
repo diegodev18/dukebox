@@ -250,6 +250,20 @@ export function skipLabel(count: number, range?: { start: number; end: number })
   return `${noun} · ${range.start}–${range.end}`
 }
 
+/**
+ * The file paths a Changes or Pull request list should keep expanded.
+ *
+ * Diffs default to open — those tabs exist to review what changed — and a file
+ * that arrives later is open too. Only missing paths are added, so a diff the
+ * user collapsed stays collapsed.
+ */
+export function expandedPaths(open: ReadonlySet<string>, files: FileChange[]): ReadonlySet<string> {
+  if (files.every((file) => open.has(file.path))) return open
+  const next = new Set(open)
+  for (const file of files) next.add(file.path)
+  return next
+}
+
 /** Added and removed line counts for a file's before/after pair. */
 export function changeCounts(
   before: string | null,
