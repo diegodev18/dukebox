@@ -259,6 +259,7 @@ const fakeClient = {
       REDIS_URL: { secret: true, description: 'Redis connection string' },
     },
     instructions: 'Use pnpm; prefer turbo for package scripts.',
+    verification: { ok: true },
   }),
   getEnvironment: async () => ({
     config: null,

@@ -6,6 +6,7 @@ import {
   Workspace,
   WorkspaceError,
   WORKSPACE_DIR,
+  SETUP_VERIFY_DIR,
   resolveWorkspacePath,
 } from './workspace.js'
 
@@ -168,6 +169,48 @@ describe('Workspace', () => {
         stderr: expect.stringContaining('boom'),
         exitCode: 2,
       })
+    })
+  })
+
+  describe('verifySetup', () => {
+    it('does not see untracked files from the live worktree', async () => {
+      const { workspace: ws, container: target } = await freshWorkspace()
+      const base = await ws.headCommit()
+
+      await target.exec(['sh', '-c', 'echo leftover > untracked.txt'], { cwd: WORKSPACE_DIR })
+
+      await ws.verifySetup(['test ! -f untracked.txt'], base)
+
+      const leftover = await target.exec(['cat', 'untracked.txt'], { cwd: WORKSPACE_DIR })
+      expect(leftover.stdout.trim()).toBe('leftover')
+    })
+
+    it('runs commands and leaves the original worktree untouched', async () => {
+      const { workspace: ws, container: target } = await freshWorkspace()
+      const base = await ws.headCommit()
+
+      await ws.verifySetup(['echo verified > verified.txt'], base)
+
+      const inRepo = await target.exec(['test', '-f', 'verified.txt'], { cwd: WORKSPACE_DIR })
+      expect(inRepo.exitCode).not.toBe(0)
+
+      const verifyDir = await target.exec(['test', '-d', SETUP_VERIFY_DIR])
+      expect(verifyDir.exitCode).not.toBe(0)
+    })
+
+    it('stops at the first failing command', async () => {
+      const { workspace: ws, container: target } = await freshWorkspace()
+      const base = await ws.headCommit()
+
+      await expect(
+        ws.verifySetup(['exit 1', 'echo unreachable > should-not'], base),
+      ).rejects.toThrow(WorkspaceError)
+
+      const leaked = await target.exec(['test', '-f', 'should-not'], { cwd: WORKSPACE_DIR })
+      expect(leaked.exitCode).not.toBe(0)
+
+      const verifyDir = await target.exec(['test', '-d', SETUP_VERIFY_DIR])
+      expect(verifyDir.exitCode).not.toBe(0)
     })
   })
 

@@ -19,6 +19,9 @@ import {
   type SessionStatus,
   type PermissionMode,
   DEFAULT_PERMISSION_MODE,
+  ENVIRONMENT_SETUP_IMAGE_MISMATCH,
+  type EnvironmentProposal,
+  type EnvironmentSetupVerification,
 } from '@dukebox/protocol'
 import {
   CONTAINER_SOCKET_DIR,
@@ -41,7 +44,12 @@ import type { EventBus } from '../events/bus.js'
 import type { GitHubClient } from '../github/client.js'
 import { AGENT_CREDENTIAL_SECRET, type SecretStore } from '../secrets/store.js'
 import { buildOpencodeSessionEnv, loadOpencodeProviders } from '../opencode/providers.js'
-import { ENVIRONMENT_SETUP_PROMPT, parseEnvironmentProposalJson } from './environmentSetup.js'
+import {
+  ENVIRONMENT_SETUP_PROMPT,
+  MAX_ENVIRONMENT_SETUP_VERIFY_RETRIES,
+  environmentSetupVerifyRetryPrompt,
+  parseEnvironmentProposalJson,
+} from './environmentSetup.js'
 import { writePullRequestContent } from './pr-writer.js'
 import { toSummary } from './summarize.js'
 
@@ -143,6 +151,11 @@ interface RunningSession {
   credentials?: CredentialProxy
   repoFullName: string
   purpose: SessionPurpose
+  /**
+   * How many times a failed setup verify has already been sent back to the
+   * agent. Caps the environment_setup retry loop.
+   */
+  setupVerifyAttempts: number
 }
 
 export class SessionError extends Error {}
@@ -151,6 +164,21 @@ export class SessionError extends Error {}
 function workspaceAsSessionError(error: unknown): SessionError {
   if (error instanceof WorkspaceError) return new SessionError(error.message)
   throw error
+}
+
+const SETUP_VERIFY_ERROR_LIMIT = 4000
+
+/** Stderr from a failed verify, truncated so a follow-up prompt stays readable. */
+function formatSetupVerifyError(error: unknown): string {
+  const raw =
+    error instanceof WorkspaceError
+      ? error.stderr.trim() || error.message
+      : error instanceof Error
+        ? error.message
+        : String(error)
+  return raw.length > SETUP_VERIFY_ERROR_LIMIT
+    ? `${raw.slice(0, SETUP_VERIFY_ERROR_LIMIT)}\n…`
+    : raw
 }
 
 /** The adapter for an agent id, or a thrown error if none is registered. */
@@ -433,6 +461,7 @@ export class SessionManager {
       baseCommit,
       repoFullName,
       purpose,
+      setupVerifyAttempts: 0,
       ...(credentials ? { credentials } : {}),
     })
     await this.setStatus(session.id, 'running')
@@ -515,7 +544,8 @@ export class SessionManager {
     }
 
     if (running.purpose === 'environment_setup' && reason !== 'error') {
-      await this.captureEnvironmentProposal(sessionId, running)
+      const retried = await this.captureAndVerifyEnvironmentProposal(sessionId, running)
+      if (retried) return
     }
 
     const agentSessionId = running.adapter.agentSessionId()
@@ -526,25 +556,31 @@ export class SessionManager {
   }
 
   /**
-   * Read the setup agent's proposal file and store it as the project's draft.
+   * Read the setup agent's proposal, re-run its commands on a clean clone, and
+   * store the draft.
    *
-   * A missing or invalid file is logged on the session rather than failing the
-   * turn — the user can still re-run setup or fill the form manually.
+   * A missing or invalid file is logged rather than failing the turn. A failed
+   * verify is sent back to the agent a bounded number of times so they can fix
+   * the commands before the user reviews them.
+   *
+   * Returns true when a follow-up was sent and the turn should stay running.
    */
-  private async captureEnvironmentProposal(
+  private async captureAndVerifyEnvironmentProposal(
     sessionId: string,
     running: RunningSession,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
-    if (!session) return
+    if (!session) return false
 
+    let proposal: EnvironmentProposal
+    let environmentId: string
     try {
       const result = await running.container.exec(['cat', ENVIRONMENT_PROPOSAL_PATH])
       if (result.exitCode !== 0) {
         throw new Error(`proposal file missing at ${ENVIRONMENT_PROPOSAL_PATH}`)
       }
 
-      const proposal = parseEnvironmentProposalJson(result.stdout)
+      proposal = parseEnvironmentProposalJson(result.stdout)
 
       // The draft belongs to the environment the session runs in. A setup
       // session started from the app always has one; without it there is
@@ -552,11 +588,7 @@ export class SessionManager {
       if (!session.environmentId) {
         throw new Error('session has no environment to store the proposal on')
       }
-
-      await this.deps.db
-        .update(environments)
-        .set({ environmentDraft: proposal, updatedAt: new Date() })
-        .where(eq(environments.id, session.environmentId))
+      environmentId = session.environmentId
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       await this.deps.bus
@@ -566,7 +598,70 @@ export class SessionManager {
           fatal: false,
         })
         .catch(() => undefined)
+      return false
     }
+
+    const config = await this.configFor(environmentId)
+    const verification = await this.verifyEnvironmentProposal(proposal, config.image, running)
+
+    if (!verification.ok && !verification.skippedReason) {
+      if (running.setupVerifyAttempts < MAX_ENVIRONMENT_SETUP_VERIFY_RETRIES) {
+        running.setupVerifyAttempts += 1
+        const retry = environmentSetupVerifyRetryPrompt(
+          proposal.setup,
+          verification.error ?? 'setup verification failed',
+        )
+        await this.deps.bus.append(sessionId, { type: 'user_prompt', text: retry })
+        await running.adapter.send({ text: retry })
+        return true
+      }
+
+      await this.deps.bus
+        .append(sessionId, {
+          type: 'error',
+          message: `Setup verification failed: ${verification.error ?? 'unknown error'}`,
+          fatal: false,
+        })
+        .catch(() => undefined)
+    }
+
+    await this.persistEnvironmentDraft(environmentId, proposal, verification)
+    return false
+  }
+
+  /**
+   * Run proposed setup the way a coding session would, or skip when the
+   * proposal asks for a different image than this container.
+   */
+  private async verifyEnvironmentProposal(
+    proposal: EnvironmentProposal,
+    currentImage: string,
+    running: RunningSession,
+  ): Promise<EnvironmentSetupVerification> {
+    if (proposal.image !== undefined && proposal.image !== currentImage) {
+      return { ok: false, skippedReason: ENVIRONMENT_SETUP_IMAGE_MISMATCH }
+    }
+
+    if (proposal.setup.length === 0) return { ok: true }
+
+    try {
+      await running.workspace.verifySetup(proposal.setup, running.baseCommit)
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: formatSetupVerifyError(error) }
+    }
+  }
+
+  private async persistEnvironmentDraft(
+    environmentId: string,
+    proposal: EnvironmentProposal,
+    verification: EnvironmentSetupVerification,
+  ): Promise<void> {
+    const draft: EnvironmentProposal = { ...proposal, verification }
+    await this.deps.db
+      .update(environments)
+      .set({ environmentDraft: draft, updatedAt: new Date() })
+      .where(eq(environments.id, environmentId))
   }
 
   /**
@@ -1137,6 +1232,7 @@ export class SessionManager {
       baseCommit: await this.baseCommitFor(session, workspace),
       repoFullName: project.repoFullName,
       purpose: (session.purpose as SessionPurpose) || 'coding',
+      setupVerifyAttempts: 0,
       ...(credentials ? { credentials } : {}),
     }
 

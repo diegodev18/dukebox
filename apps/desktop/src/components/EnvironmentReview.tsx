@@ -1,4 +1,8 @@
-import type { EnvironmentProposal } from '@dukebox/protocol'
+import {
+  ENVIRONMENT_SETUP_IMAGE_MISMATCH,
+  type EnvironmentProposal,
+  type EnvironmentSetupVerification,
+} from '@dukebox/protocol'
 import { useEffect, useState } from 'react'
 import type { DukeboxClient } from '@/lib/client'
 
@@ -46,6 +50,8 @@ export function EnvironmentReview({
   disabled = false,
 }: Props) {
   const [setupText, setSetupText] = useState('')
+  const [proposedSetup, setProposedSetup] = useState('')
+  const [verification, setVerification] = useState<EnvironmentSetupVerification | undefined>()
   const [instructions, setInstructions] = useState('')
   const [envRows, setEnvRows] = useState<EnvRow[]>([])
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
@@ -78,6 +84,8 @@ export function EnvironmentReview({
           }
 
         setSetupText(source.setup.join('\n'))
+        setProposedSetup(source.setup.join('\n'))
+        setVerification(source.verification)
         setInstructions(source.instructions ?? '')
         setEnvRows(
           Object.entries(source.env).map(([name, meta]) => ({
@@ -202,6 +210,7 @@ export function EnvironmentReview({
             Edit setup commands and fill in env values, then save. Secrets stay on the server.
           </p>
         </div>
+        <VerificationBanner verification={verification} setupEdited={setupText !== proposedSetup} />
         <button
           type="button"
           onClick={() => void save()}
@@ -349,4 +358,53 @@ interface EnvRow {
   description: string
   value: string
   configured: boolean
+}
+
+function VerificationBanner({
+  verification,
+  setupEdited,
+}: {
+  verification: EnvironmentSetupVerification | undefined
+  setupEdited: boolean
+}) {
+  const banner = verificationMessage(verification, setupEdited)
+  if (!banner) return null
+
+  return (
+    <p
+      role="status"
+      className={`rounded-md border px-2.5 py-2 text-[12px] ${
+        banner.tone === 'error'
+          ? 'border-destructive/40 text-destructive'
+          : 'border-border text-muted-foreground'
+      }`}
+    >
+      {banner.message}
+    </p>
+  )
+}
+
+function verificationMessage(
+  verification: EnvironmentSetupVerification | undefined,
+  setupEdited: boolean,
+): { tone: 'ok' | 'error'; message: string } | null {
+  if (setupEdited) {
+    return { tone: 'ok', message: 'Setup commands were edited and are no longer verified.' }
+  }
+  if (!verification) return null
+  if (verification.ok) {
+    return { tone: 'ok', message: 'Setup commands ran successfully in a clean clone.' }
+  }
+  if (verification.skippedReason === ENVIRONMENT_SETUP_IMAGE_MISMATCH) {
+    return {
+      tone: 'ok',
+      message: 'Setup could not be verified because the proposal uses a different container image.',
+    }
+  }
+  return {
+    tone: 'error',
+    message: verification.error
+      ? `Setup verification failed: ${verification.error}`
+      : 'Setup verification failed.',
+  }
 }

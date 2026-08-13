@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { ENVIRONMENT_SETUP_PROMPT, parseEnvironmentProposalJson } from './environmentSetup.js'
+import {
+  ENVIRONMENT_SETUP_PROMPT,
+  environmentSetupVerifyRetryPrompt,
+  parseEnvironmentProposalJson,
+} from './environmentSetup.js'
 
 describe('parseEnvironmentProposalJson', () => {
   it('accepts a valid proposal', () => {
@@ -33,5 +37,22 @@ describe('ENVIRONMENT_SETUP_PROMPT', () => {
   it('points the agent at the proposal path', () => {
     expect(ENVIRONMENT_SETUP_PROMPT).toContain('/tmp/dukebox-env-proposal.json')
     expect(ENVIRONMENT_SETUP_PROMPT).toContain('Never invent')
+  })
+
+  it('asks the agent to run setup on a clean tree before proposing', () => {
+    expect(ENVIRONMENT_SETUP_PROMPT).toContain('actually run the setup commands')
+    expect(ENVIRONMENT_SETUP_PROMPT).toContain('clean tree')
+    expect(ENVIRONMENT_SETUP_PROMPT).toContain('without secret values')
+    expect(ENVIRONMENT_SETUP_PROMPT).toContain('Do not commit')
+  })
+})
+
+describe('environmentSetupVerifyRetryPrompt', () => {
+  it('names the failed commands and the clean-clone requirement', () => {
+    const prompt = environmentSetupVerifyRetryPrompt(['pnpm install'], 'exit 1')
+    expect(prompt).toContain('/tmp/dukebox-env-proposal.json')
+    expect(prompt).toContain('clean clone')
+    expect(prompt).toContain('pnpm install')
+    expect(prompt).toContain('exit 1')
   })
 })

@@ -236,6 +236,16 @@ async function waitForPrompt(prompt: string, timeoutMs = 90_000) {
   throw new Error(`initial prompt was not delivered in time`)
 }
 
+async function waitForMatchingPromptCount(pattern: RegExp, count: number, timeoutMs = 90_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const matches = adapter.prompts.filter((message) => pattern.test(message.text)).length
+    if (matches >= count) return
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  throw new Error(`prompt matching ${pattern} did not reach count ${count} in time`)
+}
+
 /**
  * Wait for provisioning to leave the database connection alone, whichever way
  * it goes.
@@ -1207,7 +1217,7 @@ describe('project environment on coding sessions', () => {
     await container!.exec([
       'sh',
       '-c',
-      `printf '%s' '{"setup":["pnpm install"],"env":{"DATABASE_URL":{"secret":true}}}' > /tmp/dukebox-env-proposal.json`,
+      `printf '%s' '{"setup":["true"],"env":{"DATABASE_URL":{"secret":true}}}' > /tmp/dukebox-env-proposal.json`,
     ])
 
     adapter.emit({ type: 'done', reason: 'completed' })
@@ -1218,8 +1228,157 @@ describe('project environment on coding sessions', () => {
       .from(environments)
       .where(eq(environments.id, environment!.id))
     expect(updated?.environmentDraft).toMatchObject({
-      setup: ['pnpm install'],
+      setup: ['true'],
       env: { DATABASE_URL: { secret: true } },
+      verification: { ok: true },
+    })
+  }, 120_000)
+
+  it('retries a failing setup proposal and then stores the failure', async () => {
+    const project = await createTestProject()
+    const [environment] = await db
+      .insert(environments)
+      .values({
+        projectId: project.id,
+        name: 'Default',
+        branchPattern: '**',
+        position: 0,
+      })
+      .returning()
+
+    const session = await manager.start({
+      projectId: project.id,
+      agentId: 'fake',
+      purpose: 'environment_setup',
+    })
+    createdSessions.push(session.id)
+
+    await waitForStatus(session.id, 'running')
+
+    const container = await sandbox.get(session.id)
+    await container!.exec([
+      'sh',
+      '-c',
+      `printf '%s' '{"setup":["false"]}' > /tmp/dukebox-env-proposal.json`,
+    ])
+
+    adapter.emit({ type: 'done', reason: 'completed' })
+    await waitForMatchingPromptCount(/clean clone/, 1)
+
+    const [stillRunning] = await db
+      .select({ status: sessions.status })
+      .from(sessions)
+      .where(eq(sessions.id, session.id))
+    expect(stillRunning?.status).toBe('running')
+
+    adapter.emit({ type: 'done', reason: 'completed' })
+    await waitForMatchingPromptCount(/clean clone/, 2)
+
+    adapter.emit({ type: 'done', reason: 'completed' })
+    await waitForStatus(session.id, 'done')
+
+    const [updated] = await db
+      .select()
+      .from(environments)
+      .where(eq(environments.id, environment!.id))
+    expect(updated?.environmentDraft).toMatchObject({
+      setup: ['false'],
+      verification: { ok: false },
+    })
+    expect(
+      (updated?.environmentDraft as { verification?: { error?: string } } | null)?.verification
+        ?.error,
+    ).toBeTruthy()
+  }, 120_000)
+
+  it('accepts a fixed proposal after a failed verify', async () => {
+    const project = await createTestProject()
+    const [environment] = await db
+      .insert(environments)
+      .values({
+        projectId: project.id,
+        name: 'Default',
+        branchPattern: '**',
+        position: 0,
+      })
+      .returning()
+
+    const session = await manager.start({
+      projectId: project.id,
+      agentId: 'fake',
+      purpose: 'environment_setup',
+    })
+    createdSessions.push(session.id)
+
+    await waitForStatus(session.id, 'running')
+
+    const container = await sandbox.get(session.id)
+    await container!.exec([
+      'sh',
+      '-c',
+      `printf '%s' '{"setup":["false"]}' > /tmp/dukebox-env-proposal.json`,
+    ])
+
+    adapter.emit({ type: 'done', reason: 'completed' })
+    await waitForMatchingPromptCount(/clean clone/, 1)
+
+    await container!.exec([
+      'sh',
+      '-c',
+      `printf '%s' '{"setup":["true"]}' > /tmp/dukebox-env-proposal.json`,
+    ])
+    adapter.emit({ type: 'done', reason: 'completed' })
+    await waitForStatus(session.id, 'done')
+
+    const [updated] = await db
+      .select()
+      .from(environments)
+      .where(eq(environments.id, environment!.id))
+    expect(updated?.environmentDraft).toMatchObject({
+      setup: ['true'],
+      verification: { ok: true },
+    })
+  }, 120_000)
+
+  it('skips verify when the proposal asks for a different image', async () => {
+    const project = await createTestProject()
+    const [environment] = await db
+      .insert(environments)
+      .values({
+        projectId: project.id,
+        name: 'Default',
+        branchPattern: '**',
+        position: 0,
+      })
+      .returning()
+
+    const session = await manager.start({
+      projectId: project.id,
+      agentId: 'fake',
+      purpose: 'environment_setup',
+    })
+    createdSessions.push(session.id)
+
+    await waitForStatus(session.id, 'running')
+
+    const container = await sandbox.get(session.id)
+    await container!.exec([
+      'sh',
+      '-c',
+      `printf '%s' '{"setup":["false"],"image":"some/other:latest"}' > /tmp/dukebox-env-proposal.json`,
+    ])
+
+    adapter.emit({ type: 'done', reason: 'completed' })
+    await waitForStatus(session.id, 'done')
+
+    const [updated] = await db
+      .select()
+      .from(environments)
+      .where(eq(environments.id, environment!.id))
+    expect(updated?.environmentDraft).toMatchObject({
+      setup: ['false'],
+      image: 'some/other:latest',
+      verification: { ok: false, skippedReason: 'image_mismatch' },
     })
   }, 120_000)
 })
