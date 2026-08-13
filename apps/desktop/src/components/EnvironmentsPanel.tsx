@@ -1,5 +1,5 @@
 import { matchesBranch, validateBranchPattern, type EnvironmentSummary } from '@dukebox/protocol'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { DukeboxClient } from '@/lib/client'
 
 /**
@@ -209,8 +209,17 @@ function EnvironmentRow({
   const [name, setName] = useState(environment.name)
   const [pattern, setPattern] = useState(environment.branchPattern)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const seeded = useRef(false)
 
+  // Seeded from props on first render. Re-running this effect on mount would
+  // clobber a change that landed between paint and the effect flush — which is
+  // how a fast test (or a fast typist) used to lose an invalid pattern and
+  // never see the validation error.
   useEffect(() => {
+    if (!seeded.current) {
+      seeded.current = true
+      return
+    }
     setName(environment.name)
     setPattern(environment.branchPattern)
   }, [environment.name, environment.branchPattern])

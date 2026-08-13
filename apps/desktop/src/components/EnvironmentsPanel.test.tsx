@@ -102,10 +102,13 @@ describe('EnvironmentsPanel', () => {
   it('shows a validation error for an unsafe pattern', async () => {
     render(<EnvironmentsPanel client={makeClient() as never} projectId="p1" />)
 
-    const field = await screen.findByDisplayValue('refact/*')
-    fireEvent.change(field, { target: { value: 're:(a+)+' } })
+    const row = await rowFor('refact/*')
+    await waitFor(() => expect(within(row).getByText(/matches 2 branches/i)).toBeInTheDocument())
+    fireEvent.change(within(row).getByLabelText('Branch pattern'), {
+      target: { value: 're:(a+)+' },
+    })
 
-    await waitFor(() => expect(screen.getByText(/nested quantifiers/i)).toBeInTheDocument())
+    expect(within(row).getByText(/nested quantifiers/i)).toBeInTheDocument()
   })
 
   it('commits a name on blur, not per keystroke', async () => {
@@ -132,12 +135,14 @@ describe('EnvironmentsPanel', () => {
     const client = makeClient()
     render(<EnvironmentsPanel client={client as never} projectId="p1" />)
 
-    const field = await screen.findByDisplayValue('refact/*')
+    const row = await rowFor('refact/*')
+    await waitFor(() => expect(within(row).getByText(/matches 2 branches/i)).toBeInTheDocument())
+    const field = within(row).getByLabelText('Branch pattern')
     field.focus()
     fireEvent.change(field, { target: { value: 're:(a+)+' } })
     await userEvent.tab()
 
-    await waitFor(() => expect(screen.getByText(/nested quantifiers/i)).toBeInTheDocument())
+    expect(within(row).getByText(/nested quantifiers/i)).toBeInTheDocument()
     expect(client.updateEnvironment).not.toHaveBeenCalled()
   })
 
