@@ -1605,6 +1605,21 @@ describe('permission mode', () => {
     expect(adapter.started?.permissionMode).toBe('plan')
   })
 
+  it('starts environment_setup in bypass even when plan is requested', async () => {
+    const project = await createTestProject()
+    const session = await manager.start({
+      projectId: project.id,
+      agentId: 'claude-code',
+      purpose: 'environment_setup',
+      permissionMode: 'plan',
+    })
+    createdSessions.push(session.id)
+
+    expect(session.permissionMode).toBe('bypass')
+    await waitForStatus(session.id, 'running')
+    expect(adapter.started?.permissionMode).toBe('bypass')
+  })
+
   it('forwards a mid-session change to the adapter', async () => {
     const session = await startSession()
     await waitForStatus(session.id, 'running')

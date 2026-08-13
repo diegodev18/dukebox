@@ -588,7 +588,7 @@ function SessionColumn({
         running={working}
         disabled={!isStreamConnected(live.status)}
         error={live.error}
-        {...(session.permissionMode
+        {...(session.purpose !== 'environment_setup' && session.permissionMode
           ? {
               permissionMode: live.transcript.permissionMode ?? session.permissionMode,
               onPermissionModeChange: live.setPermissionMode,

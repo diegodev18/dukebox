@@ -20,6 +20,7 @@ import {
   type SessionStatus,
   type PermissionMode,
   DEFAULT_PERMISSION_MODE,
+  resolvePermissionMode,
   ENVIRONMENT_SETUP_IMAGE_MISMATCH,
   type EnvironmentProposal,
   type EnvironmentSetupVerification,
@@ -112,7 +113,8 @@ export interface StartSessionOptions {
    * How the agent is allowed to act.
    *
    * Ignored by agents without permission modes. Absent means bypass for
-   * Claude Code and OpenCode.
+   * Claude Code and OpenCode. Ignored for environment_setup, which always
+   * starts in bypass.
    */
   permissionMode?: PermissionMode
   purpose?: SessionPurpose
@@ -217,13 +219,6 @@ export function createAgentAdapter(agentId: string): AgentAdapter {
   throw new SessionError(`no adapter for agent: ${agentId}`)
 }
 
-function storedPermissionMode(agentId: string, requested?: PermissionMode): string | null {
-  if (agentId === 'claude-code' || agentId === 'opencode') {
-    return requested ?? DEFAULT_PERMISSION_MODE
-  }
-  return null
-}
-
 function permissionModeContext(
   session: Session,
   override?: PermissionMode,
@@ -314,6 +309,7 @@ export class SessionManager {
     }
 
     const baseBranch = options.baseBranch ?? project.defaultBranch
+    const permissionMode = resolvePermissionMode(options.agentId, purpose, options.permissionMode)
 
     // Resolved once, here, and persisted on the row. A session resumed weeks
     // later must run in the environment it started with, even if patterns
@@ -337,7 +333,7 @@ export class SessionManager {
         baseBranch,
         environmentId,
         title: purpose === 'environment_setup' ? 'Configure environment' : prompt.slice(0, 80),
-        permissionMode: storedPermissionMode(options.agentId, options.permissionMode),
+        permissionMode,
         gitPreferences: parseGitPreferences(options.gitPreferences),
         createdByDeviceId: options.createdByDeviceId,
       })
@@ -353,7 +349,7 @@ export class SessionManager {
       prompt,
       options.model,
       options.commitIdentity,
-      options.permissionMode,
+      permissionMode ?? undefined,
     ).catch(async (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error)
 

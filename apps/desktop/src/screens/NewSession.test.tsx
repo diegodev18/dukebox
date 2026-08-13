@@ -428,6 +428,32 @@ describe('NewSession permission mode', () => {
       ),
     )
   })
+
+  it('starts environment setup in bypass even when Plan is selected', async () => {
+    const client = makeClient({
+      listEnvironments: vi.fn().mockResolvedValue([]),
+      createEnvironment: vi.fn().mockResolvedValue({ id: 'env-new' }),
+    })
+    renderScreen(client, { environmentCount: 0 })
+
+    const modes = await openPicker('Permission mode')
+    await userEvent.click(within(modes).getByRole('option', { name: 'Plan' }))
+    expect(screen.getByRole('button', { name: 'Permission mode' })).toHaveTextContent('Plan')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Configure environment' }))
+    expect(screen.queryByRole('button', { name: 'Permission mode' })).not.toBeInTheDocument()
+
+    await userEvent.click(await screen.findByRole('button', { name: /start setup/i }))
+
+    await waitFor(() =>
+      expect(client.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          purpose: 'environment_setup',
+          permissionMode: 'bypass',
+        }),
+      ),
+    )
+  })
 })
 
 describe('NewSession loading', () => {

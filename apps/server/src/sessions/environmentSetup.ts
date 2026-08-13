@@ -10,6 +10,9 @@ import {
  * The agent must inspect the repo, actually run the setup commands it will
  * propose, and write a JSON proposal outside the git worktree — never invent
  * secret values, and never modify the repository for this task.
+ *
+ * These sessions always start in bypass so that write (and the commands) are
+ * not gated on a leftover Plan mode from a coding session.
  */
 export const ENVIRONMENT_SETUP_PROMPT = `You are configuring a Dukebox development environment for this repository.
 
