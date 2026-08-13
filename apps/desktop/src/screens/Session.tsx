@@ -316,6 +316,31 @@ export function Session({
               setManagingProjectId(projectId)
             }}
             archiveError={archiveError}
+            onDelete={(sessionId) => {
+              void (async () => {
+                try {
+                  await client.deleteSession(sessionId)
+                  setArchiveError(null)
+                } catch (error) {
+                  // Same as archive: a failed delete that vanishes from the
+                  // list looks like the session was removed when it was not.
+                  setArchiveError(
+                    error instanceof Error ? error.message : 'Could not delete the session.',
+                  )
+                  return
+                }
+
+                let fallback: string | null = null
+                setSessions((current) => {
+                  const next = current.filter((session) => session.id !== sessionId)
+                  fallback = next[0]?.id ?? null
+                  return next
+                })
+                setSelected((currentSelected) =>
+                  currentSelected === sessionId ? fallback : currentSelected,
+                )
+              })()
+            }}
             onRemoveProject={(projectId) => {
               void (async () => {
                 try {

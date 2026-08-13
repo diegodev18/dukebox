@@ -47,6 +47,7 @@ const sessionManager = {
   start: vi.fn(),
   stop: vi.fn(async () => {}),
   archive: vi.fn(async () => {}),
+  delete: vi.fn(async () => {}),
   openPullRequest: vi.fn(async () => ({
     url: 'https://github.com/diego/dukebox/pull/1',
     title: 'Add a thing',
@@ -832,6 +833,29 @@ describe('POST /api/sessions/:id/archive', () => {
     )
 
     const response = await post('/api/sessions/00000000-0000-4000-8000-000000000000/archive', {})
+
+    expect(response.status).toBe(404)
+  })
+})
+
+describe('POST /api/sessions/:id/delete', () => {
+  it('deletes the session permanently', async () => {
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await post(`/api/sessions/${session.id}/delete`, {})
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ deleted: true })
+    expect(sessionManager.delete).toHaveBeenCalledWith(session.id)
+  })
+
+  it('returns 404 for an unknown session', async () => {
+    vi.mocked(sessionManager.delete).mockRejectedValueOnce(
+      new SessionError('no such session: 00000000-0000-4000-8000-000000000000'),
+    )
+
+    const response = await post('/api/sessions/00000000-0000-4000-8000-000000000000/delete', {})
 
     expect(response.status).toBe(404)
   })

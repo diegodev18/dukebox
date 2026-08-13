@@ -332,6 +332,27 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
     }
   })
 
+  /**
+   * Permanently delete a session.
+   *
+   * Unlike `DELETE /api/sessions/:id` (stop) or archive (hide), this removes
+   * the session and its history. The client has the user type the title to
+   * confirm before calling it.
+   */
+  app.post('/sessions/:id/delete', async (c) => {
+    const sessionId = routeParam(c, 'id')
+
+    try {
+      await deps.sessions.delete(sessionId)
+      return c.json({ deleted: true })
+    } catch (error) {
+      if (error instanceof SessionError) {
+        return c.json({ error: 'not_found', message: error.message }, 404)
+      }
+      throw error
+    }
+  })
+
   return app
 }
 
