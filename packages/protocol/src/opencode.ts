@@ -181,8 +181,10 @@ export const OPENCODE_CATALOG: readonly {
     kind: 'deepseek',
     name: 'DeepSeek',
     models: [
-      { id: 'deepseek-chat', label: 'DeepSeek Chat' },
+      { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
       { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
+      { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+      { id: 'deepseek-chat', label: 'DeepSeek Chat' },
     ],
   },
   {

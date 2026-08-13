@@ -3,6 +3,7 @@ import {
   buildOpencodeSessionEnv,
   customProviderEnvVar,
   resolveStoredProvider,
+  withLiveCatalogModels,
 } from './providers.js'
 
 describe('resolveStoredProvider', () => {
@@ -32,6 +33,43 @@ describe('resolveStoredProvider', () => {
       id: 'my-proxy',
       baseUrl: 'https://api.example.com/v1',
     })
+  })
+})
+
+describe('withLiveCatalogModels', () => {
+  it('replaces a stale DeepSeek snapshot with the live catalog and keeps extras', () => {
+    const refreshed = withLiveCatalogModels({
+      id: 'deepseek',
+      kind: 'deepseek',
+      name: 'DeepSeek',
+      apiKey: 'sk-deepseek',
+      models: [
+        { id: 'deepseek-chat', label: 'DeepSeek Chat' },
+        { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
+        { id: 'deepseek-coder', label: 'DeepSeek Coder' },
+      ],
+    })
+
+    expect(refreshed.models).toEqual([
+      { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
+      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
+      { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+      { id: 'deepseek-chat', label: 'DeepSeek Chat' },
+      { id: 'deepseek-coder', label: 'DeepSeek Coder' },
+    ])
+  })
+
+  it('leaves a custom endpoint untouched', () => {
+    const provider = {
+      id: 'my-proxy',
+      kind: 'openai-compatible' as const,
+      name: 'My Proxy',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.example.com/v1',
+      models: [{ id: 'gpt-4', label: 'GPT-4' }],
+    }
+
+    expect(withLiveCatalogModels(provider)).toEqual(provider)
   })
 })
 
