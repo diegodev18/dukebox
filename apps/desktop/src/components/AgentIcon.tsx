@@ -22,21 +22,21 @@ export const AVAILABLE_AGENTS = [
 export type AvailableAgentId = (typeof AVAILABLE_AGENTS)[number]['id']
 
 /**
- * Claude Code model aliases for the New Session picker.
+ * Claude Code models for the New Session picker.
  *
- * These map to `claude --model <alias>` and always resolve to the latest
- * version of that family available to the account.
+ * These map to `claude --model <id>` and are pinned to a specific release so
+ * the session runs on exactly the model the caller picked.
  */
 export const AVAILABLE_MODELS = [
-  { id: 'sonnet', label: 'Sonnet' },
-  { id: 'opus', label: 'Opus' },
-  { id: 'haiku', label: 'Haiku' },
-  { id: 'fable', label: 'Fable' },
+  { id: 'claude-opus-5', label: 'Opus 5' },
+  { id: 'claude-sonnet-5', label: 'Sonnet 5' },
+  { id: 'claude-haiku-5', label: 'Haiku 5' },
+  { id: 'claude-fable-2', label: 'Fable 2' },
 ] as const
 
 export type AvailableModelId = (typeof AVAILABLE_MODELS)[number]['id']
 
-export const DEFAULT_MODEL: AvailableModelId = 'sonnet'
+export const DEFAULT_MODEL: AvailableModelId = 'claude-sonnet-5'
 
 export const AVAILABLE_PERMISSION_MODES = [
   { id: 'plan', label: 'Plan' },

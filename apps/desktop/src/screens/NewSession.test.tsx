@@ -512,7 +512,7 @@ describe('NewSession last session', () => {
     baseBranch: 'refact/auth',
     environmentId: environments[0].id,
     agentId: 'claude-code',
-    model: 'opus',
+    model: 'claude-opus-5',
     providerId: '',
     permissionMode: 'plan',
   }
@@ -523,7 +523,7 @@ describe('NewSession last session', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Branch' })).toHaveTextContent('refact/auth'),
     )
-    expect(screen.getByRole('button', { name: 'Model' })).toHaveTextContent('Opus')
+    expect(screen.getByRole('button', { name: 'Model' })).toHaveTextContent('Opus 5')
     expect(screen.getByRole('button', { name: 'Permission mode' })).toHaveTextContent('Plan')
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Environment' })).toHaveTextContent('Refactors'),
@@ -539,7 +539,7 @@ describe('NewSession last session', () => {
           ...last,
           baseBranch: 'main',
           environmentId: '',
-          model: 'sonnet',
+          model: 'claude-sonnet-5',
           permissionMode: 'bypass',
         },
       },
@@ -577,7 +577,7 @@ describe('NewSession last session', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Repository' })).toHaveTextContent('other'),
     )
-    expect(screen.getByRole('button', { name: 'Model' })).toHaveTextContent('Opus')
+    expect(screen.getByRole('button', { name: 'Model' })).toHaveTextContent('Opus 5')
     expect(screen.getByRole('button', { name: 'Permission mode' })).toHaveTextContent('Plan')
   })
 
@@ -630,7 +630,7 @@ describe('NewSession last session', () => {
     renderScreen(client, {}, { onRemember })
 
     const models = await openPicker('Model')
-    await userEvent.click(within(models).getByRole('option', { name: /Opus/ }))
+    await userEvent.click(within(models).getByRole('option', { name: /Opus 5/ }))
     const modes = await openPicker('Permission mode')
     await userEvent.click(within(modes).getByRole('option', { name: 'Plan' }))
     await userEvent.type(screen.getByLabelText(/what should it do/i), 'do a thing')
@@ -643,7 +643,7 @@ describe('NewSession last session', () => {
           baseBranch: 'main',
           environmentId: '00000000-0000-4000-8000-0000000000e2',
           agentId: 'claude-code',
-          model: 'opus',
+          model: 'claude-opus-5',
           permissionMode: 'plan',
         }),
       ),
