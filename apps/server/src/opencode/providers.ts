@@ -63,10 +63,7 @@ export function withLiveCatalogModels(provider: StoredOpencodeProvider): StoredO
   const catalogIds = new Set(catalog.models.map((model) => model.id))
   return {
     ...provider,
-    models: [
-      ...catalog.models,
-      ...provider.models.filter((model) => !catalogIds.has(model.id)),
-    ],
+    models: [...catalog.models, ...provider.models.filter((model) => !catalogIds.has(model.id))],
   }
 }
 
