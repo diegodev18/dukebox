@@ -12,8 +12,11 @@ import { z } from 'zod'
  * the user before anything else happens.
  *
  * `done` means the turn finished and the container is still warm — a follow-up
- * resumes it. `stopped` means the container was shut down: the session was
- * archived, or the control plane restarted. A follow-up starts it again.
+ * resumes it. `stopped` means the container was shut down because the session
+ * was archived or explicitly stopped. A follow-up starts it again.
+ *
+ * A control-plane restart does not mark sessions stopped: in-progress turns
+ * are restored and the agent is asked to continue.
  */
 export const sessionStatus = z.enum([
   'provisioning',
