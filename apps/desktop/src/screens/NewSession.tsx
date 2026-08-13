@@ -39,9 +39,13 @@ import type { LastNewSession } from '@/lib/settings'
 /**
  * Starting a session from the centre column.
  *
- * Choices sit above the prompt: which repository, which branch to branch
- * from, which agent, which model, which environment, and which instance. A
+ * Session-fixed choices sit above the prompt: which repository, which branch
+ * to branch from, which environment, which agent, and which instance. A
  * repository that is not yet a project becomes one on the way through.
+ *
+ * Choices that can change during a session sit inside the prompt, the same
+ * place the composer keeps them: model, OpenCode's provider, and Claude
+ * Code's permission mode.
  *
  * Environments are offered, never required: a branch no environment covers
  * runs on the base image, with a quiet notice rather than a blocked form.
@@ -536,25 +540,6 @@ export function NewSession({
             />
           )}
           <AgentPicker value={agentId} onChange={selectAgent} disabled={busy} />
-          {usingOpenCode && opencodeProvidersStatus === 'loaded' && (
-            <ProviderPicker
-              providers={opencodeProviders}
-              value={providerId}
-              onChange={selectProvider}
-              onAddProvider={onConfigureProviders}
-              disabled={busy}
-            />
-          )}
-          {!(usingOpenCode && models.length === 0) && (
-            <ModelPicker value={model} onChange={setModel} disabled={busy} models={models} />
-          )}
-          {agentHasPermissionModes(agentId) && (
-            <PermissionModePicker
-              value={permissionMode}
-              onChange={setPermissionMode}
-              disabled={busy}
-            />
-          )}
           <InstancePicker instances={instances} value={connection.deviceId} disabled={busy} />
         </div>
 
@@ -591,22 +576,39 @@ export function NewSession({
             </p>
 
             <div className="mt-3 flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => setForceSetup(false)}
-                disabled={busy}
-                className="text-[12px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-40"
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                onClick={() => void submit()}
-                disabled={!canSend}
-                className="rounded-full bg-foreground px-3.5 py-1.5 text-[13px] font-medium text-background disabled:opacity-40"
-              >
-                {status.kind === 'starting' ? 'Starting…' : 'Start setup'}
-              </button>
+              <SessionMutablePickers
+                busy={busy}
+                usingOpenCode={usingOpenCode}
+                opencodeProvidersStatus={opencodeProvidersStatus}
+                opencodeProviders={opencodeProviders}
+                providerId={providerId}
+                onProviderChange={selectProvider}
+                onAddProvider={onConfigureProviders}
+                models={models}
+                model={model}
+                onModelChange={setModel}
+                agentId={agentId}
+                permissionMode={permissionMode}
+                onPermissionModeChange={setPermissionMode}
+              />
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setForceSetup(false)}
+                  disabled={busy}
+                  className="text-[12px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-40"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void submit()}
+                  disabled={!canSend}
+                  className="rounded-full bg-foreground px-3.5 py-1.5 text-[13px] font-medium text-background disabled:opacity-40"
+                >
+                  {status.kind === 'starting' ? 'Starting…' : 'Start setup'}
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -629,24 +631,27 @@ export function NewSession({
             />
 
             <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
-              {!usingBaseImage ? (
-                <button
-                  type="button"
-                  onClick={() => setForceSetup(true)}
-                  disabled={busy}
-                  className="text-[12px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-40"
-                >
-                  Reconfigure environment
-                </button>
-              ) : (
-                <span />
-              )}
+              <SessionMutablePickers
+                busy={busy}
+                usingOpenCode={usingOpenCode}
+                opencodeProvidersStatus={opencodeProvidersStatus}
+                opencodeProviders={opencodeProviders}
+                providerId={providerId}
+                onProviderChange={selectProvider}
+                onAddProvider={onConfigureProviders}
+                models={models}
+                model={model}
+                onModelChange={setModel}
+                agentId={agentId}
+                permissionMode={permissionMode}
+                onPermissionModeChange={setPermissionMode}
+              />
               <button
                 type="button"
                 onClick={() => void submit()}
                 disabled={!canSend}
                 aria-label={status.kind === 'starting' ? 'Starting' : 'Start session'}
-                className="inline-flex size-8 items-center justify-center rounded-full bg-foreground text-background disabled:opacity-40"
+                className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background disabled:opacity-40"
               >
                 {status.kind === 'starting' ? (
                   <span className="text-[11px] font-medium">…</span>
@@ -672,12 +677,79 @@ export function NewSession({
           </p>
         )}
 
+        {!needsEnvironment && !usingBaseImage && (
+          <p className="mt-2 text-[12px] text-muted-foreground">
+            <button
+              type="button"
+              onClick={() => setForceSetup(true)}
+              disabled={busy}
+              className="underline underline-offset-2 disabled:opacity-40"
+            >
+              Reconfigure environment
+            </button>
+          </p>
+        )}
+
         {status.kind === 'failed' && (
           <p role="alert" className="mt-3 text-[13px] text-destructive">
             {status.message}
           </p>
         )}
       </div>
+    </div>
+  )
+}
+
+function SessionMutablePickers({
+  busy,
+  usingOpenCode,
+  opencodeProvidersStatus,
+  opencodeProviders,
+  providerId,
+  onProviderChange,
+  onAddProvider,
+  models,
+  model,
+  onModelChange,
+  agentId,
+  permissionMode,
+  onPermissionModeChange,
+}: {
+  busy: boolean
+  usingOpenCode: boolean
+  opencodeProvidersStatus: 'loading' | 'loaded' | 'failed'
+  opencodeProviders: OpencodeProvider[]
+  providerId: string
+  onProviderChange: (providerId: string) => void
+  onAddProvider: () => void
+  models: readonly { id: string; label: string }[]
+  model: string
+  onModelChange: (modelId: string) => void
+  agentId: string
+  permissionMode: AvailablePermissionModeId
+  onPermissionModeChange: (mode: AvailablePermissionModeId) => void
+}) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1">
+      {usingOpenCode && opencodeProvidersStatus === 'loaded' && (
+        <ProviderPicker
+          providers={opencodeProviders}
+          value={providerId}
+          onChange={onProviderChange}
+          onAddProvider={onAddProvider}
+          disabled={busy}
+        />
+      )}
+      {!(usingOpenCode && models.length === 0) && (
+        <ModelPicker value={model} onChange={onModelChange} disabled={busy} models={models} />
+      )}
+      {agentHasPermissionModes(agentId) && (
+        <PermissionModePicker
+          value={permissionMode}
+          onChange={onPermissionModeChange}
+          disabled={busy}
+        />
+      )}
     </div>
   )
 }
