@@ -56,6 +56,16 @@ async function rowFor(pattern: string) {
   return row
 }
 
+/** Wait until both fetches have painted, then set the field. */
+async function setPattern(from: string, to: string) {
+  const row = await rowFor(from)
+  await waitFor(() => expect(within(row).getByText(/matches \d+ branch/i)).toBeInTheDocument())
+  const field = within(row).getByLabelText('Branch pattern')
+  fireEvent.change(field, { target: { value: to } })
+  expect(field).toHaveValue(to)
+  return field
+}
+
 describe('EnvironmentsPanel', () => {
   it('lists environments in order', async () => {
     render(<EnvironmentsPanel client={makeClient() as never} projectId="p1" />)
@@ -89,12 +99,7 @@ describe('EnvironmentsPanel', () => {
   it('warns when a pattern matches nothing', async () => {
     render(<EnvironmentsPanel client={makeClient() as never} projectId="p1" />)
 
-    const field = await screen.findByDisplayValue('refact/*')
-    // Replacing the value with fireEvent.change is deterministic; a clear()
-    // followed by type() can race under load and leave the old text prepended
-    // to the new ("refact/*nope/*").
-    fireEvent.change(field, { target: { value: 'nope/*' } })
-
+    await setPattern('refact/*', 'nope/*')
     const row = await rowFor('nope/*')
     await waitFor(() => expect(within(row).getByText('Matches no branches')).toBeInTheDocument())
   })
@@ -102,10 +107,8 @@ describe('EnvironmentsPanel', () => {
   it('shows a validation error for an unsafe pattern', async () => {
     render(<EnvironmentsPanel client={makeClient() as never} projectId="p1" />)
 
-    const field = await screen.findByDisplayValue('refact/*')
-    fireEvent.change(field, { target: { value: 're:(a+)+' } })
-
-    await waitFor(() => expect(screen.getByText(/nested quantifiers/i)).toBeInTheDocument())
+    await setPattern('refact/*', 're:(a+)+')
+    expect(screen.getByText(/nested quantifiers/i)).toBeInTheDocument()
   })
 
   it('commits a name on blur, not per keystroke', async () => {
@@ -132,12 +135,10 @@ describe('EnvironmentsPanel', () => {
     const client = makeClient()
     render(<EnvironmentsPanel client={client as never} projectId="p1" />)
 
-    const field = await screen.findByDisplayValue('refact/*')
-    field.focus()
-    fireEvent.change(field, { target: { value: 're:(a+)+' } })
-    await userEvent.tab()
+    const field = await setPattern('refact/*', 're:(a+)+')
+    fireEvent.blur(field)
 
-    await waitFor(() => expect(screen.getByText(/nested quantifiers/i)).toBeInTheDocument())
+    expect(screen.getByText(/nested quantifiers/i)).toBeInTheDocument()
     expect(client.updateEnvironment).not.toHaveBeenCalled()
   })
 
@@ -145,10 +146,8 @@ describe('EnvironmentsPanel', () => {
     const client = makeClient()
     render(<EnvironmentsPanel client={client as never} projectId="p1" />)
 
-    const field = await screen.findByDisplayValue('refact/*')
-    field.focus()
-    fireEvent.change(field, { target: { value: 'feat/*' } })
-    await userEvent.tab()
+    const field = await setPattern('refact/*', 'feat/*')
+    fireEvent.blur(field)
 
     await waitFor(() =>
       expect(client.updateEnvironment).toHaveBeenCalledWith('env-1', { branchPattern: 'feat/*' }),

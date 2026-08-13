@@ -209,11 +209,19 @@ function EnvironmentRow({
   const [name, setName] = useState(environment.name)
   const [pattern, setPattern] = useState(environment.branchPattern)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [synced, setSynced] = useState({
+    name: environment.name,
+    branchPattern: environment.branchPattern,
+  })
 
-  useEffect(() => {
+  // Sync during render, not in an effect. An effect runs after paint, so a
+  // keystroke that landed between first paint and that effect was overwritten
+  // with the saved pattern — the field snapped back and validation vanished.
+  if (environment.name !== synced.name || environment.branchPattern !== synced.branchPattern) {
+    setSynced({ name: environment.name, branchPattern: environment.branchPattern })
     setName(environment.name)
     setPattern(environment.branchPattern)
-  }, [environment.name, environment.branchPattern])
+  }
 
   const validation = validateBranchPattern(pattern)
   const matched = validation.ok ? branches.filter((branch) => matchesBranch(pattern, branch)) : []
