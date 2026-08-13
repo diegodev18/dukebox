@@ -46,7 +46,7 @@ const terminalHandlers = {
 async function openTerminalPanel() {
   render(<Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />)
 
-  await userEvent.click(screen.getByRole('tab', { name: 'terminal' }))
+  await userEvent.click(screen.getByRole('tab', { name: 'Terminal' }))
 }
 
 describe('Workspace terminal tabs', () => {
