@@ -1,5 +1,5 @@
 import type { EnvironmentSummary, OpencodeProvider, PermissionMode } from '@dukebox/protocol'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   AgentIcon,
   AVAILABLE_AGENTS,
@@ -15,8 +15,11 @@ import { CheckIcon, ChevronDownIcon, FolderIcon, ServerIcon } from '@/components
  * Chip + searchable popover menus for picking a repository, branch, agent, or
  * model.
  *
- * Anchored under the chip that opened them. Escape, an outside click, and
- * choosing a row close the menu. Arrow keys move the highlight; Enter picks.
+ * Positioned against the viewport, and flipped above the chip when there is
+ * no room below — a composer at the foot of the window would otherwise push
+ * the session up to reveal a menu that opened off-screen. Escape, an outside
+ * click, and choosing a row close the menu. Arrow keys move the highlight;
+ * Enter picks.
  */
 
 export function shortRepoName(fullName: string): string {
@@ -480,8 +483,30 @@ function PickerShell({
   children: React.ReactNode
 }) {
   const root = useRef<HTMLDivElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
   const close = useRef(onOpenChange)
   close.current = onOpenChange
+  const [anchor, setAnchor] = useState<PickerAnchor>({ left: 0, top: 0 })
+
+  useLayoutEffect(() => {
+    if (!open) return
+
+    const button = trigger.current
+    if (!button) return
+
+    const place = () => {
+      const menu = root.current?.querySelector<HTMLElement>('[role="listbox"]') ?? null
+      setAnchor(anchorFor(button, menu))
+    }
+
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => {
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', place, true)
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -495,7 +520,8 @@ function PickerShell({
         if (i === index) item.setAttribute('data-highlighted', '')
         else item.removeAttribute('data-highlighted')
       })
-      items[index]?.scrollIntoView?.({ block: 'nearest' })
+      const item = items[index]
+      if (item) scrollOptionIntoList(item)
     }
 
     const highlightedIndex = () => {
@@ -568,8 +594,9 @@ function PickerShell({
   }, [open])
 
   return (
-    <div ref={root} className="relative">
+    <div ref={root}>
       <button
+        ref={trigger}
         type="button"
         disabled={disabled}
         aria-haspopup="listbox"
@@ -586,13 +613,74 @@ function PickerShell({
         <div
           role="listbox"
           aria-label={ariaLabel}
-          className="absolute top-full left-0 z-50 mt-1.5 w-72 overflow-hidden rounded-[calc(var(--radius)*0.9)] border border-border bg-background shadow-md"
+          style={{
+            left: anchor.left,
+            ...(anchor.bottom != null ? { bottom: anchor.bottom } : { top: anchor.top }),
+          }}
+          className="fixed z-50 w-72 overflow-hidden rounded-[calc(var(--radius)*0.9)] border border-border bg-background shadow-md"
         >
           {children}
         </div>
       )}
     </div>
   )
+}
+
+/** `w-72` in pixels, used until the open menu can be measured. */
+const MENU_FALLBACK_WIDTH = 288
+/** Tall enough that a composer-foot menu prefers opening upward. */
+const MENU_FALLBACK_HEIGHT = 280
+const MENU_GAP = 6
+const VIEWPORT_PAD = 8
+
+type PickerAnchor = { left: number; top?: number; bottom?: number }
+
+function anchorFor(trigger: HTMLElement, menu: HTMLElement | null): PickerAnchor {
+  const box = trigger.getBoundingClientRect()
+  const measured = menu?.getBoundingClientRect()
+  const menuHeight = measured && measured.height > 0 ? measured.height : MENU_FALLBACK_HEIGHT
+  const menuWidth = measured && measured.width > 0 ? measured.width : MENU_FALLBACK_WIDTH
+
+  const spaceBelow = window.innerHeight - box.bottom - MENU_GAP
+  const spaceAbove = box.top - MENU_GAP
+  const openUp = spaceBelow < menuHeight && spaceAbove > spaceBelow
+
+  const left = Math.max(
+    VIEWPORT_PAD,
+    Math.min(box.left, window.innerWidth - menuWidth - VIEWPORT_PAD),
+  )
+
+  if (openUp) {
+    return { left, bottom: window.innerHeight - box.top + MENU_GAP }
+  }
+  return { left, top: box.bottom + MENU_GAP }
+}
+
+/**
+ * Scroll a highlighted row inside the picker's own list, never the page.
+ *
+ * `scrollIntoView` walks every ancestor, so highlighting a row in a menu that
+ * opened below the composer used to shove the whole session upward.
+ */
+function scrollOptionIntoList(item: HTMLElement) {
+  const listbox = item.closest('[role="listbox"]')
+  if (!(listbox instanceof HTMLElement)) return
+
+  let container: HTMLElement | null = item.parentElement
+  while (container && container !== listbox) {
+    const overflowY = getComputedStyle(container).overflowY
+    if (overflowY === 'auto' || overflowY === 'scroll') break
+    container = container.parentElement
+  }
+  if (!container || container === listbox) return
+
+  const itemRect = item.getBoundingClientRect()
+  const containerRect = container.getBoundingClientRect()
+  if (itemRect.bottom > containerRect.bottom) {
+    container.scrollTop += itemRect.bottom - containerRect.bottom
+  } else if (itemRect.top < containerRect.top) {
+    container.scrollTop -= containerRect.top - itemRect.top
+  }
 }
 
 function SearchField({
