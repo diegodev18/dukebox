@@ -112,6 +112,44 @@ function openProjectMenu() {
   return screen.getByRole('menu', { name: 'Project' })
 }
 
+function makeSessions(count: number): SessionSummary[] {
+  return Array.from({ length: count }, (_, index) => ({
+    ...session,
+    id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    title: `Session ${index + 1}`,
+    lastSeq: 1,
+  }))
+}
+
+function renderRepoSessions(
+  count: number,
+  {
+    selectedId,
+    sessions: rows = makeSessions(count),
+  }: { selectedId?: string | null; sessions?: SessionSummary[] } = {},
+) {
+  render(
+    <Sidebar
+      projects={[project]}
+      sessions={rows}
+      selectedId={selectedId === undefined ? rows[0]!.id : selectedId}
+      identity={DEFAULT_COMMIT_IDENTITY}
+      serverName="debian-01"
+      role="owner"
+      onOpenSettings={vi.fn()}
+      onSelect={vi.fn()}
+      onNewSession={vi.fn()}
+      onSearch={vi.fn()}
+      onConfigureEnvironment={vi.fn()}
+      onManageEnvironments={vi.fn()}
+      onArchive={vi.fn()}
+      onDelete={vi.fn()}
+      onRemoveProject={vi.fn()}
+    />,
+  )
+  return rows
+}
+
 describe('Sidebar', () => {
   it('archives from the row actions menu after confirming', async () => {
     const { onArchive } = renderSidebar()
@@ -393,6 +431,94 @@ describe('Sidebar', () => {
     renderSidebar({ selectedId: null })
 
     expect(screen.queryByRole('img', { name: 'Unread' })).not.toBeInTheDocument()
+  })
+
+  it('does not offer More when a repository has five or fewer sessions', () => {
+    renderRepoSessions(5)
+
+    expect(screen.getByRole('button', { name: /done, session 1/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /done, session 5/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Less' })).not.toBeInTheDocument()
+  })
+
+  it('shows five sessions and More when a repository has more', () => {
+    renderRepoSessions(7)
+
+    expect(screen.getByRole('button', { name: /done, session 1/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /done, session 5/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /done, session 6/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'More' })).toBeInTheDocument()
+  })
+
+  it('reveals the rest with More and folds them with Less', async () => {
+    renderRepoSessions(7)
+
+    await userEvent.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByRole('button', { name: /done, session 6/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /done, session 7/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Less' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Less' }))
+    expect(screen.queryByRole('button', { name: /done, session 6/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'More' })).toBeInTheDocument()
+  })
+
+  it('starts expanded when the selected session sits past the first five', () => {
+    const rows = makeSessions(7)
+    renderRepoSessions(7, { selectedId: rows[6]!.id, sessions: rows })
+
+    expect(
+      screen.getByRole('button', { name: /done, session 7/i, current: true }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Less' })).toBeInTheDocument()
+  })
+
+  it('expands only the repository whose More was clicked', async () => {
+    const other: ProjectSummary = {
+      ...project,
+      id: '00000000-0000-4000-8000-000000000002',
+      repoFullName: 'acme/other',
+    }
+    const first = makeSessions(6)
+    const second = makeSessions(6).map((row, index) => ({
+      ...row,
+      id: `00000000-0000-4000-8000-${String(index + 101).padStart(12, '0')}`,
+      projectId: other.id,
+      title: `Other ${index + 1}`,
+    }))
+
+    render(
+      <Sidebar
+        projects={[project, other]}
+        sessions={[...first, ...second]}
+        selectedId={first[0]!.id}
+        identity={DEFAULT_COMMIT_IDENTITY}
+        serverName="debian-01"
+        role="owner"
+        onOpenSettings={vi.fn()}
+        onSelect={vi.fn()}
+        onNewSession={vi.fn()}
+        onSearch={vi.fn()}
+        onConfigureEnvironment={vi.fn()}
+        onManageEnvironments={vi.fn()}
+        onArchive={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveProject={vi.fn()}
+      />,
+    )
+
+    const more = screen.getAllByRole('button', { name: 'More' })
+    expect(more).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: /done, session 6/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /done, other 6/i })).not.toBeInTheDocument()
+
+    await userEvent.click(more[0]!)
+    expect(screen.getByRole('button', { name: /done, session 6/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /done, other 6/i })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'More' })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Less' })).toBeInTheDocument()
   })
 
   it('shows the full title, branch, agent, and server on hover', async () => {
