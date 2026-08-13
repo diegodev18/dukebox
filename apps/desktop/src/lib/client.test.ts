@@ -159,11 +159,11 @@ describe('DukeboxClient', () => {
       projectId: 'p1',
       agentId: 'claude-code',
       prompt: 'go',
-      model: 'opus',
+      model: 'claude-opus-5',
     })
 
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
-    expect(JSON.parse(init.body as string).model).toBe('opus')
+    expect(JSON.parse(init.body as string).model).toBe('claude-opus-5')
   })
 
   it('forwards a permission mode when the caller picks one', async () => {

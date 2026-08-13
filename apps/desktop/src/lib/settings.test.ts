@@ -69,7 +69,7 @@ describe('loadSettings', () => {
       baseBranch: 'main',
       environmentId: '',
       agentId: 'claude-code',
-      model: 'opus',
+      model: 'claude-opus-5',
       providerId: '',
       permissionMode: 'plan',
     }
@@ -111,7 +111,7 @@ describe('saveSettings', () => {
       baseBranch: 'main',
       environmentId: '',
       agentId: 'claude-code',
-      model: 'opus',
+      model: 'claude-opus-5',
       providerId: '',
       permissionMode: 'plan',
     }
