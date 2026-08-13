@@ -13,6 +13,42 @@ import { HELPER_SCRIPT } from './credentials.js'
 
 export const WORKSPACE_DIR = '/workspace/repo'
 
+/** Bytes of a workspace file the Files tab will read. Larger files truncate. */
+export const FILE_READ_LIMIT = 512 * 1024
+
+/**
+ * Normalize a caller-supplied path against the workspace root.
+ *
+ * Returns the relative path (no leading slash) or null if it would leave
+ * the workspace: `..`, an absolute path, a NUL, or an empty path. Rejecting
+ * `..` outright is simpler than resolving it and then checking the result
+ * still sits under the root — and it is what a file browser should do with
+ * a path someone typed.
+ */
+export function resolveWorkspacePath(relative: string): string | null {
+  if (relative.length === 0 || relative.includes('\0')) return null
+
+  const normalized = relative.replaceAll('\\', '/')
+  if (normalized.startsWith('/') || /^[a-zA-Z]:/.test(normalized)) return null
+
+  const parts: string[] = []
+  for (const segment of normalized.split('/')) {
+    if (segment === '' || segment === '.') continue
+    if (segment === '..') return null
+    parts.push(segment)
+  }
+
+  if (parts.length === 0) return null
+  return parts.join('/')
+}
+
+export interface WorkspaceFile {
+  path: string
+  content: string
+  binary: boolean
+  truncated: boolean
+}
+
 /** Branch name for a session. Namespaced so it is obvious who created it. */
 export function sessionBranch(sessionId: string): string {
   // Short prefix keeps it readable in GitHub's UI; the session id is a uuid
@@ -209,6 +245,63 @@ export class Workspace {
   async currentFile(path: string): Promise<string | null> {
     const result = await this.container.exec(['cat', path], { cwd: WORKSPACE_DIR })
     return result.exitCode === 0 ? result.stdout : null
+  }
+
+  /**
+   * Tracked and untracked files, excluding gitignored paths.
+   *
+   * The Files tab builds a tree from this list rather than walking the
+   * filesystem: `node_modules` and the rest of gitignore would drown it.
+   */
+  async listTree(): Promise<string[]> {
+    const result = await this.run(['git', 'ls-files', '-co', '--exclude-standard'])
+    const paths = new Set<string>()
+
+    for (const path of splitLines(result.stdout)) {
+      if (!path) continue
+      const relative = resolveWorkspacePath(path)
+      if (relative) paths.add(relative)
+    }
+
+    return [...paths].sort()
+  }
+
+  /**
+   * Working-tree contents of a path, capped and marked if binary.
+   *
+   * `head -c` rather than `cat`: a multi-megabyte file would otherwise travel
+   * the whole way into the desktop before anyone could refuse it.
+   */
+  async readFile(path: string): Promise<WorkspaceFile> {
+    const relative = resolveWorkspacePath(path)
+    if (!relative) {
+      throw new WorkspaceError('invalid path', '', 1)
+    }
+
+    const exists = await this.container.exec(['test', '-f', relative], { cwd: WORKSPACE_DIR })
+    if (exists.exitCode !== 0) {
+      throw new WorkspaceError('no such file', exists.stderr, exists.exitCode)
+    }
+
+    const result = await this.container.exec(
+      ['head', '-c', String(FILE_READ_LIMIT + 1), relative],
+      { cwd: WORKSPACE_DIR },
+    )
+
+    if (result.exitCode !== 0) {
+      throw new WorkspaceError('no such file', result.stderr || result.stdout, result.exitCode)
+    }
+
+    const truncated = Buffer.byteLength(result.stdout, 'utf8') > FILE_READ_LIMIT
+    const raw = truncated ? result.stdout.slice(0, FILE_READ_LIMIT) : result.stdout
+    const binary = raw.includes('\0')
+
+    return {
+      path: relative,
+      content: binary ? '' : raw,
+      binary,
+      truncated,
+    }
   }
 
   /**

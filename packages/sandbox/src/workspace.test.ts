@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Sandbox, type SessionContainer } from './container.js'
-import { sessionBranch, Workspace, WorkspaceError, WORKSPACE_DIR } from './workspace.js'
+import {
+  sessionBranch,
+  Workspace,
+  WorkspaceError,
+  WORKSPACE_DIR,
+  resolveWorkspacePath,
+} from './workspace.js'
 
 describe('sessionBranch', () => {
   it('namespaces the branch so its origin is obvious in GitHub', () => {
@@ -11,6 +17,32 @@ describe('sessionBranch', () => {
   it('is stable for a given session', () => {
     const id = randomUUID()
     expect(sessionBranch(id)).toBe(sessionBranch(id))
+  })
+})
+
+describe('resolveWorkspacePath', () => {
+  it('accepts a relative file path', () => {
+    expect(resolveWorkspacePath('src/app.ts')).toBe('src/app.ts')
+  })
+
+  it('strips redundant slashes and dots', () => {
+    expect(resolveWorkspacePath('./src//app.ts')).toBe('src/app.ts')
+  })
+
+  it('rejects parent-directory segments', () => {
+    expect(resolveWorkspacePath('../secret')).toBeNull()
+    expect(resolveWorkspacePath('src/../../etc/passwd')).toBeNull()
+  })
+
+  it('rejects absolute paths', () => {
+    expect(resolveWorkspacePath('/etc/passwd')).toBeNull()
+    expect(resolveWorkspacePath('C:\\Windows\\system.ini')).toBeNull()
+  })
+
+  it('rejects empty paths and NULs', () => {
+    expect(resolveWorkspacePath('')).toBeNull()
+    expect(resolveWorkspacePath('foo\0bar')).toBeNull()
+    expect(resolveWorkspacePath('.')).toBeNull()
   })
 })
 

@@ -233,6 +233,31 @@ describe('DukeboxClient', () => {
     })
   })
 
+  it('lists workspace paths', async () => {
+    const sessionId = '00000000-0000-4000-8000-000000000001'
+    const fetchMock = respondWith({ paths: ['src/app.ts'] })
+    const paths = await client.listWorkspaceTree(sessionId)
+
+    expect(paths).toEqual(['src/app.ts'])
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toContain(
+      `/api/sessions/${sessionId}/workspace/tree`,
+    )
+  })
+
+  it('reads a workspace file with the path query', async () => {
+    const sessionId = '00000000-0000-4000-8000-000000000001'
+    const fetchMock = respondWith({
+      path: 'src/app.ts',
+      content: 'export {}',
+      binary: false,
+      truncated: false,
+    })
+    const file = await client.readWorkspaceFile(sessionId, 'src/app.ts')
+
+    expect(file.content).toBe('export {}')
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toContain('path=src%2Fapp.ts')
+  })
+
   it('deletes a project', async () => {
     const fetchMock = respondWith({ deleted: true })
     await client.deleteProject('00000000-0000-4000-8000-000000000001')

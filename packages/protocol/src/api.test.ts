@@ -4,6 +4,8 @@ import {
   createEnvironmentRequest,
   updateEnvironmentRequest,
   reorderEnvironmentsRequest,
+  workspaceTreeResponse,
+  workspaceFileResponse,
 } from './api.js'
 
 describe('createSessionRequest', () => {
@@ -117,6 +119,38 @@ describe('environment schemas', () => {
       reorderEnvironmentsRequest.safeParse({ ids: ['3f1e4c1e-0b6e-4d3a-9a5f-9a1b2c3d4e5f'] })
         .success,
     ).toBe(true)
+  })
+})
+
+describe('workspace file schemas', () => {
+  it('accepts a list of relative paths', () => {
+    const parsed = workspaceTreeResponse.parse({ paths: ['README.md', 'src/app.ts'] })
+    expect(parsed.paths).toEqual(['README.md', 'src/app.ts'])
+  })
+
+  it('accepts an empty tree', () => {
+    expect(workspaceTreeResponse.parse({ paths: [] }).paths).toEqual([])
+  })
+
+  it('accepts a text file payload', () => {
+    const parsed = workspaceFileResponse.parse({
+      path: 'src/app.ts',
+      content: 'export {}',
+      binary: false,
+      truncated: false,
+    })
+    expect(parsed.content).toBe('export {}')
+  })
+
+  it('accepts a binary file with empty content', () => {
+    const parsed = workspaceFileResponse.parse({
+      path: 'icon.png',
+      content: '',
+      binary: true,
+      truncated: false,
+    })
+    expect(parsed.binary).toBe(true)
+    expect(parsed.content).toBe('')
   })
 })
 

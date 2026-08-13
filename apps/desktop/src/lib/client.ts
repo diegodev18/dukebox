@@ -23,6 +23,8 @@ import type {
   UpdateEnvironmentRequest,
   UpsertOpencodeProviderRequest,
   PermissionMode,
+  WorkspaceFileResponse,
+  WorkspaceTreeResponse,
 } from '@dukebox/protocol'
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 
@@ -335,6 +337,26 @@ export class DukeboxClient {
       method: 'POST',
       body: JSON.stringify(method ? { method } : {}),
     })
+  }
+
+  /**
+   * Paths in the session's workspace, relative to the repository root.
+   *
+   * Tracked and untracked files; gitignored paths stay out. The Files tab
+   * turns this list into a tree.
+   */
+  async listWorkspaceTree(sessionId: string): Promise<string[]> {
+    const body = await this.request<WorkspaceTreeResponse>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/workspace/tree`,
+    )
+    return body.paths
+  }
+
+  /** Contents of one workspace path. Binary files come back with empty content. */
+  async readWorkspaceFile(sessionId: string, path: string): Promise<WorkspaceFileResponse> {
+    return this.request(
+      `/api/sessions/${encodeURIComponent(sessionId)}/workspace/file?path=${encodeURIComponent(path)}`,
+    )
   }
 
   async stopSession(sessionId: string): Promise<void> {

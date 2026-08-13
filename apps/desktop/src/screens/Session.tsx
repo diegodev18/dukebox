@@ -429,6 +429,7 @@ export function Session({
             <Workspace
               session={current}
               files={live.transcript.files}
+              client={client}
               terminals={live.terminals}
               disabled={disconnected}
               onOpenTerminal={live.openTerminal}

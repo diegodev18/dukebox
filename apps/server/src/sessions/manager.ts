@@ -27,9 +27,11 @@ import {
   Sandbox,
   Workspace,
   WorkspaceError,
+  resolveWorkspacePath,
   type CredentialProxy,
   type SessionContainer,
   type TerminalHandle,
+  type WorkspaceFile,
 } from '@dukebox/sandbox'
 import { and, eq, inArray } from 'drizzle-orm'
 import { connect } from 'node:net'
@@ -143,6 +145,12 @@ interface RunningSession {
 }
 
 export class SessionError extends Error {}
+
+/** Map a sandbox failure onto the error the HTTP layer already understands. */
+function workspaceAsSessionError(error: unknown): SessionError {
+  if (error instanceof WorkspaceError) return new SessionError(error.message)
+  throw error
+}
 
 /** The adapter for an agent id, or a thrown error if none is registered. */
 export function createAgentAdapter(agentId: string): AgentAdapter {
@@ -1181,6 +1189,33 @@ export class SessionManager {
     if (session?.status === 'stopped') await this.setStatus(sessionId, 'done')
 
     return running.container.openTerminal({ ...size, cwd: '/workspace/repo' })
+  }
+
+  /**
+   * Paths in the session's working tree, for the Files tab.
+   *
+   * Resumes the container the same way a terminal does, so browsing files
+   * after a control-plane restart does not require a dummy prompt first.
+   */
+  async listWorkspaceTree(sessionId: string): Promise<string[]> {
+    const running = await this.ensureRunning(sessionId)
+    try {
+      return await running.workspace.listTree()
+    } catch (error) {
+      throw workspaceAsSessionError(error)
+    }
+  }
+
+  /** Contents of one workspace path, capped and marked if binary. */
+  async readWorkspaceFile(sessionId: string, path: string): Promise<WorkspaceFile> {
+    if (!resolveWorkspacePath(path)) throw new SessionError('invalid path')
+
+    const running = await this.ensureRunning(sessionId)
+    try {
+      return await running.workspace.readFile(path)
+    } catch (error) {
+      throw workspaceAsSessionError(error)
+    }
   }
 
   async interrupt(sessionId: string): Promise<void> {

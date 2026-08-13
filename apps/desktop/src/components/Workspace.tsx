@@ -12,6 +12,7 @@ import {
   ChevronRightIcon,
   FileIcon,
 } from '@/components/icons'
+import { SandboxFiles } from '@/components/SandboxFiles'
 import { Terminal } from '@/components/Terminal'
 import { pullRequestTabLabel } from '@/lib/pullRequest'
 
@@ -33,9 +34,10 @@ const COLLAPSED_KEY = 'dukebox:workspace-collapsed'
 /** How many terminals a session may have. Matches the server's own cap. */
 const MAX_TERMINALS = 4
 
-type WorkspaceTab = 'files' | 'terminal' | 'environment' | 'pr'
+type WorkspaceTab = 'changes' | 'files' | 'terminal' | 'environment' | 'pr'
 
 const TAB_LABELS: Record<WorkspaceTab, string> = {
+  changes: 'Changes',
   files: 'Files',
   terminal: 'Terminal',
   environment: 'Environment',
@@ -75,6 +77,8 @@ interface Props extends TerminalProps {
   session: SessionSummary | null
   /** What the session has changed so far, folded from the event stream. */
   files: FileChange[]
+  /** Used by the Files tab to list and read the sandbox working tree. */
+  client?: DukeboxClient | null
   /** When set, the Environment tab appears with the review form. */
   environmentReview?: EnvironmentReviewTab | null
   /** When set, the Pull request tab can open, mark ready, and merge. */
@@ -84,12 +88,13 @@ interface Props extends TerminalProps {
 export function Workspace({
   session,
   files,
+  client,
   environmentReview,
   pullRequest,
   ...terminalProps
 }: Props) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === 'true')
-  const [tab, setTab] = useState<WorkspaceTab>('files')
+  const [tab, setTab] = useState<WorkspaceTab>('changes')
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, String(collapsed))
@@ -106,7 +111,7 @@ export function Workspace({
     )
 
   // Open the Environment tab when a proposal is ready to review — the form is
-  // why this session exists, and burying it behind Files would look unfinished.
+  // why this session exists, and burying it behind Changes would look unfinished.
   const reviewSessionId = environmentReview?.sessionId ?? null
   useEffect(() => {
     if (!reviewSessionId) return
@@ -121,17 +126,18 @@ export function Workspace({
     setCollapsed(false)
   }, [prUrl, showPr])
 
-  // Drop back to Files if the Environment tab disappears (e.g. switching to a
+  // Drop back to Changes if the Environment tab disappears (e.g. switching to a
   // coding session) while it was selected.
   useEffect(() => {
-    if (!environmentReview && tab === 'environment') setTab('files')
+    if (!environmentReview && tab === 'environment') setTab('changes')
   }, [environmentReview, tab])
 
   useEffect(() => {
-    if (!showPr && tab === 'pr') setTab('files')
+    if (!showPr && tab === 'pr') setTab('changes')
   }, [showPr, tab])
 
   const tabs: WorkspaceTab[] = [
+    'changes',
     'files',
     'terminal',
     ...(environmentReview ? (['environment'] as const) : []),
@@ -168,7 +174,7 @@ export function Workspace({
           files={files}
           onExpand={() => {
             setCollapsed(false)
-            setTab('files')
+            setTab('changes')
           }}
         />
       ) : (
@@ -179,14 +185,27 @@ export function Workspace({
             onSelect={setTab}
             labels={{ pr: pullRequestTabLabel(prUrl) }}
           />
-          {tab === 'files' ? (
+          {tab === 'changes' ? (
+            <div
+              role="tabpanel"
+              id="workspace-panel-changes"
+              aria-labelledby="workspace-tab-changes"
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <Panels session={session} files={files} />
+            </div>
+          ) : tab === 'files' ? (
             <div
               role="tabpanel"
               id="workspace-panel-files"
               aria-labelledby="workspace-tab-files"
               className="flex min-h-0 flex-1 flex-col"
             >
-              <Panels session={session} files={files} />
+              <SandboxFiles
+                client={client ?? null}
+                session={session}
+                revision={files.map((file) => file.path).join('\0')}
+              />
             </div>
           ) : tab === 'terminal' ? (
             <div
@@ -404,7 +423,8 @@ function Metric({
  *
  * One list rather than a tree: a session's diff is a handful of files, and a
  * tree of three entries is a widget pretending there is more to navigate than
- * there is. The preview tab arrives later.
+ * there is. The sandbox file tree lives on the Files tab; the preview tab
+ * arrives later.
  */
 function Panels({ session, files }: { session: SessionSummary | null; files: FileChange[] }) {
   const [open, setOpen] = useState<string | null>(null)
