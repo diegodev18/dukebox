@@ -55,6 +55,7 @@ import {
 } from './environmentSetup.js'
 import { writePullRequestContent } from './pr-writer.js'
 import { toSummary } from './summarize.js'
+import { titleFromPrompt, writeSessionTitle } from './title.js'
 
 /**
  * Session lifecycle.
@@ -296,6 +297,42 @@ export class SessionManager {
     if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
   }
 
+  /**
+   * Replace the heuristic title with one interpreted from the task.
+   *
+   * Failures are swallowed: a session that cannot be named still runs, and
+   * the sidebar keeps the heuristic. Naming must not delay or fail start.
+   */
+  private async nameSession(
+    sessionId: string,
+    prompt: string,
+    sessionModel?: string,
+  ): Promise<void> {
+    try {
+      const title = await writeSessionTitle({
+        prompt,
+        ...(sessionModel ? { sessionModel } : {}),
+        ...(this.deps.secrets ? { secrets: this.deps.secrets } : {}),
+      })
+
+      const [current] = await this.deps.db
+        .select({ title: sessions.title })
+        .from(sessions)
+        .where(eq(sessions.id, sessionId))
+      if (!current || current.title === title) return
+
+      const [updated] = await this.deps.db
+        .update(sessions)
+        .set({ title, updatedAt: new Date() })
+        .where(eq(sessions.id, sessionId))
+        .returning()
+
+      if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
+    } catch {
+      // Naming is best-effort. The heuristic title already on the row stands.
+    }
+  }
+
   private async persistAgentSessionId(
     sessionId: string,
     agentSessionId: string | undefined,
@@ -355,7 +392,8 @@ export class SessionManager {
         branch: '',
         baseBranch,
         environmentId,
-        title: purpose === 'environment_setup' ? 'Configure environment' : prompt.slice(0, 80),
+        title: purpose === 'environment_setup' ? 'Configure environment' : titleFromPrompt(prompt),
+        prompt,
         permissionMode,
         gitPreferences: parseGitPreferences(options.gitPreferences),
         createdByDeviceId: options.createdByDeviceId,
@@ -363,6 +401,12 @@ export class SessionManager {
       .returning()
 
     if (!session) throw new SessionError('failed to create session')
+
+    // Naming is a short model call and must not delay the 202. The heuristic
+    // title is already on the row; a better one arrives as a session_update.
+    if (purpose !== 'environment_setup') {
+      void this.nameSession(session.id, prompt, options.model)
+    }
 
     // Recorded before provisioning starts, so a crash mid-clone still has the
     // text needed to retry, and the client sees the prompt while the workspace
@@ -1035,7 +1079,7 @@ export class SessionManager {
     const commits = await running.workspace.commitsSince(running.baseCommit)
     const diffStat = await running.workspace.diffStat(running.baseCommit)
     const content = await writePullRequestContent({
-      prompt: session.title ?? '',
+      prompt: session.prompt.trim() || session.title || '',
       commits,
       diffStat,
       changedFiles: changed,
@@ -1082,7 +1126,7 @@ export class SessionManager {
       afterCommit.join('\n') === commits.join('\n')
         ? content
         : await writePullRequestContent({
-            prompt: session.title ?? '',
+            prompt: session.prompt.trim() || session.title || '',
             commits: afterCommit,
             diffStat: afterStat,
             changedFiles: afterFiles,

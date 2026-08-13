@@ -1,5 +1,5 @@
 import type { SessionSummary } from '@dukebox/protocol'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TerminalState } from '@/lib/useTerminals'
@@ -155,6 +155,48 @@ describe('Workspace pull request tab', () => {
     )
 
     expect(screen.getByRole('tab', { name: 'Pull request #1' })).toBeInTheDocument()
+  })
+
+  it('keeps the pull request chrome still and scrolls the diff like Changes', async () => {
+    render(
+      <Workspace
+        session={{
+          ...session,
+          pullRequestUrl: 'https://github.com/diego/dukebox/pull/1',
+          pullRequest: {
+            url: 'https://github.com/diego/dukebox/pull/1',
+            title: 'Fix the demux bug',
+            isDraft: true,
+            state: 'open',
+          },
+        }}
+        files={[
+          {
+            path: 'packages/sandbox/src/container.ts',
+            before: 'return raw',
+            after: 'return demuxed',
+          },
+        ]}
+        terminals={terminals}
+        pullRequest={pullRequestTab}
+        {...terminalHandlers}
+      />,
+    )
+
+    expect(screen.getByRole('tab', { name: 'Pull request #1' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(
+      screen.getByRole('button', { name: 'Ready for review' }).closest('.overflow-auto'),
+    ).toBeNull()
+
+    const file = screen.getByRole('button', { name: 'container.ts' })
+    expect(file.className).toMatch(/\bsticky\b/)
+    expect(file.closest('.overflow-auto')).not.toBeNull()
+    await waitFor(() => {
+      expect(screen.getByText('return demuxed').closest('[aria-busy="false"]')).not.toBeNull()
+    })
   })
 })
 

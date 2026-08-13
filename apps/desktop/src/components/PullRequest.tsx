@@ -1,9 +1,9 @@
 import type { FileChange, PullRequestSummary, SessionSummary } from '@dukebox/protocol'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ApiFailure, type DukeboxClient } from '@/lib/client'
-import { Diff, changeCounts, expandedPaths } from '@/components/Diff'
-import { BranchIcon, ChevronDownIcon, ChevronRightIcon, FileIcon } from '@/components/icons'
+import { FileChangeList } from '@/components/FileChangeList'
+import { BranchIcon } from '@/components/icons'
 import { PullRequestStatusIcon } from '@/components/PullRequestStatusIcon'
 import { pullRequestStatus, pullRequestStatusLabel } from '@/lib/pullRequest'
 
@@ -111,9 +111,9 @@ export function PullRequestPanel({ client, session, files, onUpdated, disabled =
       role="tabpanel"
       id="workspace-panel-pr"
       aria-labelledby="workspace-tab-pr"
-      className="flex min-h-0 flex-1 flex-col"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
-      <div className="border-b border-border px-3 py-2.5">
+      <div className="flex-none border-b border-border px-3 py-2.5">
         {pr ? (
           <>
             <div className="flex items-start gap-2">
@@ -243,7 +243,13 @@ export function PullRequestPanel({ client, session, files, onUpdated, disabled =
         )}
       </div>
 
-      <PrDiffs files={files} />
+      {files.length === 0 ? (
+        <p className="px-3 py-3 text-[12.5px] text-muted-foreground">
+          Diffs appear here once the agent changes files.
+        </p>
+      ) : (
+        <FileChangeList key={session.id} files={files} />
+      )}
     </div>
   )
 }
@@ -255,66 +261,5 @@ function StatusBadge({ pr }: { pr: PullRequestSummary }) {
       <PullRequestStatusIcon pr={pr} />
       {pullRequestStatusLabel(status)}
     </span>
-  )
-}
-
-function PrDiffs({ files }: { files: FileChange[] }) {
-  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set())
-
-  // Diffs default to open, and files that arrive later are open too. Only a
-  // diff the user collapsed stays closed.
-  useEffect(() => {
-    setOpen((current) => (files.length === 0 ? new Set() : expandedPaths(current, files)))
-  }, [files])
-
-  if (files.length === 0) {
-    return (
-      <p className="px-3 py-3 text-[12.5px] text-muted-foreground">
-        Diffs appear here once the agent changes files.
-      </p>
-    )
-  }
-
-  return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      {files.map((file) => {
-        const expanded = open.has(file.path)
-        const counts = changeCounts(file.before, file.after)
-
-        return (
-          <div key={file.path} className="border-b border-border last:border-b-0">
-            <button
-              type="button"
-              onClick={() =>
-                setOpen((current) => {
-                  const next = new Set(current)
-                  if (next.has(file.path)) next.delete(file.path)
-                  else next.add(file.path)
-                  return next
-                })
-              }
-              aria-expanded={expanded}
-              className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-[12.5px] hover:bg-muted"
-            >
-              {expanded ? (
-                <ChevronDownIcon size={13} className="flex-none text-muted-foreground" />
-              ) : (
-                <ChevronRightIcon size={13} className="flex-none text-muted-foreground" />
-              )}
-              <FileIcon size={13} className="flex-none text-muted-foreground" />
-              <span className="truncate font-medium">{file.path.split('/').pop()}</span>
-              <span className="ml-auto flex-none font-mono text-[11px] text-muted-foreground">
-                +{counts.added} −{counts.removed}
-              </span>
-            </button>
-            {expanded && (
-              <div className="px-2 pb-2">
-                <Diff file={file} />
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
   )
 }
