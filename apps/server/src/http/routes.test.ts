@@ -891,11 +891,53 @@ describe('OpenCode providers', () => {
 
   it('returns the catalog of well-known providers', async () => {
     const body = (await (await request('/api/opencode/catalog')).json()) as {
-      providers: { kind: string; name: string }[]
+      providers: { kind: string; name: string; models: { id: string; label: string }[] }[]
     }
 
     expect(body.providers.map((provider) => provider.kind)).toContain('anthropic')
     expect(body.providers.map((provider) => provider.kind)).not.toContain('openai-compatible')
+
+    const deepseek = body.providers.find((provider) => provider.kind === 'deepseek')
+    expect(deepseek?.models.map((model) => model.id)).toEqual([
+      'deepseek-v4-flash',
+      'deepseek-reasoner',
+      'deepseek-v4-pro',
+      'deepseek-chat',
+    ])
+  })
+
+  it('lists live DeepSeek catalog models for a previously saved key', async () => {
+    await secretStore.set(
+      OPENCODE_PROVIDERS_SECRET,
+      JSON.stringify([
+        {
+          id: 'deepseek',
+          kind: 'deepseek',
+          name: 'DeepSeek',
+          apiKey: 'sk-deepseek',
+          models: [
+            { id: 'deepseek-chat', label: 'DeepSeek Chat' },
+            { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
+          ],
+        },
+      ]),
+    )
+
+    const listed = (await (await request('/api/opencode/providers')).json()) as {
+      providers: { id: string; models: { id: string; label: string }[] }[]
+    }
+
+    expect(listed.providers).toEqual([
+      expect.objectContaining({
+        id: 'deepseek',
+        models: [
+          { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
+          { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
+          { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+          { id: 'deepseek-chat', label: 'DeepSeek Chat' },
+        ],
+      }),
+    ])
   })
 
   it('stores a catalog provider and never returns the key', async () => {

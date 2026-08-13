@@ -18,20 +18,28 @@ interface TerminalProps {
   onInput: (data: string) => void
   onResize: (cols: number, rows: number) => void
   onDrain: (count: number) => void
+  disabled?: boolean
 }
 
 /** Dragging a window edge fires continuously; each resize is a round trip. */
 const RESIZE_DEBOUNCE_MS = 120
 
-export function Terminal({ tab, active, onInput, onResize, onDrain }: TerminalProps) {
+export function Terminal({
+  tab,
+  active,
+  onInput,
+  onResize,
+  onDrain,
+  disabled = false,
+}: TerminalProps) {
   const host = useRef<HTMLDivElement>(null)
   const xterm = useRef<Xterm | null>(null)
   const fit = useRef<FitAddon | null>(null)
 
   // Read by long-lived listeners that must not be re-registered on every
   // render — rebinding xterm's onData would double every keystroke.
-  const handlers = useRef({ onInput, onResize })
-  handlers.current = { onInput, onResize }
+  const handlers = useRef({ onInput, onResize, disabled: Boolean(disabled) })
+  handlers.current = { onInput, onResize, disabled: Boolean(disabled) }
 
   useEffect(() => {
     if (!host.current) return
@@ -50,6 +58,7 @@ export function Terminal({ tab, active, onInput, onResize, onDrain }: TerminalPr
     fitAddon.fit()
 
     terminal.onData((data) => {
+      if (handlers.current.disabled) return
       handlers.current.onInput(encode(data))
     })
 
@@ -62,6 +71,10 @@ export function Terminal({ tab, active, onInput, onResize, onDrain }: TerminalPr
       fit.current = null
     }
   }, [])
+
+  useEffect(() => {
+    if (xterm.current) xterm.current.options.disableStdin = Boolean(disabled)
+  }, [disabled])
 
   // The app follows the system colour scheme, and a terminal left on the old
   // palette is the one element that does not.

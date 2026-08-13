@@ -30,6 +30,8 @@ interface Props {
   status?: SessionStatus
   /** Socket state: empty + catching up is "loading", not "nothing to say". */
   streamStatus?: StreamStatus
+  /** Permission answers cannot reach the server while the socket is down. */
+  disabled?: boolean
 }
 
 export function Transcript({
@@ -39,6 +41,7 @@ export function Transcript({
   running,
   status,
   streamStatus,
+  disabled = false,
 }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -116,6 +119,7 @@ export function Transcript({
                 block={block}
                 onRespond={onRespond}
                 compactSetup={block.id === setupPromptId}
+                disabled={disabled}
                 {...(running !== undefined ? { running } : {})}
                 {...(status !== undefined ? { status } : {})}
               />
@@ -146,12 +150,14 @@ function BlockView({
   compactSetup,
   running,
   status,
+  disabled = false,
 }: {
   block: Block
   onRespond: Props['onRespond']
   compactSetup?: boolean
   running?: boolean
   status?: SessionStatus
+  disabled?: boolean
 }) {
   switch (block.kind) {
     case 'prompt':
@@ -183,7 +189,7 @@ function BlockView({
       return <Tool block={block} settled={status !== undefined && isTerminal(status)} />
 
     case 'permission':
-      return <Permission block={block} onRespond={onRespond} />
+      return <Permission block={block} onRespond={onRespond} disabled={disabled} />
 
     case 'error':
       return (
@@ -355,9 +361,11 @@ function Tool({ block, settled }: { block: ToolBlock; settled?: boolean }) {
 function Permission({
   block,
   onRespond,
+  disabled = false,
 }: {
   block: Extract<Block, { kind: 'permission' }>
   onRespond: Props['onRespond']
+  disabled?: boolean
 }) {
   const [decision, setDecision] = useState<'allow' | 'deny' | null>(null)
   const allow = useRef<HTMLButtonElement>(null)
@@ -366,9 +374,9 @@ function Permission({
   const isPlanExit = block.action === EXIT_PLAN_MODE_ACTION
 
   useEffect(() => {
-    if (answered) return
+    if (answered || disabled) return
     allow.current?.focus()
-  }, [answered])
+  }, [answered, disabled])
 
   if (answered) {
     if (decision === 'allow') {
@@ -410,14 +418,16 @@ function Permission({
           ref={allow}
           type="button"
           onClick={() => respond(true)}
-          className="rounded-[calc(var(--radius)*0.6)] bg-foreground px-3 py-1.5 text-[12.5px] font-medium text-background"
+          disabled={disabled}
+          className="rounded-[calc(var(--radius)*0.6)] bg-foreground px-3 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
         >
           {isPlanExit ? 'Implement' : 'Allow'}
         </button>
         <button
           type="button"
           onClick={() => respond(false)}
-          className="rounded-[calc(var(--radius)*0.6)] border border-border px-3 py-1.5 text-[12.5px] font-medium hover:bg-muted"
+          disabled={disabled}
+          className="rounded-[calc(var(--radius)*0.6)] border border-border px-3 py-1.5 text-[12.5px] font-medium hover:bg-muted disabled:opacity-40"
         >
           {isPlanExit ? 'Keep planning' : 'Deny'}
         </button>

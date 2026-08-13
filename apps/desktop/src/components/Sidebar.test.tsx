@@ -62,6 +62,7 @@ function renderSidebar({
   projectOverride = {},
   sessionOverride = {},
   selectedId,
+  disabled = false,
 }: {
   onArchive?: ReturnType<typeof vi.fn>
   onNewSession?: ReturnType<typeof vi.fn>
@@ -71,6 +72,7 @@ function renderSidebar({
   projectOverride?: Partial<ProjectSummary>
   sessionOverride?: Partial<SessionSummary>
   selectedId?: string | null
+  disabled?: boolean
 } = {}) {
   const row = { ...session, ...sessionOverride }
   render(
@@ -87,6 +89,7 @@ function renderSidebar({
       onManageEnvironments={onManageEnvironments}
       onArchive={onArchive}
       onRemoveProject={onRemoveProject}
+      disabled={disabled}
     />,
   )
   return {
@@ -204,6 +207,14 @@ describe('Sidebar', () => {
 
     await userEvent.click(confirm)
     expect(onRemoveProject).toHaveBeenCalledWith(project.id)
+  })
+
+  it('blocks starting a session while disconnected', async () => {
+    const { onNewSession } = renderSidebar({ disabled: true })
+
+    expect(screen.getByRole('button', { name: 'New session' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'New session' }))
+    expect(onNewSession).not.toHaveBeenCalled()
   })
 
   it('does not show a pull request mark when none exists', () => {

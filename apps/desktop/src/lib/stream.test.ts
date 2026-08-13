@@ -1,6 +1,6 @@
 import type { ClientCommand, ServerMessage } from '@dukebox/protocol'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SessionStream, type StreamStatus } from '@/lib/stream'
+import { SessionStream, isStreamConnected, type StreamStatus } from '@/lib/stream'
 
 /**
  * A WebSocket that never touches a network.
@@ -78,6 +78,7 @@ function setup(resumeFrom: (sessionId: string) => number = () => 0) {
   const messages: ServerMessage[] = []
   const statuses: StreamStatus[] = []
   const failures: string[] = []
+  const revoked: number[] = []
 
   const stream = new SessionStream(
     ADDRESS,
@@ -86,6 +87,7 @@ function setup(resumeFrom: (sessionId: string) => number = () => 0) {
       onMessage: (message) => messages.push(message),
       onStatus: (status) => statuses.push(status),
       onFailure: (reason) => failures.push(reason),
+      onRevoked: () => revoked.push(1),
     },
     resumeFrom,
   )
@@ -95,6 +97,7 @@ function setup(resumeFrom: (sessionId: string) => number = () => 0) {
     messages,
     statuses,
     failures,
+    revoked,
     socket: () => FakeSocket.instances.at(-1) as FakeSocket,
   }
 }
@@ -248,6 +251,28 @@ describe('reconnecting', () => {
     vi.advanceTimersByTime(60_000)
     expect(FakeSocket.instances).toHaveLength(1)
   })
+
+  it('retries a socket that never reached the server', () => {
+    // A down server must come back without restarting the app. Naming the
+    // failure is not the same as giving up.
+    const { stream, socket } = setup()
+    stream.connect()
+    socket().refuse()
+
+    vi.advanceTimersByTime(1000)
+    expect(FakeSocket.instances).toHaveLength(2)
+  })
+
+  it('stops retrying when the device was revoked', () => {
+    const { stream, socket, revoked } = setup()
+    stream.connect()
+    socket().open()
+    socket().drop(4000)
+
+    vi.advanceTimersByTime(60_000)
+    expect(FakeSocket.instances).toHaveLength(1)
+    expect(revoked).toHaveLength(1)
+  })
 })
 
 describe('status', () => {
@@ -273,8 +298,8 @@ describe('status', () => {
   })
 
   it('says so when a socket never reached the server', () => {
-    // Otherwise this is "Reconnecting…" forever, which is exactly what a
-    // working connection looks like during a blip.
+    // Named rather than silent, then retried. The banner is what the UI
+    // shows; this is so a refused handshake is not mistaken for a drop.
     const { stream, socket, failures } = setup()
     stream.connect()
     socket().refuse()
@@ -373,5 +398,14 @@ describe('bad input', () => {
     socket().deliverRaw(JSON.stringify({ type: 'from_the_future', payload: 1 }))
 
     expect(messages).toHaveLength(0)
+  })
+})
+
+describe('isStreamConnected', () => {
+  it('is live or catching up, not connecting or offline', () => {
+    expect(isStreamConnected('live')).toBe(true)
+    expect(isStreamConnected('catching_up')).toBe(true)
+    expect(isStreamConnected('connecting')).toBe(false)
+    expect(isStreamConnected('offline')).toBe(false)
   })
 })

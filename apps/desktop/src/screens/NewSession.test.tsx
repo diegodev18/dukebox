@@ -70,6 +70,7 @@ function renderScreen(
     preferAgentId?: string | null
     preferProjectId?: string | null
     projects?: (typeof project)[]
+    disabled?: boolean
   } = {},
 ) {
   return render(
@@ -82,6 +83,7 @@ function renderScreen(
       onConfigureProviders={extra.onConfigureProviders ?? vi.fn()}
       preferAgentId={extra.preferAgentId}
       preferProjectId={extra.preferProjectId}
+      disabled={extra.disabled}
     />,
   )
 }
@@ -435,5 +437,14 @@ describe('NewSession preferProjectId', () => {
     )
     expect(screen.queryByRole('heading', { name: 'Configure environment' })).not.toBeInTheDocument()
     expect(screen.getByLabelText(/what should it do/i)).toBeInTheDocument()
+  })
+
+  it('locks the prompt while disconnected', async () => {
+    renderScreen(makeClient(), {}, { disabled: true })
+
+    const field = await screen.findByLabelText(/what should it do/i)
+    expect(field).toBeDisabled()
+    expect(field).toHaveAttribute('placeholder', 'Waiting for connection…')
+    expect(screen.getByRole('button', { name: 'Start session' })).toBeDisabled()
   })
 })

@@ -61,6 +61,8 @@ interface Props {
   preferAgentId?: string | null
   /** Open Settings → Agents to add or edit OpenCode providers. */
   onConfigureProviders: () => void
+  /** Starting a session needs the server. */
+  disabled?: boolean
 }
 
 /** Matches the search field in the pickers, so the two read as one family. */
@@ -84,6 +86,7 @@ export function NewSession({
   preferProjectId,
   preferAgentId,
   onConfigureProviders,
+  disabled = false,
 }: Props) {
   const preferredId = preferSetupProjectId ?? preferProjectId
   const preferred = preferredId ? projects.find((project) => project.id === preferredId) : undefined
@@ -427,7 +430,7 @@ export function NewSession({
     }
   }
 
-  const busy = status.kind === 'starting' || status.kind === 'loading'
+  const busy = status.kind === 'starting' || status.kind === 'loading' || Boolean(disabled)
   const options = mergeOptions(projects, repositories)
   const hasModel = models.length > 0 && models.some((candidate) => candidate.id === model)
 
@@ -509,6 +512,7 @@ export function NewSession({
               <input
                 value={newEnvironmentName}
                 onChange={(event) => setNewEnvironmentName(event.target.value)}
+                disabled={busy}
                 className={INPUT_CLASS}
               />
             </label>
@@ -518,6 +522,7 @@ export function NewSession({
                 value={newEnvironmentPattern}
                 onChange={(event) => setNewEnvironmentPattern(event.target.value)}
                 aria-describedby="pattern-help"
+                disabled={busy}
                 className={INPUT_CLASS}
               />
             </label>
@@ -530,7 +535,8 @@ export function NewSession({
               <button
                 type="button"
                 onClick={() => setForceSetup(false)}
-                className="text-[12px] text-muted-foreground underline-offset-2 hover:underline"
+                disabled={busy}
+                className="text-[12px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-40"
               >
                 Back
               </button>
@@ -558,7 +564,7 @@ export function NewSession({
               }}
               rows={3}
               disabled={busy}
-              placeholder="Ask for a change…"
+              placeholder={disabled ? 'Waiting for connection…' : 'Ask for a change…'}
               aria-label="What should it do?"
               className="block w-full resize-none bg-transparent px-3.5 pt-3.5 pb-2 outline-none placeholder:text-muted-foreground disabled:opacity-50"
             />
@@ -568,7 +574,8 @@ export function NewSession({
                 <button
                   type="button"
                   onClick={() => setForceSetup(true)}
-                  className="text-[12px] text-muted-foreground underline-offset-2 hover:underline"
+                  disabled={busy}
+                  className="text-[12px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-40"
                 >
                   Reconfigure environment
                 </button>
@@ -598,7 +605,8 @@ export function NewSession({
             <button
               type="button"
               onClick={() => setForceSetup(true)}
-              className="underline underline-offset-2"
+              disabled={busy}
+              className="underline underline-offset-2 disabled:opacity-40"
             >
               Configure environment
             </button>

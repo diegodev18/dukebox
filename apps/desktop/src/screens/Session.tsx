@@ -5,10 +5,11 @@ import {
   type ProjectSummary,
   type SessionSummary,
 } from '@dukebox/protocol'
-import { useEffect, useMemo, useState } from 'react'
-import { DukeboxClient } from '@/lib/client'
-import type { Connection } from '@/lib/connection'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { DukeboxClient, isAuthFailure } from '@/lib/client'
+import { removeConnection, type Connection } from '@/lib/connection'
 import type { Settings } from '@/lib/settings'
+import { INITIAL_RETRY_MS, MAX_RETRY_MS, isStreamConnected } from '@/lib/stream'
 import type { UseUpdate } from '@/lib/useUpdate'
 import { AgentIcon, hasAgentIcon } from '@/components/AgentIcon'
 import { Composer } from '@/components/Composer'
@@ -79,8 +80,18 @@ export function Session({
     }
   }
 
+  const refreshSessions = async () => {
+    try {
+      setSessions(await client.listSessions())
+    } catch {
+      // Same as projects: a blip must not empty the sidebar.
+    }
+  }
+
   useEffect(() => {
     let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let delay = INITIAL_RETRY_MS
 
     const load = async () => {
       try {
@@ -97,16 +108,32 @@ export function Session({
         setRole(me.role)
         setSelected((current) => current ?? loadedSessions[0]?.id ?? null)
         setLoading(false)
-      } catch {
-        // The token worked at launch, so a failure here means the server went
-        // away rather than that the pairing is bad.
-        if (!cancelled) onDisconnected()
+        delay = INITIAL_RETRY_MS
+      } catch (error) {
+        // The token worked at launch, or the server was merely down. A 401
+        // means the pairing is dead; anything else is retried until it is not.
+        if (cancelled) return
+
+        if (isAuthFailure(error)) {
+          await removeConnection(connection.deviceId).catch(() => undefined)
+          onDisconnected()
+          return
+        }
+
+        setLoading(false)
+        const jitter = Math.random() * delay * 0.3
+        timer = setTimeout(() => {
+          timer = null
+          void load()
+        }, delay + jitter)
+        delay = Math.min(delay * 2, MAX_RETRY_MS)
       }
     }
 
     void load()
     return () => {
       cancelled = true
+      if (timer) clearTimeout(timer)
     }
     // The client is derived from the connection, so this reruns when the user
     // switches servers.
@@ -114,11 +141,36 @@ export function Session({
 
   // Session summaries arrive over the socket too, so the sidebar's status dots
   // follow a running agent without polling.
-  const live = useSession(connection, selected, (updated) => {
-    setSessions((current) =>
-      current.map((session) => (session.id === updated.id ? updated : session)),
-    )
-  })
+  const live = useSession(
+    connection,
+    selected,
+    (updated) => {
+      setSessions((current) =>
+        current.map((session) => (session.id === updated.id ? updated : session)),
+      )
+    },
+    () => {
+      void removeConnection(connection.deviceId)
+        .catch(() => undefined)
+        .then(() => onDisconnected())
+    },
+  )
+
+  const disconnected = !isStreamConnected(live.status)
+
+  // After a drop, the sidebar's HTTP snapshot can be stale. Refresh once the
+  // socket is live again rather than polling while it is down.
+  const wasOffline = useRef(false)
+  useEffect(() => {
+    if (disconnected) {
+      if (live.status === 'offline') wasOffline.current = true
+      return
+    }
+    if (!wasOffline.current) return
+    wasOffline.current = false
+    void refreshProjects()
+    void refreshSessions()
+  }, [disconnected, live.status])
 
   const current = sessions.find((session) => session.id === selected) ?? null
 
@@ -172,220 +224,231 @@ export function Session({
     // `h-full` fills the locked `#root`; `overflow-hidden` keeps any column
     // that still misbehaves from scrolling the window itself. Internal
     // panels (`Transcript`, sidebar list, workspace files) own their scroll.
-    <div
-      className={`grid h-full overflow-hidden ${
-        composing
-          ? 'grid-cols-[236px_minmax(0,1fr)]'
-          : 'grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)] has-[[data-collapsed]]:grid-cols-[236px_minmax(0,1fr)_244px]'
-      }`}
-    >
-      {settingsOpen ? (
-        <SettingsNav
-          category={settingsCategory}
-          role={role}
-          onCategoryChange={setSettingsCategory}
-          onBack={() => setSettingsOpen(false)}
-        />
-      ) : (
-        <Sidebar
-          projects={projects}
-          sessions={sessions}
-          selectedId={creating ? null : selected}
-          identity={settings.commitIdentity ?? DEFAULT_COMMIT_IDENTITY}
-          role={role}
-          onOpenSettings={(category) => {
-            setCreating(false)
-            setSetupProjectId(null)
-            setPreferProjectId(null)
-            setManagingProjectId(null)
-            setPreferAgentId(null)
-            setSettingsCategory(category)
-            setSettingsOpen(true)
-            if (category === 'updates') update.check(true)
-          }}
-          onSelect={(sessionId) => {
-            setCreating(false)
-            setSettingsOpen(false)
-            setSetupProjectId(null)
-            setPreferProjectId(null)
-            setManagingProjectId(null)
-            setPreferAgentId(null)
-            setSelected(sessionId)
-          }}
-          onNewSession={(projectId) => {
-            setSetupProjectId(null)
-            setPreferProjectId(projectId ?? null)
-            setManagingProjectId(null)
-            setPreferAgentId(null)
-            setSettingsOpen(false)
-            setCreating(true)
-          }}
-          onConfigureEnvironment={(projectId) => {
-            setSetupProjectId(projectId)
-            setPreferProjectId(null)
-            setManagingProjectId(null)
-            setPreferAgentId(null)
-            setSettingsOpen(false)
-            setCreating(true)
-          }}
-          onManageEnvironments={(projectId) => {
-            setCreating(false)
-            setSettingsOpen(false)
-            setSetupProjectId(null)
-            setPreferProjectId(null)
-            setPreferAgentId(null)
-            setManagingProjectId(projectId)
-          }}
-          archiveError={archiveError}
-          onRemoveProject={(projectId) => {
-            void (async () => {
-              try {
-                await client.deleteProject(projectId)
-                setArchiveError(null)
-              } catch (error) {
-                setArchiveError(
-                  error instanceof Error ? error.message : 'Could not remove the project.',
-                )
-                return
-              }
-
-              const remaining = sessions.filter((session) => session.projectId !== projectId)
-              setProjects((current) => current.filter((project) => project.id !== projectId))
-              setSessions(remaining)
-              setSelected((currentSelected) => {
-                if (!currentSelected) return currentSelected
-                if (remaining.some((session) => session.id === currentSelected)) {
-                  return currentSelected
-                }
-                return remaining[0]?.id ?? null
-              })
-              if (managingProjectId === projectId) setManagingProjectId(null)
-              if (setupProjectId === projectId) {
-                setSetupProjectId(null)
-                setCreating(false)
-              }
-              if (preferProjectId === projectId) {
-                setPreferProjectId(null)
-                setCreating(false)
-              }
-            })()
-          }}
-          onArchive={(sessionId) => {
-            void (async () => {
-              try {
-                await client.archiveSession(sessionId)
-                setArchiveError(null)
-              } catch (error) {
-                // Leave the row where it is: a failed archive that vanishes
-                // from the list looks like the session was deleted.
-                setArchiveError(
-                  error instanceof Error ? error.message : 'Could not archive the session.',
-                )
-                return
-              }
-
-              let fallback: string | null = null
-              setSessions((current) => {
-                const next = current.filter((session) => session.id !== sessionId)
-                fallback = next[0]?.id ?? null
-                return next
-              })
-              setSelected((currentSelected) =>
-                currentSelected === sessionId ? fallback : currentSelected,
-              )
-            })()
-          }}
-        />
-      )}
-
-      {loading ? (
-        <p role="status" className="grid place-items-center text-[13px] text-muted-foreground">
-          Loading sessions…
-        </p>
-      ) : settingsOpen ? (
-        <SettingsScreen
-          client={client}
-          connection={connection}
-          settings={settings}
-          update={update}
-          category={settingsCategory}
-          role={role}
-          onSaveSettings={onSaveSettings}
-          onSwitchServer={onSwitchServer}
-          onClose={() => setSettingsOpen(false)}
-          onDisconnected={onDisconnected}
-        />
-      ) : managingProjectId ? (
-        <EnvironmentsPanel client={client} projectId={managingProjectId} />
-      ) : creating ? (
-        <NewSession
-          client={client}
-          connection={connection}
-          projects={projects}
-          identity={settings.commitIdentity}
-          gitPreferences={settings.git}
-          onCreated={onSessionCreated}
-          preferSetupProjectId={setupProjectId}
-          preferProjectId={preferProjectId}
-          preferAgentId={preferAgentId}
-          onConfigureProviders={() => {
-            if (role !== 'owner') return
-            setPreferAgentId('opencode')
-            setSettingsCategory('agents')
-            setSettingsOpen(true)
-          }}
-        />
-      ) : current ? (
-        <>
-          <SessionColumn session={current} live={live} connection={connection} />
-          <Workspace
-            session={current}
-            files={live.transcript.files}
-            terminals={live.terminals}
-            onOpenTerminal={live.openTerminal}
-            onAttachTerminal={live.attachTerminal}
-            onDetachTerminal={live.detachTerminal}
-            onTerminalInput={live.sendTerminalInput}
-            onTerminalResize={live.resizeTerminal}
-            onCloseTerminal={live.closeTerminal}
-            onRenameTerminal={live.renameTerminal}
-            onDrainTerminal={live.drainTerminal}
-            error={live.error}
-            pullRequest={
-              current.purpose === 'coding'
-                ? {
-                    client,
-                    onUpdated: (patch) =>
-                      setSessions((sessions) =>
-                        sessions.map((session) =>
-                          session.id === selected ? { ...session, ...patch } : session,
-                        ),
-                      ),
-                  }
-                : null
-            }
-            environmentReview={
-              current.purpose === 'environment_setup' &&
-              (current.status === 'done' || current.status === 'failed')
-                ? {
-                    client,
-                    projectId: current.projectId,
-                    sessionId: current.id,
-                    environmentId: current.environmentId,
-                    environmentName: current.environmentId
-                      ? (environmentNames[current.environmentId] ?? null)
-                      : null,
-                    onSaved: () => {
-                      void refreshProjects()
-                    },
-                  }
-                : null
-            }
+    <div className="flex h-full flex-col overflow-hidden">
+      <ConnectionBanner status={live.status} />
+      <div
+        className={`grid min-h-0 flex-1 overflow-hidden ${
+          composing
+            ? 'grid-cols-[236px_minmax(0,1fr)]'
+            : 'grid-cols-[236px_minmax(0,1fr)_clamp(340px,30vw,460px)] has-[[data-collapsed]]:grid-cols-[236px_minmax(0,1fr)_244px]'
+        }`}
+      >
+        {settingsOpen ? (
+          <SettingsNav
+            category={settingsCategory}
+            role={role}
+            onCategoryChange={setSettingsCategory}
+            onBack={() => setSettingsOpen(false)}
           />
-        </>
-      ) : (
-        <EmptySession onNewSession={() => setCreating(true)} />
-      )}
+        ) : (
+          <Sidebar
+            projects={projects}
+            sessions={sessions}
+            selectedId={creating ? null : selected}
+            identity={settings.commitIdentity ?? DEFAULT_COMMIT_IDENTITY}
+            role={role}
+            disabled={disconnected}
+            onOpenSettings={(category) => {
+              setCreating(false)
+              setSetupProjectId(null)
+              setPreferProjectId(null)
+              setManagingProjectId(null)
+              setPreferAgentId(null)
+              setSettingsCategory(category)
+              setSettingsOpen(true)
+              if (category === 'updates') update.check(true)
+            }}
+            onSelect={(sessionId) => {
+              setCreating(false)
+              setSettingsOpen(false)
+              setSetupProjectId(null)
+              setPreferProjectId(null)
+              setManagingProjectId(null)
+              setPreferAgentId(null)
+              setSelected(sessionId)
+            }}
+            onNewSession={(projectId) => {
+              setSetupProjectId(null)
+              setPreferProjectId(projectId ?? null)
+              setManagingProjectId(null)
+              setPreferAgentId(null)
+              setSettingsOpen(false)
+              setCreating(true)
+            }}
+            onConfigureEnvironment={(projectId) => {
+              setSetupProjectId(projectId)
+              setPreferProjectId(null)
+              setManagingProjectId(null)
+              setPreferAgentId(null)
+              setSettingsOpen(false)
+              setCreating(true)
+            }}
+            onManageEnvironments={(projectId) => {
+              setCreating(false)
+              setSettingsOpen(false)
+              setSetupProjectId(null)
+              setPreferProjectId(null)
+              setPreferAgentId(null)
+              setManagingProjectId(projectId)
+            }}
+            archiveError={archiveError}
+            onRemoveProject={(projectId) => {
+              void (async () => {
+                try {
+                  await client.deleteProject(projectId)
+                  setArchiveError(null)
+                } catch (error) {
+                  setArchiveError(
+                    error instanceof Error ? error.message : 'Could not remove the project.',
+                  )
+                  return
+                }
+
+                const remaining = sessions.filter((session) => session.projectId !== projectId)
+                setProjects((current) => current.filter((project) => project.id !== projectId))
+                setSessions(remaining)
+                setSelected((currentSelected) => {
+                  if (!currentSelected) return currentSelected
+                  if (remaining.some((session) => session.id === currentSelected)) {
+                    return currentSelected
+                  }
+                  return remaining[0]?.id ?? null
+                })
+                if (managingProjectId === projectId) setManagingProjectId(null)
+                if (setupProjectId === projectId) {
+                  setSetupProjectId(null)
+                  setCreating(false)
+                }
+                if (preferProjectId === projectId) {
+                  setPreferProjectId(null)
+                  setCreating(false)
+                }
+              })()
+            }}
+            onArchive={(sessionId) => {
+              void (async () => {
+                try {
+                  await client.archiveSession(sessionId)
+                  setArchiveError(null)
+                } catch (error) {
+                  // Leave the row where it is: a failed archive that vanishes
+                  // from the list looks like the session was deleted.
+                  setArchiveError(
+                    error instanceof Error ? error.message : 'Could not archive the session.',
+                  )
+                  return
+                }
+
+                let fallback: string | null = null
+                setSessions((current) => {
+                  const next = current.filter((session) => session.id !== sessionId)
+                  fallback = next[0]?.id ?? null
+                  return next
+                })
+                setSelected((currentSelected) =>
+                  currentSelected === sessionId ? fallback : currentSelected,
+                )
+              })()
+            }}
+          />
+        )}
+
+        {loading ? (
+          <p role="status" className="grid place-items-center text-[13px] text-muted-foreground">
+            Loading sessions…
+          </p>
+        ) : settingsOpen ? (
+          <SettingsScreen
+            client={client}
+            connection={connection}
+            settings={settings}
+            update={update}
+            category={settingsCategory}
+            role={role}
+            onSaveSettings={onSaveSettings}
+            onSwitchServer={onSwitchServer}
+            onClose={() => setSettingsOpen(false)}
+            onDisconnected={onDisconnected}
+          />
+        ) : managingProjectId ? (
+          <EnvironmentsPanel
+            client={client}
+            projectId={managingProjectId}
+            disabled={disconnected}
+          />
+        ) : creating ? (
+          <NewSession
+            client={client}
+            connection={connection}
+            projects={projects}
+            identity={settings.commitIdentity}
+            gitPreferences={settings.git}
+            onCreated={onSessionCreated}
+            preferSetupProjectId={setupProjectId}
+            preferProjectId={preferProjectId}
+            preferAgentId={preferAgentId}
+            disabled={disconnected}
+            onConfigureProviders={() => {
+              if (role !== 'owner') return
+              setPreferAgentId('opencode')
+              setSettingsCategory('agents')
+              setSettingsOpen(true)
+            }}
+          />
+        ) : current ? (
+          <>
+            <SessionColumn session={current} live={live} connection={connection} />
+            <Workspace
+              session={current}
+              files={live.transcript.files}
+              terminals={live.terminals}
+              disabled={disconnected}
+              onOpenTerminal={live.openTerminal}
+              onAttachTerminal={live.attachTerminal}
+              onDetachTerminal={live.detachTerminal}
+              onTerminalInput={live.sendTerminalInput}
+              onTerminalResize={live.resizeTerminal}
+              onCloseTerminal={live.closeTerminal}
+              onRenameTerminal={live.renameTerminal}
+              onDrainTerminal={live.drainTerminal}
+              error={live.error}
+              pullRequest={
+                current.purpose === 'coding'
+                  ? {
+                      client,
+                      onUpdated: (patch) =>
+                        setSessions((sessions) =>
+                          sessions.map((session) =>
+                            session.id === selected ? { ...session, ...patch } : session,
+                          ),
+                        ),
+                    }
+                  : null
+              }
+              environmentReview={
+                current.purpose === 'environment_setup' &&
+                (current.status === 'done' || current.status === 'failed')
+                  ? {
+                      client,
+                      projectId: current.projectId,
+                      sessionId: current.id,
+                      environmentId: current.environmentId,
+                      environmentName: current.environmentId
+                        ? (environmentNames[current.environmentId] ?? null)
+                        : null,
+                      onSaved: () => {
+                        void refreshProjects()
+                      },
+                      disabled: disconnected,
+                    }
+                  : null
+              }
+            />
+          </>
+        ) : (
+          <EmptySession onNewSession={() => setCreating(true)} disabled={disconnected} />
+        )}
+      </div>
     </div>
   )
 }
@@ -427,16 +490,7 @@ function SessionColumn({
         </span>
       </header>
 
-      {live.status === 'offline' && (
-        <p
-          role="status"
-          className="border-b border-border bg-surface px-4.5 py-2 text-[12.5px] text-muted-foreground"
-        >
-          Reconnecting… the session keeps running on your server.
-        </p>
-      )}
-
-      {session.status === 'stopped' && live.status !== 'offline' && (
+      {session.status === 'stopped' && isStreamConnected(live.status) && (
         <p className="border-b border-border bg-surface px-4.5 py-2 text-[12.5px] text-muted-foreground">
           This session stopped when the server restarted. Send a message or open a terminal to
           continue in the same workspace.
@@ -459,13 +513,14 @@ function SessionColumn({
         running={working}
         status={session.status}
         streamStatus={live.status}
+        disabled={!isStreamConnected(live.status)}
       />
 
       <Composer
         onSend={live.send}
         onInterrupt={live.interrupt}
         running={working}
-        disabled={live.status === 'offline'}
+        disabled={!isStreamConnected(live.status)}
         error={live.error}
         {...(session.permissionMode
           ? {
@@ -481,7 +536,13 @@ function SessionColumn({
   )
 }
 
-function EmptySession({ onNewSession }: { onNewSession: () => void }) {
+function EmptySession({
+  onNewSession,
+  disabled = false,
+}: {
+  onNewSession: () => void
+  disabled?: boolean
+}) {
   return (
     <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
       <div className="max-w-sm text-center">
@@ -492,12 +553,28 @@ function EmptySession({ onNewSession }: { onNewSession: () => void }) {
         <button
           type="button"
           onClick={onNewSession}
-          className="mt-4 rounded-[calc(var(--radius)*0.6)] bg-foreground px-3.5 py-1.5 text-[12.5px] font-medium text-background"
+          disabled={disabled}
+          className="mt-4 rounded-[calc(var(--radius)*0.6)] bg-foreground px-3.5 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
         >
           New session
         </button>
       </div>
     </div>
+  )
+}
+
+function ConnectionBanner({ status }: { status: LiveSession['status'] }) {
+  if (isStreamConnected(status)) return null
+
+  return (
+    <p
+      role="status"
+      className="border-b border-border bg-surface px-4.5 py-2 text-[12.5px] text-muted-foreground"
+    >
+      {status === 'connecting'
+        ? 'Connecting to the server…'
+        : 'Reconnecting… the session keeps running on your server.'}
+    </p>
   )
 }
 
