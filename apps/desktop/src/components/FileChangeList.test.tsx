@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { FileChangeList } from '@/components/FileChangeList'
@@ -22,14 +22,16 @@ const files = [
 ]
 
 describe('FileChangeList', () => {
-  it('opens the first file and sticks its name above the diff', () => {
+  it('opens the first file and sticks its name above the diff', async () => {
     render(<FileChangeList files={files} />)
 
     const header = screen.getByRole('button', { name: 'container.ts' })
     expect(header).toHaveAttribute('aria-expanded', 'true')
     expect(header.className).toMatch(/\bsticky\b/)
     expect(header.closest('.overflow-auto')).not.toBeNull()
-    expect(screen.getByText('return demuxed')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('return demuxed').closest('[aria-busy="false"]')).not.toBeNull()
+    })
   })
 
   it('keeps later files collapsed until chosen', async () => {
@@ -44,6 +46,10 @@ describe('FileChangeList', () => {
       'aria-expanded',
       'true',
     )
-    expect(screen.getByText("it('strips headers', () => {})")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(
+        screen.getByText("it('strips headers', () => {})").closest('[aria-busy="false"]'),
+      ).not.toBeNull()
+    })
   })
 })

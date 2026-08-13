@@ -1,5 +1,5 @@
 import type { SessionSummary } from '@dukebox/protocol'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TerminalState } from '@/lib/useTerminals'
@@ -157,7 +157,7 @@ describe('Workspace pull request tab', () => {
     expect(screen.getByRole('tab', { name: 'Pull request #1' })).toBeInTheDocument()
   })
 
-  it('keeps the pull request chrome still and scrolls the diff like Changes', () => {
+  it('keeps the pull request chrome still and scrolls the diff like Changes', async () => {
     render(
       <Workspace
         session={{
@@ -194,6 +194,9 @@ describe('Workspace pull request tab', () => {
     const file = screen.getByRole('button', { name: 'container.ts' })
     expect(file.className).toMatch(/\bsticky\b/)
     expect(file.closest('.overflow-auto')).not.toBeNull()
+    await waitFor(() => {
+      expect(screen.getByText('return demuxed').closest('[aria-busy="false"]')).not.toBeNull()
+    })
   })
 })
 

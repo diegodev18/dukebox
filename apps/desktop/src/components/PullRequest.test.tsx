@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { PullRequestPanel } from '@/components/PullRequest'
@@ -215,7 +215,7 @@ describe('PullRequestPanel', () => {
     expect(client.resolvePullRequestConflicts).not.toHaveBeenCalled()
   })
 
-  it('keeps the pull request chrome still and scrolls only the diff', () => {
+  it('keeps the pull request chrome still and scrolls only the diff', async () => {
     render(
       <PullRequestPanel
         client={{} as never}
@@ -241,6 +241,8 @@ describe('PullRequestPanel', () => {
     const file = screen.getByRole('button', { name: 'container.ts' })
     expect(file.className).toMatch(/\bsticky\b/)
     expect(file.closest('.overflow-auto')).not.toBeNull()
-    expect(screen.getByText('return demuxed')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('return demuxed').closest('[aria-busy="false"]')).not.toBeNull()
+    })
   })
 })
