@@ -274,6 +274,24 @@ export class GitHubClient {
     return first ? toPullRequestView(first) : null
   }
 
+  /** One pull request, identified by URL. */
+  async viewPullRequest(repoFullName: string, url: string): Promise<PullRequestView> {
+    const raw = await this.json(
+      [
+        'pr',
+        'view',
+        url,
+        '--repo',
+        repoFullName,
+        '--json',
+        'url,title,body,isDraft,state,mergeable',
+      ],
+      pullRequestView,
+    )
+
+    return toPullRequestView(raw)
+  }
+
   /** Mark a draft pull request ready for review. */
   async markReady(repoFullName: string, url: string): Promise<void> {
     await this.run(['pr', 'ready', url, '--repo', repoFullName])

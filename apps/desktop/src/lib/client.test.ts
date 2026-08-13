@@ -227,6 +227,7 @@ describe('DukeboxClient', () => {
     await client.getPullRequest(sessionId)
     await client.markPullRequestReady(sessionId)
     await client.mergePullRequest(sessionId, 'squash')
+    await client.resolvePullRequestConflicts(sessionId)
 
     const urls = fetchMock.mock.calls.map((call) => (call[0] as string).replace(/.*\/api/, '/api'))
     expect(urls).toEqual([
@@ -234,9 +235,11 @@ describe('DukeboxClient', () => {
       `/api/sessions/${sessionId}/pr`,
       `/api/sessions/${sessionId}/pr/ready`,
       `/api/sessions/${sessionId}/pr/merge`,
+      `/api/sessions/${sessionId}/pr/resolve-conflicts`,
     ])
     expect((fetchMock.mock.calls[0]?.[1] as RequestInit).method).toBe('POST')
     expect((fetchMock.mock.calls[3]?.[1] as RequestInit).method).toBe('POST')
+    expect((fetchMock.mock.calls[4]?.[1] as RequestInit).method).toBe('POST')
     expect(JSON.parse((fetchMock.mock.calls[3]?.[1] as RequestInit).body as string)).toEqual({
       method: 'squash',
     })

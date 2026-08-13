@@ -270,6 +270,23 @@ export const mergePullRequestResponse = pullRequestSummary
 export const pullRequestResponse = pullRequestDetails
 
 /**
+ * Result of asking the agent to update the session branch with the base and
+ * resolve merge conflicts.
+ *
+ * `resolved` means git merged cleanly and the branch was pushed; the user can
+ * confirm the GitHub merge. `resolving` means conflict markers are in the
+ * working tree and the agent has been prompted to finish the job.
+ */
+export const resolvePullRequestConflictsResponse = z.object({
+  status: z.enum(['resolved', 'resolving']),
+  conflictedFiles: z.array(z.string()).optional(),
+})
+
+export type ResolvePullRequestConflictsResponse = z.infer<
+  typeof resolvePullRequestConflictsResponse
+>
+
+/**
  * Paths in a session's workspace, relative to the repository root.
  *
  * Tracked and untracked files, excluding gitignored ones. Directories are

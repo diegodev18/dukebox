@@ -390,4 +390,55 @@ describe('Workspace', () => {
       expect(await ws.commitAll('no changes')).toBeNull()
     })
   })
+
+  describe('merge', () => {
+    async function advanceOrigin(
+      target: SessionContainer,
+      files: Record<string, string>,
+      message: string,
+    ) {
+      const writes = Object.entries(files)
+        .map(([path, content]) => `printf '%s\\n' ${JSON.stringify(content)} > ${path}`)
+        .join('\n')
+      const result = await target.exec([
+        'sh',
+        '-c',
+        `set -e
+         cd /tmp/seed
+         ${writes}
+         git add -A
+         git commit -q -m ${JSON.stringify(message)}
+         git push -q ${ORIGIN_DIR} main`,
+      ])
+      if (result.exitCode !== 0) throw new Error(`failed to advance origin: ${result.stderr}`)
+    }
+
+    it('merges a base-branch change that does not conflict', async () => {
+      const { workspace: ws, container: target } = await freshWorkspace()
+      await target.exec(['sh', '-c', 'echo session > README.md'], { cwd: WORKSPACE_DIR })
+      await ws.commitAll('session work')
+
+      await advanceOrigin(target, { 'keep.txt': 'from base' }, 'base moved')
+      await ws.fetchBranch('main')
+
+      expect(await ws.merge('origin/main')).toEqual({ ok: true })
+      const keep = await target.exec(['cat', 'keep.txt'], { cwd: WORKSPACE_DIR })
+      expect(keep.stdout.trim()).toBe('from base')
+    })
+
+    it('reports conflicted files instead of throwing', async () => {
+      const { workspace: ws, container: target } = await freshWorkspace()
+      await target.exec(['sh', '-c', 'echo session > README.md'], { cwd: WORKSPACE_DIR })
+      await ws.commitAll('session work')
+
+      await advanceOrigin(target, { 'README.md': 'from base' }, 'base moved')
+      await ws.fetchBranch('main')
+
+      expect(await ws.merge('origin/main')).toEqual({
+        ok: false,
+        conflicted: ['README.md'],
+      })
+      expect(await ws.conflictedFiles()).toEqual(['README.md'])
+    })
+  })
 })

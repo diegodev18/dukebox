@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { PullRequestPanel } from '@/components/PullRequest'
+import { ApiFailure } from '@/lib/client'
 import type { SessionSummary } from '@dukebox/protocol'
 
 vi.mock('@tauri-apps/plugin-opener', () => ({
@@ -25,6 +26,22 @@ const session: SessionSummary = {
   pullRequest: null,
   environmentId: null,
   permissionMode: 'bypass',
+}
+
+const openPr = {
+  url: 'https://github.com/diego/dukebox/pull/1',
+  title: 'Add a health check',
+  isDraft: false,
+  state: 'open' as const,
+}
+
+function sessionWithPr(overrides: Partial<SessionSummary> = {}): SessionSummary {
+  return {
+    ...session,
+    pullRequestUrl: openPr.url,
+    pullRequest: openPr,
+    ...overrides,
+  }
 }
 
 describe('PullRequestPanel', () => {
@@ -69,16 +86,9 @@ describe('PullRequestPanel', () => {
     render(
       <PullRequestPanel
         client={client as never}
-        session={{
-          ...session,
-          pullRequestUrl: 'https://github.com/diego/dukebox/pull/1',
-          pullRequest: {
-            url: 'https://github.com/diego/dukebox/pull/1',
-            title: 'Add a health check',
-            isDraft: true,
-            state: 'open',
-          },
-        }}
+        session={sessionWithPr({
+          pullRequest: { ...openPr, isDraft: true },
+        })}
         files={[]}
         onUpdated={vi.fn()}
       />,
@@ -88,29 +98,16 @@ describe('PullRequestPanel', () => {
     expect(client.markPullRequestReady).toHaveBeenCalledWith(session.id)
   })
 
-  it('asks before merging', async () => {
+  it('checks mergeable before asking to confirm', async () => {
     const client = {
-      mergePullRequest: vi.fn().mockResolvedValue({
-        url: 'https://github.com/diego/dukebox/pull/1',
-        title: 'Add a health check',
-        isDraft: false,
-        state: 'merged',
-      }),
+      getPullRequest: vi.fn().mockResolvedValue({ ...openPr, mergeable: 'MERGEABLE' }),
+      mergePullRequest: vi.fn().mockResolvedValue({ ...openPr, state: 'merged' }),
     }
 
     render(
       <PullRequestPanel
         client={client as never}
-        session={{
-          ...session,
-          pullRequestUrl: 'https://github.com/diego/dukebox/pull/1',
-          pullRequest: {
-            url: 'https://github.com/diego/dukebox/pull/1',
-            title: 'Add a health check',
-            isDraft: false,
-            state: 'open',
-          },
-        }}
+        session={sessionWithPr()}
         files={[]}
         onUpdated={vi.fn()}
       />,
@@ -118,8 +115,98 @@ describe('PullRequestPanel', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Merge' }))
     expect(client.mergePullRequest).not.toHaveBeenCalled()
+    expect(client.getPullRequest).toHaveBeenCalledWith(session.id)
 
     await userEvent.click(screen.getByRole('button', { name: 'Confirm merge' }))
     expect(client.mergePullRequest).toHaveBeenCalledWith(session.id)
+  })
+
+  it('asks whether the agent should resolve conflicts', async () => {
+    const client = {
+      getPullRequest: vi.fn().mockResolvedValue({ ...openPr, mergeable: 'CONFLICTING' }),
+      mergePullRequest: vi.fn(),
+      resolvePullRequestConflicts: vi.fn().mockResolvedValue({
+        status: 'resolving',
+        conflictedFiles: ['README.md'],
+      }),
+    }
+
+    render(
+      <PullRequestPanel
+        client={client as never}
+        session={sessionWithPr()}
+        files={[]}
+        onUpdated={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    expect(client.mergePullRequest).not.toHaveBeenCalled()
+    expect(
+      screen.getByText(/This pull request conflicts with main/, { exact: false }),
+    ).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(client.resolvePullRequestConflicts).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Merge' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Resolve conflicts' }))
+    expect(client.resolvePullRequestConflicts).toHaveBeenCalledWith(session.id)
+    expect(screen.getByText(/The agent is resolving conflicts/)).toBeInTheDocument()
+  })
+
+  it('confirms merge after a clean conflict resolution', async () => {
+    const client = {
+      getPullRequest: vi.fn().mockResolvedValue({ ...openPr, mergeable: 'CONFLICTING' }),
+      mergePullRequest: vi.fn().mockResolvedValue({ ...openPr, state: 'merged' }),
+      resolvePullRequestConflicts: vi.fn().mockResolvedValue({ status: 'resolved' }),
+    }
+
+    render(
+      <PullRequestPanel
+        client={client as never}
+        session={sessionWithPr()}
+        files={[]}
+        onUpdated={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Resolve conflicts' }))
+    expect(screen.getByRole('button', { name: 'Confirm merge' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm merge' }))
+    expect(client.mergePullRequest).toHaveBeenCalledWith(session.id)
+  })
+
+  it('offers conflict resolution when merge itself reports conflicts', async () => {
+    const client = {
+      getPullRequest: vi.fn().mockResolvedValue({ ...openPr, mergeable: 'MERGEABLE' }),
+      mergePullRequest: vi
+        .fn()
+        .mockRejectedValue(
+          new ApiFailure(
+            409,
+            'merge_conflict',
+            'this pull request has conflicts with the base branch',
+          ),
+        ),
+      resolvePullRequestConflicts: vi.fn(),
+    }
+
+    render(
+      <PullRequestPanel
+        client={client as never}
+        session={sessionWithPr()}
+        files={[]}
+        onUpdated={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm merge' }))
+    expect(screen.getByRole('button', { name: 'Resolve conflicts' })).toBeInTheDocument()
+    expect(client.resolvePullRequestConflicts).not.toHaveBeenCalled()
   })
 })
