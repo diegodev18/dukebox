@@ -96,7 +96,7 @@ describe('Diff', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText(long).closest('[aria-busy="false"]')).not.toBeNull()
+      expect(screen.getByText('short').closest('[aria-busy="false"]')).not.toBeNull()
     })
     const sizer = document.querySelector('[data-line-width-sizer]')
     expect((sizer as HTMLElement).style.getPropertyValue('--sizer-text')).toBe(JSON.stringify(long))
