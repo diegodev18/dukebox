@@ -13,9 +13,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AVAILABLE_AGENTS,
   AVAILABLE_MODELS,
+  AVAILABLE_PERMISSION_MODES,
   DEFAULT_MODEL,
   DEFAULT_PERMISSION_MODE,
   agentHasPermissionModes,
+  type AvailablePermissionModeId,
 } from '@/components/AgentIcon'
 import { modelsForProvider } from '@/components/OpenCodeProviders'
 import { SendIcon } from '@/components/icons'
@@ -32,6 +34,7 @@ import {
 } from '@/components/RepoBranchPickers'
 import type { DukeboxClient } from '@/lib/client'
 import type { Connection } from '@/lib/connection'
+import type { LastNewSession } from '@/lib/settings'
 
 /**
  * Starting a session from the centre column.
@@ -42,6 +45,9 @@ import type { Connection } from '@/lib/connection'
  *
  * Environments are offered, never required: a branch no environment covers
  * runs on the base image, with a quiet notice rather than a blocked form.
+ *
+ * The pickers start as they were when the last session was created, so a
+ * second session does not ask the same questions again.
  */
 
 interface Props {
@@ -59,6 +65,10 @@ interface Props {
   preferProjectId?: string | null
   /** Restore this agent after returning from provider settings. */
   preferAgentId?: string | null
+  /** The pickers as they were when the last session started. */
+  lastNewSession?: LastNewSession | null
+  /** Persist the pickers after a session starts, so the next form matches. */
+  onRemember?: (last: LastNewSession) => void
   /** Open Settings → Agents to add or edit OpenCode providers. */
   onConfigureProviders: () => void
   /** Starting a session needs the server. */
@@ -85,40 +95,43 @@ export function NewSession({
   preferSetupProjectId,
   preferProjectId,
   preferAgentId,
+  lastNewSession = null,
+  onRemember,
   onConfigureProviders,
   disabled = false,
 }: Props) {
   const preferredId = preferSetupProjectId ?? preferProjectId
   const preferred = preferredId ? projects.find((project) => project.id === preferredId) : undefined
 
-  const initialAgent =
-    preferAgentId && AVAILABLE_AGENTS.some((agent) => agent.id === preferAgentId)
-      ? preferAgentId
-      : AVAILABLE_AGENTS[0].id
+  const initialAgent = initialAgentId(preferAgentId, lastNewSession)
+  const initialRepo =
+    preferred?.repoFullName ?? lastNewSession?.repoFullName ?? projects[0]?.repoFullName ?? ''
+  const initialBranch =
+    lastNewSession?.repoFullName === initialRepo
+      ? lastNewSession.baseBranch
+      : (preferred?.defaultBranch ?? projects[0]?.defaultBranch ?? '')
 
   const [repositories, setRepositories] = useState<RepositorySummary[]>([])
-  const [target, setTarget] = useState<string>(
-    preferred?.repoFullName ?? projects[0]?.repoFullName ?? '',
-  )
-  const [baseBranch, setBaseBranch] = useState<string>(
-    preferred?.defaultBranch ?? projects[0]?.defaultBranch ?? '',
-  )
+  const [target, setTarget] = useState<string>(initialRepo)
+  const [baseBranch, setBaseBranch] = useState<string>(initialBranch)
   const [branches, setBranches] = useState<string[]>([])
   const [branchesLoading, setBranchesLoading] = useState(false)
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([])
   const [environmentId, setEnvironmentId] = useState<string>(BASE_IMAGE_VALUE)
   const [agentId, setAgentId] = useState<string>(initialAgent)
-  const [model, setModel] = useState<string>(DEFAULT_MODEL)
-  const [permissionMode, setPermissionMode] = useState(DEFAULT_PERMISSION_MODE)
+  const [model, setModel] = useState<string>(initialModel(lastNewSession, initialAgent))
+  const [permissionMode, setPermissionMode] = useState(initialPermissionMode(lastNewSession))
   const [opencodeProviders, setOpencodeProviders] = useState<OpencodeProvider[]>([])
   const [opencodeProvidersStatus, setOpencodeProvidersStatus] = useState<
     'loading' | 'loaded' | 'failed'
   >('loading')
-  const [providerId, setProviderId] = useState('')
+  const [providerId, setProviderId] = useState(initialProviderId(lastNewSession, initialAgent))
   const [prompt, setPrompt] = useState('')
   // Coming back from provider settings with OpenCode already selected must
-  // not bounce straight into settings again if the list is still empty.
-  const skipEmptyRedirect = useRef(preferAgentId === 'opencode')
+  // not bounce straight into settings again if the list is still empty. The
+  // same applies when the last session was OpenCode: restoring that agent
+  // is not a fresh pick that should yank the form away.
+  const skipEmptyRedirect = useRef(initialAgent === 'opencode')
   const onConfigureProvidersRef = useRef(onConfigureProviders)
   onConfigureProvidersRef.current = onConfigureProviders
   const [forceSetup, setForceSetup] = useState(Boolean(preferSetupProjectId))
@@ -141,7 +154,11 @@ export function NewSession({
         if (cancelled) return
         setRepositories(found)
         setTarget((current) => {
-          if (current) return current
+          const known = new Set([
+            ...projects.map((project) => project.repoFullName),
+            ...found.map((repository) => repository.fullName),
+          ])
+          if (current && known.has(current)) return current
           return preferred?.repoFullName || projects[0]?.repoFullName || found[0]?.fullName || ''
         })
         setStatus({ kind: 'idle' })
@@ -264,9 +281,37 @@ export function NewSession({
   // catch-all still matches a feature branch, so keeping the current choice
   // here would strand `Default` on a branch that has a more specific
   // environment. With no match at all this settles on the base image.
+  //
+  // The last session is the exception: if that repo and branch are still
+  // selected, keep the environment it ran in — including an explicit base
+  // image — rather than overwriting it with the auto-resolved match.
   useEffect(() => {
-    setEnvironmentId(resolveEnvironment(environments, baseBranch)?.id ?? BASE_IMAGE_VALUE)
-  }, [baseBranch, environments])
+    const resolved = resolveEnvironment(environments, baseBranch)?.id ?? BASE_IMAGE_VALUE
+    const sameContext =
+      lastNewSession != null &&
+      lastNewSession.repoFullName === target &&
+      lastNewSession.baseBranch === baseBranch
+
+    if (sameContext) {
+      const preferredEnvironment = lastNewSession.environmentId
+      if (preferredEnvironment === BASE_IMAGE_VALUE) {
+        setEnvironmentId(BASE_IMAGE_VALUE)
+        return
+      }
+      if (
+        environments.some(
+          (environment) =>
+            environment.id === preferredEnvironment &&
+            matchesBranch(environment.branchPattern, baseBranch),
+        )
+      ) {
+        setEnvironmentId(preferredEnvironment)
+        return
+      }
+    }
+
+    setEnvironmentId(resolved)
+  }, [baseBranch, environments, target, lastNewSession])
 
   useEffect(() => {
     let cancelled = false
@@ -357,6 +402,18 @@ export function NewSession({
     setBaseBranch(project?.defaultBranch || repository?.defaultBranch || 'main')
   }
 
+  const remember = (usedEnvironmentId: string) => {
+    onRemember?.({
+      repoFullName: target,
+      baseBranch,
+      environmentId: usedEnvironmentId,
+      agentId,
+      model,
+      providerId: agentId === 'opencode' ? providerId : '',
+      permissionMode,
+    })
+  }
+
   const submit = async () => {
     if (!target || !baseBranch || !agentId) return
     if (!needsEnvironment && !prompt.trim()) return
@@ -404,6 +461,7 @@ export function NewSession({
           throw error
         }
 
+        remember(environment.id)
         onCreated(session, created)
         return
       }
@@ -421,6 +479,7 @@ export function NewSession({
         ...(gitPreferences ? { gitPreferences } : {}),
       })
 
+      remember(environmentId)
       onCreated(session, created)
     } catch (error) {
       setStatus({
@@ -651,4 +710,38 @@ function mergeOptions(
     }))
 
   return [...registered, ...rest]
+}
+
+function initialAgentId(
+  preferAgentId: string | null | undefined,
+  last: LastNewSession | null,
+): string {
+  if (preferAgentId && AVAILABLE_AGENTS.some((agent) => agent.id === preferAgentId)) {
+    return preferAgentId
+  }
+  if (last?.agentId && AVAILABLE_AGENTS.some((agent) => agent.id === last.agentId)) {
+    return last.agentId
+  }
+  return AVAILABLE_AGENTS[0].id
+}
+
+function initialModel(last: LastNewSession | null, agentId: string): string {
+  if (!last?.model) return agentId === 'opencode' ? '' : DEFAULT_MODEL
+  if (agentId === 'opencode') return last.model
+  if (AVAILABLE_MODELS.some((candidate) => candidate.id === last.model)) return last.model
+  return DEFAULT_MODEL
+}
+
+function initialProviderId(last: LastNewSession | null, agentId: string): string {
+  if (agentId !== 'opencode' || !last) return ''
+  if (last.providerId) return last.providerId
+  const slash = last.model.indexOf('/')
+  return slash === -1 ? '' : last.model.slice(0, slash)
+}
+
+function initialPermissionMode(last: LastNewSession | null): AvailablePermissionModeId {
+  return (
+    AVAILABLE_PERMISSION_MODES.find((mode) => mode.id === last?.permissionMode)?.id ??
+    DEFAULT_PERMISSION_MODE
+  )
 }

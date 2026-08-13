@@ -1,4 +1,9 @@
-import type { CommitIdentity, GitPreferences } from '@dukebox/protocol'
+import type {
+  CommitIdentity,
+  GitPreferences,
+  ProjectSummary,
+  SessionSummary,
+} from '@dukebox/protocol'
 import { DEFAULT_GIT_PREFERENCES } from '@dukebox/protocol'
 import { load, type Store } from '@tauri-apps/plugin-store'
 
@@ -31,6 +36,30 @@ export interface Settings {
   commitIdentity: CommitIdentity | null
   /** How new sessions commit, open, and merge pull requests. */
   git: GitPreferences
+  /**
+   * The New Session pickers as they were when the last session started.
+   *
+   * Null until the first session is created from this app. The form falls
+   * back to the most recent session on the server when this is absent.
+   */
+  lastNewSession: LastNewSession | null
+}
+
+/**
+ * Choices above the New Session prompt, remembered across opens.
+ *
+ * `environmentId` is empty for the base image. `providerId` is empty unless
+ * the agent was OpenCode. `model` may be empty when this was derived from a
+ * session summary, which does not carry one.
+ */
+export interface LastNewSession {
+  repoFullName: string
+  baseBranch: string
+  environmentId: string
+  agentId: string
+  model: string
+  providerId: string
+  permissionMode: string
 }
 
 export function defaultSettings(): Settings {
@@ -39,6 +68,26 @@ export function defaultSettings(): Settings {
     checkForUpdatesOnLaunch: true,
     commitIdentity: null,
     git: DEFAULT_GIT_PREFERENCES,
+    lastNewSession: null,
+  }
+}
+
+/** Fill the form from a session row when nothing has been saved locally yet. */
+export function lastNewSessionFromSummary(
+  session: SessionSummary | undefined,
+  projects: ProjectSummary[],
+): LastNewSession | null {
+  if (!session) return null
+  const project = projects.find((candidate) => candidate.id === session.projectId)
+  if (!project) return null
+  return {
+    repoFullName: project.repoFullName,
+    baseBranch: session.baseBranch,
+    environmentId: session.environmentId ?? '',
+    agentId: session.agentId,
+    model: '',
+    providerId: '',
+    permissionMode: session.permissionMode ?? 'bypass',
   }
 }
 
@@ -61,6 +110,7 @@ export async function loadSettings(): Promise<Settings> {
     ...defaults,
     ...saved,
     git: { ...defaults.git, ...saved?.git },
+    lastNewSession: parseLastNewSession(saved?.lastNewSession) ?? defaults.lastNewSession,
   }
 }
 
@@ -103,4 +153,19 @@ export function applyTheme(theme: Theme): void {
 export function bootTheme(): Theme {
   const mirror = localStorage.getItem(THEME_MIRROR_KEY)
   return mirror === 'light' || mirror === 'dark' ? mirror : 'system'
+}
+
+function parseLastNewSession(raw: unknown): LastNewSession | null {
+  if (!raw || typeof raw !== 'object') return null
+  const value = raw as Partial<LastNewSession>
+  if (!value.repoFullName || !value.baseBranch || !value.agentId) return null
+  return {
+    repoFullName: value.repoFullName,
+    baseBranch: value.baseBranch,
+    environmentId: value.environmentId ?? '',
+    agentId: value.agentId,
+    model: value.model ?? '',
+    providerId: value.providerId ?? '',
+    permissionMode: value.permissionMode ?? 'bypass',
+  }
 }
