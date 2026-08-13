@@ -7,8 +7,10 @@ import {
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useRef, useState } from 'react'
 import { filterProjects, filterSessions } from '@/lib/searchSessions'
+import { pullRequestStatus, pullRequestStatusAriaLabel } from '@/lib/pullRequest'
 import { StatusDot, statusLabel } from '@/screens/Session'
 import type { SettingsCategory } from '@/screens/Settings'
+import { PullRequestStatusIcon } from '@/components/PullRequestStatusIcon'
 import { BranchIcon, CloseIcon, PlusIcon, SearchIcon, SettingsIcon } from '@/components/icons'
 import { UserMenu } from '@/components/UserMenu'
 
@@ -348,12 +350,19 @@ function ProjectGroup({
               onOpenSessionMenu(session.id, rect.left, rect.bottom)
             }}
             aria-current={session.id === selectedId}
-            aria-label={`${statusLabel(session.status)}, ${session.title}`}
+            aria-label={sessionRowLabel(session)}
             className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2.5 py-1.5 pr-8 pl-7.5 text-left text-[13.5px] text-muted-foreground hover:bg-muted hover:text-foreground aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
           >
             <StatusDot status={session.status} />
             <span className="truncate">{session.title}</span>
-            <span className="text-[11.5px] tabular-nums opacity-75">{age(session.updatedAt)}</span>
+            <span className="flex items-center gap-1.5">
+              {session.pullRequest ? (
+                <PullRequestStatusIcon pr={session.pullRequest} size={12} />
+              ) : null}
+              <span className="text-[11.5px] tabular-nums opacity-75">
+                {age(session.updatedAt)}
+              </span>
+            </span>
           </button>
           <button
             type="button"
@@ -792,4 +801,12 @@ function age(timestamp: number): string {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
   if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h`
   return `${Math.floor(seconds / 86_400)}d`
+}
+
+function sessionRowLabel(session: SessionSummary): string {
+  const parts = [statusLabel(session.status), session.title]
+  if (session.pullRequest) {
+    parts.push(pullRequestStatusAriaLabel(pullRequestStatus(session.pullRequest)))
+  }
+  return parts.join(', ')
 }

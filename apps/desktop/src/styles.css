@@ -39,6 +39,8 @@
   --color-done: oklch(0.58 0.13 155);
   --color-added: oklch(0.62 0.15 150);
   --color-removed: oklch(0.6 0.18 25);
+  /* GitHub's merged purple — not a session state, so it sits beside them. */
+  --color-pr-merged: oklch(0.54 0.19 293);
 
   --radius: 0.5rem;
 
@@ -74,6 +76,7 @@
     --color-done: oklch(0.68 0.13 155);
     --color-added: oklch(0.7 0.15 150);
     --color-removed: oklch(0.68 0.18 25);
+    --color-pr-merged: oklch(0.68 0.16 293);
   }
 }
 
@@ -99,6 +102,7 @@
   --color-done: oklch(0.68 0.13 155);
   --color-added: oklch(0.7 0.15 150);
   --color-removed: oklch(0.68 0.18 25);
+  --color-pr-merged: oklch(0.68 0.16 293);
 }
 
 @layer base {

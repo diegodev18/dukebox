@@ -8,6 +8,10 @@ vi.mock('@/components/Terminal', () => ({
   Terminal: () => <div data-testid="xterm" />,
 }))
 
+vi.mock('@tauri-apps/plugin-opener', () => ({
+  openUrl: vi.fn(),
+}))
+
 import { Workspace } from '@/components/Workspace'
 
 const session: SessionSummary = {
@@ -102,5 +106,49 @@ describe('Workspace terminal tabs', () => {
     expect(screen.getByRole('button', { name: 'New terminal' })).toBeDisabled()
     await userEvent.click(screen.getByRole('button', { name: 'New terminal' }))
     expect(terminalHandlers.onOpenTerminal).not.toHaveBeenCalled()
+  })
+})
+
+const pullRequestTab = {
+  client: {} as never,
+  onUpdated: vi.fn(),
+}
+
+describe('Workspace pull request tab', () => {
+  it('names the tab Pull request when none is open', () => {
+    render(
+      <Workspace
+        session={{ ...session, changedFileCount: 1, pullRequest: null }}
+        files={[]}
+        terminals={terminals}
+        pullRequest={pullRequestTab}
+        {...terminalHandlers}
+      />,
+    )
+
+    expect(screen.getByRole('tab', { name: 'Pull request' })).toBeInTheDocument()
+  })
+
+  it('includes the pull request number in the tab name', () => {
+    render(
+      <Workspace
+        session={{
+          ...session,
+          pullRequestUrl: 'https://github.com/diego/dukebox/pull/1',
+          pullRequest: {
+            url: 'https://github.com/diego/dukebox/pull/1',
+            title: 'Fix the demux bug',
+            isDraft: true,
+            state: 'open',
+          },
+        }}
+        files={[]}
+        terminals={terminals}
+        pullRequest={pullRequestTab}
+        {...terminalHandlers}
+      />,
+    )
+
+    expect(screen.getByRole('tab', { name: 'Pull request #1' })).toBeInTheDocument()
   })
 })
