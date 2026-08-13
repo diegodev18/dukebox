@@ -15,6 +15,7 @@ import { AgentIcon, hasAgentIcon } from '@/components/AgentIcon'
 import { Composer } from '@/components/Composer'
 import { EnvironmentsPanel } from '@/components/EnvironmentsPanel'
 import { SessionInfo } from '@/components/SessionInfo'
+import { SearchPalette } from '@/components/SearchPalette'
 import { Sidebar } from '@/components/Sidebar'
 import { Transcript } from '@/components/Transcript'
 import { Workspace } from '@/components/Workspace'
@@ -71,6 +72,7 @@ export function Session({
   const [environmentNames, setEnvironmentNames] = useState<Record<string, string>>({})
   const [archiveError, setArchiveError] = useState<string | null>(null)
   const [role, setRole] = useState<DeviceRole | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const refreshProjects = async () => {
     try {
@@ -220,6 +222,51 @@ export function Session({
     setPreferAgentId(null)
   }
 
+  const openSettings = (category: SettingsCategory) => {
+    setCreating(false)
+    setSetupProjectId(null)
+    setPreferProjectId(null)
+    setManagingProjectId(null)
+    setPreferAgentId(null)
+    setSearchOpen(false)
+    setSettingsCategory(category)
+    setSettingsOpen(true)
+    if (category === 'updates') update.check(true)
+  }
+
+  const selectSession = (sessionId: string) => {
+    setCreating(false)
+    setSettingsOpen(false)
+    setSetupProjectId(null)
+    setPreferProjectId(null)
+    setManagingProjectId(null)
+    setPreferAgentId(null)
+    setSearchOpen(false)
+    setSelected(sessionId)
+  }
+
+  const startNewSession = (projectId?: string) => {
+    setSetupProjectId(null)
+    setPreferProjectId(projectId ?? null)
+    setManagingProjectId(null)
+    setPreferAgentId(null)
+    setSettingsOpen(false)
+    setSearchOpen(false)
+    setCreating(true)
+  }
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return
+      if (event.key.toLowerCase() !== 'k') return
+      event.preventDefault()
+      setSearchOpen((open) => !open)
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   return (
     // `h-full` fills the locked `#root`; `overflow-hidden` keeps any column
     // that still misbehaves from scrolling the window itself. Internal
@@ -248,33 +295,10 @@ export function Session({
             identity={settings.commitIdentity ?? DEFAULT_COMMIT_IDENTITY}
             role={role}
             disabled={disconnected}
-            onOpenSettings={(category) => {
-              setCreating(false)
-              setSetupProjectId(null)
-              setPreferProjectId(null)
-              setManagingProjectId(null)
-              setPreferAgentId(null)
-              setSettingsCategory(category)
-              setSettingsOpen(true)
-              if (category === 'updates') update.check(true)
-            }}
-            onSelect={(sessionId) => {
-              setCreating(false)
-              setSettingsOpen(false)
-              setSetupProjectId(null)
-              setPreferProjectId(null)
-              setManagingProjectId(null)
-              setPreferAgentId(null)
-              setSelected(sessionId)
-            }}
-            onNewSession={(projectId) => {
-              setSetupProjectId(null)
-              setPreferProjectId(projectId ?? null)
-              setManagingProjectId(null)
-              setPreferAgentId(null)
-              setSettingsOpen(false)
-              setCreating(true)
-            }}
+            onOpenSettings={openSettings}
+            onSelect={selectSession}
+            onNewSession={startNewSession}
+            onSearch={() => setSearchOpen(true)}
             onConfigureEnvironment={(projectId) => {
               setSetupProjectId(projectId)
               setPreferProjectId(null)
@@ -449,6 +473,18 @@ export function Session({
           <EmptySession onNewSession={() => setCreating(true)} disabled={disconnected} />
         )}
       </div>
+
+      {searchOpen && (
+        <SearchPalette
+          sessions={sessions}
+          projects={projects}
+          role={role}
+          onSelect={selectSession}
+          onNewSession={startNewSession}
+          onOpenSettings={openSettings}
+          onDismiss={() => setSearchOpen(false)}
+        />
+      )}
     </div>
   )
 }
