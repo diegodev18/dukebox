@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { CommandPalette } from '@/components/CommandPalette'
 import { UpdateBanner } from '@/components/UpdateBanner'
+import { COMMANDS } from '@/lib/commands'
 import { DukeboxClient, isAuthFailure } from '@/lib/client'
 import { activeConnection, removeConnection, type Connection } from '@/lib/connection'
 import type { Settings } from '@/lib/settings'
@@ -37,6 +39,7 @@ function Loaded({
   onSaveSettings: (patch: Partial<Settings>) => void
 }) {
   const [state, setState] = useState<State>({ kind: 'checking' })
+  const [commandOpen, setCommandOpen] = useState(false)
 
   // Self-updates are app-level: whether an update exists does not depend on
   // which server this copy is paired to, so the check lives here rather than
@@ -115,6 +118,20 @@ function Loaded({
   // unpairs, and if it is merely down the screen reconnects on its own.
   const switchServer = (connection: Connection) => setState({ kind: 'ready', connection })
 
+  // The command palette is app-wide: reloading the webview matters from any
+  // screen, so Ctrl/Cmd+Shift+P is owned here rather than inside a screen.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return
+      if (event.key.toLowerCase() !== 'p') return
+      event.preventDefault()
+      setCommandOpen((open) => !open)
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   // Which screen. `checking` is blank on purpose for the moment the check
   // takes — a spinner that flashes for 200ms is noise rather than feedback.
   let screen: React.ReactNode
@@ -150,6 +167,17 @@ function Loaded({
         onDismiss={update.dismiss}
       />
       <div className="min-h-0 flex-1">{screen}</div>
+
+      {commandOpen && (
+        <CommandPalette
+          commands={COMMANDS}
+          onRun={(command) => {
+            setCommandOpen(false)
+            if (command.id === 'reload-webview') window.location.reload()
+          }}
+          onDismiss={() => setCommandOpen(false)}
+        />
+      )}
     </div>
   )
 }
