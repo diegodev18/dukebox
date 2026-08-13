@@ -112,6 +112,14 @@ describe('environmentProposal', () => {
     expect(proposal.env.DATABASE_URL?.secret).toBe(true)
     expect(proposal.instructions).toBe('Run typecheck after edits.')
   })
+
+  it('accepts optional verification written by the server', () => {
+    const proposal = environmentProposal.parse({
+      setup: ['true'],
+      verification: { ok: true },
+    })
+    expect(proposal.verification).toEqual({ ok: true })
+  })
 })
 
 describe('proposalToConfigOverride', () => {
@@ -140,5 +148,15 @@ describe('proposalToConfigOverride', () => {
       env: { NODE_ENV: { secret: false } },
     })
     expect(override.env).toEqual({})
+  })
+
+  it('does not copy verification into the saved config', () => {
+    const override = proposalToConfigOverride({
+      setup: ['true'],
+      env: {},
+      verification: { ok: true, error: 'should not land in config' },
+    })
+    expect(override).not.toHaveProperty('verification')
+    expect(override.setup).toEqual(['true'])
   })
 })

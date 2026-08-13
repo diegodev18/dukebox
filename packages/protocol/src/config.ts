@@ -103,6 +103,25 @@ export const environmentEnvVar = z.object({
 export type EnvironmentEnvVar = z.infer<typeof environmentEnvVar>
 
 /**
+ * Result of running the proposed setup commands on a clean clone.
+ *
+ * Written by the server after the setup agent finishes a turn, never by the
+ * agent itself. `image_mismatch` means the proposal asked for a different
+ * container image than the setup session is running, so the commands were
+ * not executed.
+ */
+export const environmentSetupVerification = z.object({
+  ok: z.boolean(),
+  skippedReason: z.string().optional(),
+  error: z.string().optional(),
+})
+
+export type EnvironmentSetupVerification = z.infer<typeof environmentSetupVerification>
+
+/** Why setup verification was skipped rather than run. */
+export const ENVIRONMENT_SETUP_IMAGE_MISMATCH = 'image_mismatch'
+
+/**
  * What an environment-setup session writes for the user to review.
  *
  * Stored on the project as a draft until confirmed. Confirmed values become
@@ -113,6 +132,7 @@ export const environmentProposal = z.object({
   env: z.record(environmentEnvVar).default({}),
   instructions: z.string().optional(),
   image: z.string().optional(),
+  verification: environmentSetupVerification.optional(),
 })
 
 export type EnvironmentProposal = z.infer<typeof environmentProposal>

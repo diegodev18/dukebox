@@ -13,6 +13,12 @@ import { HELPER_SCRIPT } from './credentials.js'
 
 export const WORKSPACE_DIR = '/workspace/repo'
 
+/**
+ * Throwaway tree used to re-run proposed setup commands the way a coding
+ * session would: committed files only, no leftover installs from the agent.
+ */
+export const SETUP_VERIFY_DIR = '/tmp/dukebox-setup-verify'
+
 /** Bytes of a workspace file the Files tab will read. Larger files truncate. */
 export const FILE_READ_LIMIT = 512 * 1024
 
@@ -198,9 +204,39 @@ export class Workspace {
    * Each runs through a shell because `.duke/config.yaml` contains command
    * lines, not argument vectors: `pnpm install && pnpm build` has to work.
    */
-  async runSetup(commands: string[], env: Record<string, string> = {}): Promise<void> {
+  async runSetup(
+    commands: string[],
+    env: Record<string, string> = {},
+    options: { cwd?: string } = {},
+  ): Promise<void> {
+    const cwd = options.cwd ?? WORKSPACE_DIR
     for (const command of commands) {
-      await this.run(['sh', '-c', command], { env })
+      await this.run(['sh', '-c', command], { env, cwd })
+    }
+  }
+
+  /**
+   * Re-run setup against a clean export of `baseCommit`.
+   *
+   * Coding sessions clone from origin and then run setup; leftover files the
+   * setup agent created in the live worktree must not make a proposal look
+   * like it works. `git archive` exports only committed files.
+   */
+  async verifySetup(
+    commands: string[],
+    baseCommit: string,
+    env: Record<string, string> = {},
+  ): Promise<void> {
+    try {
+      await this.container.exec(['rm', '-rf', SETUP_VERIFY_DIR])
+      await this.run(['mkdir', '-p', SETUP_VERIFY_DIR], { cwd: '/tmp' })
+      await this.run(
+        ['sh', '-c', `git archive ${JSON.stringify(baseCommit)} | tar -x -C ${SETUP_VERIFY_DIR}`],
+        { cwd: WORKSPACE_DIR },
+      )
+      await this.runSetup(commands, env, { cwd: SETUP_VERIFY_DIR })
+    } finally {
+      await this.container.exec(['rm', '-rf', SETUP_VERIFY_DIR])
     }
   }
 
