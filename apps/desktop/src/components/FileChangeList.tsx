@@ -1,6 +1,6 @@
 import type { FileChange } from '@dukebox/protocol'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Diff, changeCounts, expandedPaths } from '@/components/Diff'
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Diff, fileChangeCounts, expandedPaths } from '@/components/Diff'
 import { ChevronDownIcon, ChevronRightIcon } from '@/components/icons'
 
 /**
@@ -16,7 +16,7 @@ import { ChevronDownIcon, ChevronRightIcon } from '@/components/icons'
  * tree of three entries is a widget pretending there is more to navigate than
  * there is.
  */
-export function FileChangeList({ files }: { files: FileChange[] }) {
+export const FileChangeList = memo(function FileChangeList({ files }: { files: FileChange[] }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set())
   const panel = useRef<HTMLDivElement>(null)
 
@@ -90,7 +90,7 @@ export function FileChangeList({ files }: { files: FileChange[] }) {
       </div>
     </div>
   )
-}
+})
 
 /** Whether a file was created, deleted, or edited — plus how much. */
 function Badge({ file }: { file: FileChange }) {
@@ -101,7 +101,7 @@ function Badge({ file }: { file: FileChange }) {
         ? ['deleted', 'text-removed']
         : ['edited', 'text-muted-foreground']
 
-  const { added, removed } = changeCounts(file.before, file.after)
+  const { added, removed } = fileChangeCounts(file)
 
   return (
     <span className={`flex-none text-[11.5px] ${tone}`}>

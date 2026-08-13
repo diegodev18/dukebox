@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyTerminalMessage,
+  applyTerminalOutputs,
   drainTab,
   emptyTerminalState,
   removeTab,
@@ -191,5 +192,23 @@ describe('renameTab', () => {
     const state = withOneTerminal()
 
     expect(renameTab(state, 't1', '1')).toBe(state)
+  })
+})
+
+describe('applyTerminalOutputs', () => {
+  it('appends several chunks for one terminal in a single update', () => {
+    const state = applyTerminalOutputs(
+      withOneTerminal(),
+      new Map([['t1', ['Zmlyc3Q=', 'c2Vjb25k']]]),
+    )
+
+    expect(state.tabs[0]?.pending).toEqual(['Zmlyc3Q=', 'c2Vjb25k'])
+  })
+
+  it('returns the same state when every terminal is unknown', () => {
+    const start = withOneTerminal()
+    const next = applyTerminalOutputs(start, new Map([['ghost', ['aGk=']]]))
+
+    expect(next).toBe(start)
   })
 })

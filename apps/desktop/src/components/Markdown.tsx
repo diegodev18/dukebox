@@ -3,6 +3,7 @@ import type { Components } from 'react-markdown'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { MouseEvent, ReactNode } from 'react'
+import { memo } from 'react'
 
 /**
  * Assistant prose, rendered as Markdown.
@@ -62,7 +63,7 @@ const components: Components = {
   td: ({ children }) => <td className="border-t border-border px-2 py-1.5">{children}</td>,
 }
 
-export function Markdown({ children, className }: Props) {
+export const Markdown = memo(function Markdown({ children, className }: Props) {
   return (
     <div
       data-selectable
@@ -75,7 +76,7 @@ export function Markdown({ children, className }: Props) {
       </ReactMarkdown>
     </div>
   )
-}
+})
 
 function Heading({ level, children }: { level: 1 | 2 | 3 | 4 | 5 | 6; children: ReactNode }) {
   const Tag = `h${level}` as const

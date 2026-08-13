@@ -53,6 +53,46 @@ export const MAX_RETRY_MS = 15_000
 /** Close code the server sends when this device's token was revoked. */
 const REVOKED_CLOSE_CODE = 4000
 
+/**
+ * Decode one socket frame.
+ *
+ * `terminal_output` is the hot path — many frames per keystroke burst — and its
+ * shape is a handful of strings. Checking that by hand avoids a Zod walk on
+ * every chunk. Everything else still goes through the schema, because a server
+ * one version ahead can send a shape this build has never seen.
+ */
+export function parseServerMessage(data: unknown): ServerMessage | null {
+  if (typeof data !== 'string') return null
+
+  try {
+    const raw: unknown = JSON.parse(data)
+    const fast = asTerminalOutput(raw)
+    if (fast) return fast
+
+    const result = serverMessage.safeParse(raw)
+    return result.success ? result.data : null
+  } catch {
+    return null
+  }
+}
+
+function asTerminalOutput(
+  raw: unknown,
+): Extract<ServerMessage, { type: 'terminal_output' }> | null {
+  if (raw === null || typeof raw !== 'object') return null
+  const message = raw as Record<string, unknown>
+  if (message.type !== 'terminal_output') return null
+  if (typeof message.sessionId !== 'string' || message.sessionId.length === 0) return null
+  if (typeof message.terminalId !== 'string' || message.terminalId.length === 0) return null
+  if (typeof message.data !== 'string') return null
+  return {
+    type: 'terminal_output',
+    sessionId: message.sessionId,
+    terminalId: message.terminalId,
+    data: message.data,
+  }
+}
+
 export class SessionStream {
   private socket: WebSocket | null = null
   private retryDelay = INITIAL_RETRY_MS
@@ -247,17 +287,7 @@ export class SessionStream {
   }
 
   private parse(data: unknown): ServerMessage | null {
-    if (typeof data !== 'string') return null
-
-    try {
-      // Validated rather than trusted: a server one version ahead can send a
-      // message shape this build has never seen, and crashing the renderer over
-      // it would take the whole window down.
-      const result = serverMessage.safeParse(JSON.parse(data))
-      return result.success ? result.data : null
-    } catch {
-      return null
-    }
+    return parseServerMessage(data)
   }
 
   private scheduleReconnect(): void {

@@ -72,7 +72,7 @@ let highlighter: Promise<Highlighter> | null = null
 
 function getHighlighter(): Promise<Highlighter> {
   highlighter ??= createHighlighter({
-    langs: [...LANGUAGES],
+    langs: [],
     themes: ['github-light', 'github-dark'],
   })
   return highlighter
@@ -86,6 +86,10 @@ export async function tokensForCode(path: string, code: string): Promise<Highlig
 
   try {
     const loaded = await getHighlighter()
+    const loadedLangs = loaded.getLoadedLanguages()
+    if (!loadedLangs.includes(lang)) {
+      await loaded.loadLanguage(lang)
+    }
     const result = loaded.codeToTokens(code, {
       lang,
       themes: { light: 'github-light', dark: 'github-dark' },

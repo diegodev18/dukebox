@@ -1,8 +1,9 @@
 import type { SessionSummary, WorkspaceFileResponse } from '@dukebox/protocol'
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import type { DukeboxClient } from '@/lib/client'
 import { buildFileTree, type FileTreeNode } from '@/lib/fileTree'
 import { tokensForCode, type HighlightToken } from '@/lib/syntaxHighlight'
+import { VirtualRows } from '@/components/VirtualRows'
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -74,6 +75,8 @@ export function SandboxFiles({ client, session, revision }: Props) {
     setOpenDirs(new Set())
   }, [sessionId])
 
+  const tree = useMemo(() => buildFileTree(paths), [paths])
+
   if (!session || !client) {
     return (
       <p className="px-4 py-4 text-[12.5px] text-muted-foreground">
@@ -112,8 +115,6 @@ export function SandboxFiles({ client, session, revision }: Props) {
       </p>
     )
   }
-
-  const tree = buildFileTree(paths)
 
   const toggleDir = (path: string) => {
     setOpenDirs((current) => {
@@ -242,6 +243,7 @@ function FilePreview({
 }) {
   const [file, setFile] = useState<WorkspaceFileResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const scroller = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -264,7 +266,10 @@ function FilePreview({
   }, [client, sessionId, path])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-auto border-t border-border">
+    <div
+      ref={scroller}
+      className="flex min-h-0 flex-1 flex-col overflow-auto border-t border-border"
+    >
       {error ? (
         <p className="px-3 py-2 text-[12.5px] text-muted-foreground">{error}</p>
       ) : !file ? (
@@ -282,14 +287,22 @@ function FilePreview({
               File truncated (too large)
             </p>
           )}
-          <CodeView path={file.path} content={file.content} />
+          <CodeView path={file.path} content={file.content} scrollRef={scroller} />
         </>
       )}
     </div>
   )
 }
 
-function CodeView({ path, content }: { path: string; content: string }) {
+function CodeView({
+  path,
+  content,
+  scrollRef,
+}: {
+  path: string
+  content: string
+  scrollRef: RefObject<HTMLElement | null>
+}) {
   const [lines, setLines] = useState<HighlightToken[][] | null>(null)
 
   useEffect(() => {
@@ -308,27 +321,32 @@ function CodeView({ path, content }: { path: string; content: string }) {
 
   return (
     <div data-selectable className="inline-block min-w-full font-mono text-[12px] leading-[1.55]">
-      {rendered.map((tokens, index) => (
-        <div key={index} className="flex min-w-full">
-          <span
-            className="flex-none select-none py-0 pr-3 pl-2 text-right tabular-nums text-muted-foreground opacity-60"
-            style={{ width: `${digits + 2}ch` }}
-          >
-            {index + 1}
-          </span>
-          <span className="flex-1 whitespace-pre pr-3 text-foreground">
-            {tokens.map((token, tokenIndex) => (
+      <VirtualRows count={rendered.length} scrollRef={scrollRef} estimateSize={19} after={80} wide>
+        {(index) => {
+          const tokens = rendered[index]!
+          return (
+            <div className="flex min-w-full">
               <span
-                key={tokenIndex}
-                className="shiki-token"
-                style={token.style as CSSProperties | undefined}
+                className="flex-none select-none py-0 pr-3 pl-2 text-right tabular-nums text-muted-foreground opacity-60"
+                style={{ width: `${digits + 2}ch` }}
               >
-                {token.content}
+                {index + 1}
               </span>
-            ))}
-          </span>
-        </div>
-      ))}
+              <span className="flex-1 whitespace-pre pr-3 text-foreground">
+                {tokens.map((token, tokenIndex) => (
+                  <span
+                    key={tokenIndex}
+                    className="shiki-token"
+                    style={token.style as CSSProperties | undefined}
+                  >
+                    {token.content}
+                  </span>
+                ))}
+              </span>
+            </div>
+          )
+        }}
+      </VirtualRows>
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { memo, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import type { PermissionMode } from '@dukebox/protocol'
 import { PermissionModePicker } from '@/components/RepoBranchPickers'
 import { AttachIcon, CloseIcon, FileIcon } from '@/components/icons'
@@ -40,7 +40,7 @@ interface Props {
   draft?: { text: string; key: number }
 }
 
-export function Composer({
+export const Composer = memo(function Composer({
   onSend,
   onInterrupt,
   running,
@@ -127,7 +127,12 @@ export function Composer({
         <textarea
           ref={field}
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            const element = event.currentTarget
+            setText(element.value)
+            element.style.height = 'auto'
+            element.style.height = `${Math.min(element.scrollHeight, 200)}px`
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
@@ -216,7 +221,7 @@ export function Composer({
       )}
     </div>
   )
-}
+})
 
 /** Read a picked file into the base64 data URI the protocol stages. */
 function readFile(file: File): Promise<ComposerFile> {

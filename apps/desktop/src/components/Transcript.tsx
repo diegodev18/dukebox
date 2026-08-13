@@ -6,7 +6,7 @@ import type {
   Transcript as TranscriptData,
 } from '@dukebox/protocol'
 import { EXIT_PLAN_MODE_ACTION, isTerminal } from '@dukebox/protocol'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ThinkingOrb } from 'thinking-orbs'
 import type { StreamStatus } from '@/lib/stream'
 import { activityBlock, mapOrbState, orbStateForTool } from '@/lib/orbState'
@@ -19,6 +19,7 @@ import {
   SetupIcon,
 } from '@/components/icons'
 import { Markdown } from '@/components/Markdown'
+import { VirtualRows } from '@/components/VirtualRows'
 
 /**
  * The conversation.
@@ -108,6 +109,13 @@ export function Transcript({
   // status is what knows the agent is gone, and a spinner that never stops is
   // how that used to read.
   const showWorking = transcript.running && (status === undefined || !isTerminal(status))
+  const turnActive = Boolean(running || transcript.running)
+  const last = transcript.blocks.at(-1)
+  const streamingTextId = turnActive && last?.kind === 'text' ? last.id : undefined
+  const streamingThinkingId = turnActive && last?.kind === 'thinking' ? last.id : undefined
+  const settled = status !== undefined && isTerminal(status)
+
+  const itemCount = transcript.blocks.length + (showWorking ? 1 : 0)
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -126,21 +134,30 @@ export function Transcript({
                   : 'Ask for a change to start.'}
             </p>
           ) : (
-            transcript.blocks.map((block) => (
-              <BlockView
-                key={block.id}
-                block={block}
-                onRespond={onRespond}
-                compactSetup={block.id === setupPromptId}
-                disabled={disabled}
-                {...(onEdit ? { onEdit } : {})}
-                {...(running !== undefined ? { running } : {})}
-                {...(status !== undefined ? { status } : {})}
-              />
-            ))
-          )}
+            <VirtualRows count={itemCount} scrollRef={scroller} estimateSize={72} after={32}>
+              {(index) => {
+                if (index >= transcript.blocks.length) {
+                  return <Working key="working" blocks={transcript.blocks} />
+                }
 
-          {showWorking && <Working blocks={transcript.blocks} />}
+                const block = transcript.blocks[index]!
+                return (
+                  <BlockView
+                    key={block.id}
+                    block={block}
+                    onRespond={onRespond}
+                    compactSetup={block.id === setupPromptId}
+                    disabled={disabled}
+                    onEdit={onEdit}
+                    streaming={block.id === streamingTextId || block.id === streamingThinkingId}
+                    settled={block.kind === 'tool' ? settled : undefined}
+                    running={block.id === setupPromptId ? running : undefined}
+                    status={block.id === setupPromptId ? status : undefined}
+                  />
+                )
+              }}
+            </VirtualRows>
+          )}
         </div>
       </div>
 
@@ -158,7 +175,7 @@ export function Transcript({
   )
 }
 
-function BlockView({
+const BlockView = memo(function BlockView({
   block,
   onRespond,
   compactSetup,
@@ -166,28 +183,26 @@ function BlockView({
   status,
   disabled = false,
   onEdit,
+  streaming = false,
+  settled = false,
 }: {
   block: Block
   onRespond: Props['onRespond']
   compactSetup?: boolean
-  running?: boolean
-  status?: SessionStatus
+  running?: boolean | undefined
+  status?: SessionStatus | undefined
   disabled?: boolean
-  onEdit?: Props['onEdit']
+  onEdit?: Props['onEdit'] | undefined
+  streaming?: boolean
+  settled?: boolean | undefined
 }) {
   switch (block.kind) {
     case 'prompt':
       if (compactSetup) {
-        return (
-          <SetupPrompt
-            text={block.text}
-            {...(running !== undefined ? { running } : {})}
-            {...(status !== undefined ? { status } : {})}
-          />
-        )
+        return <SetupPrompt text={block.text} running={running} status={status} />
       }
       return (
-        <MessageBlock text={block.text} editDisabled={disabled} {...(onEdit ? { onEdit } : {})}>
+        <MessageBlock text={block.text} editDisabled={disabled} onEdit={onEdit}>
           <p
             data-selectable
             className="rounded-[var(--radius)] bg-surface px-3.5 py-2.5 whitespace-pre-wrap"
@@ -200,15 +215,21 @@ function BlockView({
     case 'text':
       return (
         <MessageBlock text={block.text}>
-          <Markdown>{block.text}</Markdown>
+          {streaming ? (
+            <p data-selectable className="whitespace-pre-wrap">
+              {block.text}
+            </p>
+          ) : (
+            <Markdown>{block.text}</Markdown>
+          )}
         </MessageBlock>
       )
 
     case 'thinking':
-      return <Thinking text={block.text} />
+      return <Thinking text={block.text} streaming={streaming} />
 
     case 'tool':
-      return <Tool block={block} settled={status !== undefined && isTerminal(status)} />
+      return <Tool block={block} settled={settled} />
 
     case 'permission':
       return <Permission block={block} onRespond={onRespond} disabled={disabled} />
@@ -224,7 +245,7 @@ function BlockView({
         </p>
       )
   }
-}
+})
 
 /**
  * A user prompt or assistant reply, with copy (and, for prompts, edit) on hover.
@@ -239,7 +260,7 @@ function MessageBlock({
   children,
 }: {
   text: string
-  onEdit?: (text: string) => void
+  onEdit?: ((text: string) => void) | undefined
   editDisabled?: boolean
   children: ReactNode
 }) {
@@ -318,8 +339,8 @@ function SetupPrompt({
   status,
 }: {
   text: string
-  running?: boolean
-  status?: SessionStatus
+  running?: boolean | undefined
+  status?: SessionStatus | undefined
 }) {
   const [open, setOpen] = useState(false)
   const duration = formatSetupDuration(running, status)
@@ -365,7 +386,7 @@ function formatSetupDuration(
 }
 
 /** Reasoning, collapsed. Available, but never the first thing read. */
-function Thinking({ text }: { text: string }) {
+function Thinking({ text, streaming = false }: { text: string; streaming?: boolean }) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -387,7 +408,13 @@ function Thinking({ text }: { text: string }) {
 
       {open && (
         <div className="mt-2 pl-5 opacity-80">
-          <Markdown>{text}</Markdown>
+          {streaming ? (
+            <p data-selectable className="whitespace-pre-wrap">
+              {text}
+            </p>
+          ) : (
+            <Markdown>{text}</Markdown>
+          )}
         </div>
       )}
     </div>

@@ -141,7 +141,9 @@ describe('files', () => {
       at(2, { type: 'file_diff', path: 'a.ts', before: null, after: 'v2' }),
     )
 
-    expect(transcript.files).toEqual([{ path: 'a.ts', before: null, after: 'v2' }])
+    expect(transcript.files).toEqual([
+      { path: 'a.ts', before: null, after: 'v2', added: 1, removed: 0 },
+    ])
   })
 
   it('sorts paths so the review panel does not reshuffle', () => {
@@ -151,6 +153,14 @@ describe('files', () => {
     )
 
     expect(transcript.files.map((file) => file.path)).toEqual(['a.ts', 'z.ts'])
+  })
+
+  it('folds added and removed counts once', () => {
+    const transcript = fold(
+      at(1, { type: 'file_diff', path: 'a.ts', before: 'a\nb', after: 'a\nB' }),
+    )
+
+    expect(transcript.files[0]).toMatchObject({ added: 1, removed: 1 })
   })
 })
 
