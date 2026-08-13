@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { archName, REPO_NAME, REPO_OWNER } from './update.js'
 import { installStaging, runCommand, type UpdateResult } from './updater.js'
+import { installedVersion } from './version.js'
 
 /** Default branch tracked when an operator opts out of waiting for releases. */
 export const DEFAULT_GIT_REF = 'main'
@@ -30,6 +31,17 @@ export function gitVersionLabel(shortSha: string, ref = DEFAULT_GIT_REF): string
     .toLowerCase()
     .slice(0, 12)
   return `0.0.0-git.${safeRef}.${sha || 'unknown'}`
+}
+
+/**
+ * Pull the commit sha out of a git-built VERSION label (`0.0.0-git.<ref>.<sha>`),
+ * or null when the installed version is a release (`server-vX.Y.Z`) or a source
+ * checkout that carries no hash.
+ */
+export function gitShaFromVersionLabel(version: string): string | null {
+  if (!version.startsWith('0.0.0-git.')) return null
+  const sha = version.slice(version.lastIndexOf('.') + 1)
+  return /^[a-f0-9]{1,12}$/.test(sha) ? sha : null
 }
 
 /**
@@ -176,6 +188,18 @@ export async function performGitUpdate(options: PerformGitUpdateOptions): Promis
     }
     const shortSha = rev.stdout.trim()
     const version = gitVersionLabel(shortSha, ref)
+
+    const installedSha = await installedGitSha(installRoot)
+    if (installedSha && installedSha === shortSha.slice(0, 12).toLowerCase()) {
+      return {
+        ok: false,
+        message:
+          `you are already running commit ${shortSha} (${version}). ` +
+          `--from-git would install the same commit the service already runs; ` +
+          `restart it instead: sudo duke restart`,
+      }
+    }
+
     log(`Building server bundle from ${shortSha} (${version})`)
 
     const pnpmReady = await ensurePnpm(run, log)
@@ -236,6 +260,15 @@ export async function performGitUpdate(options: PerformGitUpdateOptions): Promis
   } finally {
     await rm(workDir, { recursive: true, force: true })
     await rm(stagingDir, { recursive: true, force: true })
+  }
+}
+
+/** Commit sha of the currently installed bundle, or null for a non-git install. */
+async function installedGitSha(installRoot: string): Promise<string | null> {
+  try {
+    return gitShaFromVersionLabel(await installedVersion(installRoot))
+  } catch {
+    return null
   }
 }
 

@@ -1,10 +1,11 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_GIT_REF,
   defaultRepoUrl,
+  gitShaFromVersionLabel,
   gitVersionLabel,
   parseUpdateArgs,
   performGitUpdate,
@@ -24,6 +25,20 @@ describe('gitVersionLabel', () => {
 
   it('falls back when the sha is empty', () => {
     expect(gitVersionLabel('')).toBe('0.0.0-git.main.unknown')
+  })
+})
+
+describe('gitShaFromVersionLabel', () => {
+  it('extracts the sha from a git-built version label', () => {
+    expect(gitShaFromVersionLabel('0.0.0-git.main.abc1234def56')).toBe('abc1234def56')
+  })
+
+  it('returns null for a release version', () => {
+    expect(gitShaFromVersionLabel('0.8.0')).toBeNull()
+  })
+
+  it('returns null when the trailing segment is not a sha', () => {
+    expect(gitShaFromVersionLabel('0.0.0-git.main.unknown')).toBeNull()
   })
 })
 
@@ -141,6 +156,39 @@ describe('performGitUpdate', () => {
     } finally {
       await rm(installRoot, { recursive: true, force: true })
       await rm(`${installRoot}.new`, { recursive: true, force: true })
+    }
+  })
+
+  it('fails when the fetched HEAD matches the installed commit', async () => {
+    const installRoot = await mkdtemp(join(tmpdir(), 'dukebox-root-'))
+    await writeFile(join(installRoot, 'VERSION'), '0.0.0-git.main.abc1234def56\n')
+    let installed = false
+    try {
+      const result = await performGitUpdate({
+        installRoot,
+        ref: 'main',
+        repoUrl: 'https://github.com/diegodev18/dukebox.git',
+        configPath: '/etc/dukebox/config.toml',
+        service: 'dukebox',
+        serviceUser: 'dukebox',
+        log: () => {},
+        run: async (command, args) => {
+          if (command === 'git' && args.includes('rev-parse')) {
+            return { code: 0, stdout: 'abc1234def56\n', stderr: '' }
+          }
+          return { code: 0, stdout: '', stderr: '' }
+        },
+        install: async () => {
+          installed = true
+          throw new Error('should not install the same commit')
+        },
+      })
+      expect(result.ok).toBe(false)
+      expect(result.message).toMatch(/already running commit abc1234def56/)
+      expect(result.message).toMatch(/duke restart/)
+      expect(installed).toBe(false)
+    } finally {
+      await rm(installRoot, { recursive: true, force: true })
     }
   })
 
