@@ -1,4 +1,9 @@
-import type { AgentCapabilities, AgentEvent, PermissionMode } from '@dukebox/protocol'
+import {
+  DEFAULT_PERMISSION_MODE,
+  type AgentCapabilities,
+  type AgentEvent,
+  type PermissionMode,
+} from '@dukebox/protocol'
 import type { Duplex } from 'node:stream'
 import { JsonlReader } from '../jsonl.js'
 import type { AgentAdapter, SessionContext, UserMessage } from '../types.js'
@@ -22,7 +27,10 @@ export const OPENCODE_CAPABILITIES: AgentCapabilities = {
   resume: true,
   mcp: true,
   interrupt: true,
-  permissionModes: false,
+  // Plan mode maps onto OpenCode's built-in `plan` agent, which refuses file
+  // edits and proposes changes instead. The other modes keep running the
+  // default build agent with --auto.
+  permissionModes: true,
 }
 
 export const OPENCODE_INSTRUCTIONS_PATH = '/tmp/dukebox-instructions.md'
@@ -34,8 +42,13 @@ export function buildRunArgs(options: {
   model?: string
   sessionId?: string
   files?: string[]
+  permissionMode?: PermissionMode
 }): string[] {
   const args = ['run', '--format', 'json', '--auto']
+
+  if (options.permissionMode === 'plan') {
+    args.push('--agent', 'plan')
+  }
 
   if (options.model) {
     args.push('--model', options.model)
@@ -92,6 +105,8 @@ export class OpenCodeAdapter implements AgentAdapter {
   private sawDone = false
   private turn = 0
   private interrupted = false
+  /** The mode the next `send` runs under. */
+  private mode: PermissionMode = DEFAULT_PERMISSION_MODE
 
   agentSessionId(): string | undefined {
     return this.mapper.agentSessionId
@@ -102,8 +117,10 @@ export class OpenCodeAdapter implements AgentAdapter {
 
     this.context = context
     this.mapper.rememberSession(context.resumeFrom, context.model)
+    this.mode = context.permissionMode ?? DEFAULT_PERMISSION_MODE
 
     await materializeOpencodeHome(context)
+    this.emit({ type: 'permission_mode', mode: this.mode })
   }
 
   /**
@@ -228,6 +245,7 @@ export class OpenCodeAdapter implements AgentAdapter {
       ...(this.context.model ? { model: this.context.model } : {}),
       ...(sessionId ? { sessionId } : {}),
       ...(files.length > 0 ? { files } : {}),
+      permissionMode: this.mode,
     })
 
     this.stream = await this.context.container.execStream(['opencode', ...args], {
@@ -280,9 +298,12 @@ export class OpenCodeAdapter implements AgentAdapter {
     this.stream.destroy()
   }
 
-  async setPermissionMode(_mode: PermissionMode): Promise<void> {
-    // OpenCode has no permission modes. Accepting the call rather than
-    // throwing means callers need no special case.
+  async setPermissionMode(mode: PermissionMode): Promise<void> {
+    // Each turn is a separate `opencode run` process, so a change applies to
+    // the next `send` rather than to the run in flight. The emitted event is
+    // what the control plane persists, so a resumed session keeps the mode.
+    this.mode = mode
+    this.emit({ type: 'permission_mode', mode })
   }
 
   async *events(): AsyncIterable<AgentEvent> {
