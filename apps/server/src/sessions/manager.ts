@@ -14,6 +14,7 @@ import {
   type GitPreferences,
   type MergeMethod,
   type ProjectConfig,
+  type PullRequestDetails,
   type PullRequestSummary,
   type SessionPurpose,
   type SessionStatus,
@@ -41,7 +42,7 @@ import { rm } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { join } from 'node:path'
 import type { EventBus } from '../events/bus.js'
-import type { GitHubClient } from '../github/client.js'
+import { GitHubError, type GitHubClient } from '../github/client.js'
 import { AGENT_CREDENTIAL_SECRET, type SecretStore } from '../secrets/store.js'
 import { buildOpencodeSessionEnv, loadOpencodeProviders } from '../opencode/providers.js'
 import {
@@ -159,6 +160,34 @@ interface RunningSession {
 }
 
 export class SessionError extends Error {}
+
+/** The pull request cannot merge until its conflicts are resolved. */
+export class MergeConflictError extends SessionError {
+  constructor(message = 'this pull request has conflicts with the base branch') {
+    super(message)
+    this.name = 'MergeConflictError'
+  }
+}
+
+const MERGEABLE_POLL_ATTEMPTS = 3
+const MERGEABLE_POLL_MS = 400
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** Prompt the agent gets when a merge left conflict markers in the tree. */
+function conflictResolutionPrompt(baseBranch: string, files: string[]): string {
+  const list = files.map((path) => `- ${path}`).join('\n')
+  return [
+    `The pull request has merge conflicts with \`${baseBranch}\`. The base branch is already merged into this branch; conflict markers are in the working tree.`,
+    '',
+    'Conflicted files:',
+    list,
+    '',
+    "Resolve every conflict. Keep the intended behavior of this session's changes. Then commit and push the branch. Do not merge the pull request.",
+  ].join('\n')
+}
 
 /** Map a sandbox failure onto the error the HTTP layer already understands. */
 function workspaceAsSessionError(error: unknown): SessionError {
@@ -804,14 +833,13 @@ export class SessionManager {
     return opened
   }
 
-  async getPullRequest(sessionId: string): Promise<PullRequestSummary | null> {
+  async getPullRequest(sessionId: string): Promise<PullRequestDetails | null> {
     const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
     if (!session) throw new SessionError('no such session')
 
     const github = this.deps.github
     if (!github) {
-      const summary = toSummary(session).pullRequest
-      return summary
+      return toSummary(session).pullRequest
     }
 
     const repo = await this.repoFullName(session.projectId)
@@ -819,6 +847,8 @@ export class SessionManager {
 
     const found = await github.findPullRequest(repo, session.branch)
     if (!found) return toSummary(session).pullRequest
+
+    const mergeable = await this.settleMergeable(github, repo, found.url, found.mergeable)
 
     await this.persistPullRequest(sessionId, {
       url: found.url,
@@ -832,6 +862,8 @@ export class SessionManager {
       title: found.title,
       isDraft: found.isDraft,
       state: found.state,
+      ...(found.body ? { body: found.body } : {}),
+      mergeable,
     }
   }
 
@@ -861,13 +893,27 @@ export class SessionManager {
     const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
     if (!session?.prUrl) throw new SessionError('this session has no pull request')
 
+    const repo = await this.requireRepoFullName(session.projectId)
+    const view = await github.viewPullRequest(repo, session.prUrl)
+    const mergeable = await this.settleMergeable(github, repo, session.prUrl, view.mergeable)
+    if (mergeable === 'CONFLICTING') {
+      throw new MergeConflictError()
+    }
+
     const prefs = parseGitPreferences(session.gitPreferences)
-    await github.mergePullRequest({
-      repoFullName: await this.requireRepoFullName(session.projectId),
-      url: session.prUrl,
-      method: method ?? prefs.mergeMethod,
-      deleteBranch: prefs.deleteBranchAfterMerge,
-    })
+    try {
+      await github.mergePullRequest({
+        repoFullName: repo,
+        url: session.prUrl,
+        method: method ?? prefs.mergeMethod,
+        deleteBranch: prefs.deleteBranchAfterMerge,
+      })
+    } catch (error) {
+      if (error instanceof GitHubError && /conflict|not mergeable/i.test(error.message)) {
+        throw new MergeConflictError()
+      }
+      throw error
+    }
 
     const next: PullRequestSummary = {
       url: session.prUrl,
@@ -877,6 +923,50 @@ export class SessionManager {
     }
     await this.persistPullRequest(sessionId, next)
     return next
+  }
+
+  /**
+   * Fetch the base branch into the session workspace and either push a clean
+   * merge or prompt the agent to resolve conflict markers.
+   */
+  async resolvePullRequestConflicts(
+    sessionId: string,
+  ): Promise<{ status: 'resolved' | 'resolving'; conflictedFiles?: string[] }> {
+    const github = this.deps.github
+    if (!github) throw new SessionError('GitHub is not configured on this server')
+
+    const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
+    if (!session) throw new SessionError('no such session')
+    if (!session.prUrl) throw new SessionError('this session has no pull request')
+    if (session.purpose === 'environment_setup') {
+      throw new SessionError('environment setup sessions do not merge pull requests')
+    }
+
+    const running = await this.ensureRunning(sessionId)
+
+    try {
+      if (await running.workspace.isDirty()) {
+        await running.workspace.commitAll(
+          `Save uncommitted work before merging ${session.baseBranch}`,
+        )
+      }
+
+      await running.workspace.fetchBranch(session.baseBranch)
+      const merged = await running.workspace.merge(`origin/${session.baseBranch}`)
+
+      if (merged.ok) {
+        await this.ensurePush(sessionId, running, session.branch, github)
+        return { status: 'resolved' }
+      }
+
+      const prompt = conflictResolutionPrompt(session.baseBranch, merged.conflicted)
+      await this.setStatus(sessionId, 'running')
+      await this.deps.bus.append(sessionId, { type: 'user_prompt', text: prompt })
+      await running.adapter.send({ text: prompt })
+      return { status: 'resolving', conflictedFiles: merged.conflicted }
+    } catch (error) {
+      throw workspaceAsSessionError(error)
+    }
   }
 
   /**
@@ -993,6 +1083,28 @@ export class SessionManager {
     }
     await this.persistPullRequest(sessionId, summary)
     return summary
+  }
+
+  /**
+   * GitHub reports `UNKNOWN` until it has computed mergeability. A few
+   * retries usually land on MERGEABLE or CONFLICTING; if not, UNKNOWN is
+   * the honest answer and `gh pr merge` can still fail later.
+   */
+  private async settleMergeable(
+    github: GitHubClient,
+    repoFullName: string,
+    url: string,
+    current: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN' | null,
+  ): Promise<'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN' | null> {
+    if (current && current !== 'UNKNOWN') return current
+
+    for (let attempt = 0; attempt < MERGEABLE_POLL_ATTEMPTS; attempt++) {
+      await sleep(MERGEABLE_POLL_MS)
+      const view = await github.viewPullRequest(repoFullName, url)
+      if (view.mergeable && view.mergeable !== 'UNKNOWN') return view.mergeable
+    }
+
+    return 'UNKNOWN'
   }
 
   private async persistPullRequest(sessionId: string, pr: PullRequestSummary): Promise<void> {

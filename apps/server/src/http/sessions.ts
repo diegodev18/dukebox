@@ -9,7 +9,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm'
 import { Hono, type Context } from 'hono'
 import type { EventBus } from '../events/bus.js'
 import { routeParam, type AuthedVariables } from './auth.js'
-import { SessionError, type SessionManager } from '../sessions/manager.js'
+import { SessionError, MergeConflictError, type SessionManager } from '../sessions/manager.js'
 import { toSummary } from '../sessions/summarize.js'
 
 /**
@@ -282,6 +282,20 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
 
     try {
       return c.json(await deps.sessions.mergePullRequest(routeParam(c, 'id'), parsed.data.method))
+    } catch (error) {
+      if (error instanceof MergeConflictError) {
+        return c.json({ error: 'merge_conflict', message: error.message }, 409)
+      }
+      if (error instanceof SessionError) {
+        return c.json({ error: 'conflict', message: error.message }, 409)
+      }
+      throw error
+    }
+  })
+
+  app.post('/sessions/:id/pr/resolve-conflicts', async (c) => {
+    try {
+      return c.json(await deps.sessions.resolvePullRequestConflicts(routeParam(c, 'id')))
     } catch (error) {
       if (error instanceof SessionError) {
         return c.json({ error: 'conflict', message: error.message }, 409)

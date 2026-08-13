@@ -449,6 +449,62 @@ export class Workspace {
   }
 
   /**
+   * Fetch `origin/<baseBranch>` with enough history to merge.
+   *
+   * Sessions clone shallow (`--depth 1`). Merging a base that has moved needs
+   * the commits between the clone tip and the current base; unshallowing first
+   * is what makes the merge-base visible.
+   */
+  async fetchBranch(baseBranch: string): Promise<void> {
+    const shallow = await this.container.exec(['git', 'rev-parse', '--is-shallow-repository'], {
+      cwd: WORKSPACE_DIR,
+    })
+
+    if (shallow.stdout.trim() === 'true') {
+      try {
+        await this.run(['git', 'fetch', '--unshallow'])
+      } catch {
+        // Already as complete as the remote, or the remote forbids unshallow.
+        // The ordinary fetch below still brings in new tips.
+      }
+    }
+
+    await this.run(['git', 'fetch', 'origin', baseBranch])
+  }
+
+  /**
+   * Merge `ref` into the current branch.
+   *
+   * A conflicted merge is not a thrown error: the working tree is left with
+   * conflict markers so an agent can resolve them. Other failures throw.
+   */
+  async merge(ref: string): Promise<{ ok: true } | { ok: false; conflicted: string[] }> {
+    const result = await this.container.exec(['git', 'merge', '--no-edit', ref], {
+      cwd: WORKSPACE_DIR,
+    })
+
+    if (result.exitCode === 0) return { ok: true }
+
+    const conflicted = await this.conflictedFiles()
+    if (conflicted.length > 0) return { ok: false, conflicted }
+
+    throw new WorkspaceError(
+      `command failed: git merge --no-edit ${ref}`,
+      result.stderr || result.stdout,
+      result.exitCode,
+    )
+  }
+
+  /** Paths still unmerged after a conflicted merge. */
+  async conflictedFiles(): Promise<string[]> {
+    const result = await this.container.exec(['git', 'diff', '--name-only', '--diff-filter=U'], {
+      cwd: WORKSPACE_DIR,
+    })
+
+    return splitLines(result.stdout).filter(Boolean)
+  }
+
+  /**
    * Why git could not authenticate, asked from inside the container.
    *
    * git's own failure names none of the things that can be wrong: whether a

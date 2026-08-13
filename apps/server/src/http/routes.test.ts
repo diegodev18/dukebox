@@ -7,7 +7,7 @@ import { OPENCODE_PROVIDERS_SECRET } from '../opencode/providers.js'
 import { issuePairingCode, redeemPairingCode } from '../auth/pairing.js'
 import { EventBus } from '../events/bus.js'
 import type { GitHubClient } from '../github/client.js'
-import { SessionError, SessionManager } from '../sessions/manager.js'
+import { SessionError, MergeConflictError, SessionManager } from '../sessions/manager.js'
 import { close, db, prepareDatabase, resetDatabase } from '../testing/database.js'
 import { closeRedis, redis } from '../testing/redis.js'
 import { createApp } from './app.js'
@@ -66,6 +66,9 @@ const sessionManager = {
     title: 'Add a thing',
     isDraft: false,
     state: 'merged' as const,
+  })),
+  resolvePullRequestConflicts: vi.fn(async () => ({
+    status: 'resolved' as const,
   })),
   listWorkspaceTree: vi.fn(async () => ['README.md', 'src/app.ts']),
   readWorkspaceFile: vi.fn(async (_sessionId: string, path: string) => ({
@@ -743,6 +746,7 @@ describe('POST /api/sessions/:id/pr', () => {
       title: 'Add a thing',
       isDraft: true,
       state: 'open',
+      mergeable: 'MERGEABLE',
     })
 
     const project = await createProject()
@@ -769,6 +773,35 @@ describe('POST /api/sessions/:id/pr', () => {
     const response = await post(`/api/sessions/${session.id}/pr/merge`, { method: 'squash' })
     expect(response.status).toBe(200)
     expect(sessionManager.mergePullRequest).toHaveBeenCalledWith(session.id, 'squash')
+  })
+
+  it('reports merge conflicts as merge_conflict', async () => {
+    vi.mocked(sessionManager.mergePullRequest).mockRejectedValueOnce(new MergeConflictError())
+
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await post(`/api/sessions/${session.id}/pr/merge`, {})
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({ error: 'merge_conflict' })
+  })
+
+  it('asks the agent to resolve pull request conflicts', async () => {
+    vi.mocked(sessionManager.resolvePullRequestConflicts).mockResolvedValueOnce({
+      status: 'resolving',
+      conflictedFiles: ['README.md'],
+    })
+
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await post(`/api/sessions/${session.id}/pr/resolve-conflicts`, {})
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      status: 'resolving',
+      conflictedFiles: ['README.md'],
+    })
+    expect(sessionManager.resolvePullRequestConflicts).toHaveBeenCalledWith(session.id)
   })
 
   it('passes a title through', async () => {

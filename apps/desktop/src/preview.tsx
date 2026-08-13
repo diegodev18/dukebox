@@ -287,6 +287,14 @@ const fakeClient = {
     isDraft: false,
     state: 'merged' as const,
   }),
+  getPullRequest: async () => ({
+    url: 'https://github.com/diegodev18/dukebox/pull/1',
+    title: 'Fix the demux bug',
+    isDraft: false,
+    state: 'open' as const,
+    mergeable: 'MERGEABLE' as const,
+  }),
+  resolvePullRequestConflicts: async () => ({ status: 'resolved' as const }),
   listWorkspaceTree: async () => ['CLAUDE.md', 'src/app.ts'],
   readWorkspaceFile: async (_sessionId: string, path: string) => {
     if (path === 'CLAUDE.md') {

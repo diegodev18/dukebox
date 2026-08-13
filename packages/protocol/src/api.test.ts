@@ -6,6 +6,8 @@ import {
   reorderEnvironmentsRequest,
   workspaceTreeResponse,
   workspaceFileResponse,
+  resolvePullRequestConflictsResponse,
+  pullRequestResponse,
 } from './api.js'
 
 describe('createSessionRequest', () => {
@@ -151,6 +153,33 @@ describe('workspace file schemas', () => {
     })
     expect(parsed.binary).toBe(true)
     expect(parsed.content).toBe('')
+  })
+})
+
+describe('pull request schemas', () => {
+  it('accepts mergeable on a live pull request', () => {
+    const parsed = pullRequestResponse.parse({
+      url: 'https://github.com/diego/dukebox/pull/1',
+      title: 'Add a thing',
+      isDraft: false,
+      state: 'open',
+      mergeable: 'CONFLICTING',
+    })
+    expect(parsed.mergeable).toBe('CONFLICTING')
+  })
+
+  it('accepts a clean conflict resolution', () => {
+    expect(resolvePullRequestConflictsResponse.parse({ status: 'resolved' })).toEqual({
+      status: 'resolved',
+    })
+  })
+
+  it('accepts an in-progress resolution with conflicted files', () => {
+    const parsed = resolvePullRequestConflictsResponse.parse({
+      status: 'resolving',
+      conflictedFiles: ['src/app.ts'],
+    })
+    expect(parsed.conflictedFiles).toEqual(['src/app.ts'])
   })
 })
 

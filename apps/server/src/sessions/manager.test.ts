@@ -8,7 +8,7 @@ import { EventBus } from '../events/bus.js'
 import type { GitHubClient } from '../github/client.js'
 import { close, db, prepareDatabase, resetDatabase } from '../testing/database.js'
 import { closeRedis, redis } from '../testing/redis.js'
-import { SessionManager, SessionError } from './manager.js'
+import { SessionManager, SessionError, MergeConflictError } from './manager.js'
 
 /**
  * Sessions are tested against a real Docker daemon and a real database, with a
@@ -739,6 +739,14 @@ describe('pull requests', () => {
     const github = {
       token: async () => 'gho_test',
       findPullRequest: async () => null,
+      viewPullRequest: async () => ({
+        url: 'https://github.com/diego/dukebox/pull/1',
+        title: 'Add a thing',
+        body: '',
+        isDraft: false,
+        state: 'open' as const,
+        mergeable: 'MERGEABLE' as const,
+      }),
       // Reachable unless a test says otherwise: a push failure checks this to
       // tell a missing repository from a credential problem.
       defaultBranch: async () => 'main',
@@ -1109,6 +1117,114 @@ describe('pull requests', () => {
     expect(merged).toHaveLength(1)
 
     await withGitHub.stopAll()
+  })
+
+  it('returns whether GitHub considers the pull request mergeable', async () => {
+    const { manager: withGitHub } = managerWithGitHub({
+      findPullRequest: async () => ({
+        url: 'https://github.com/diego/dukebox/pull/1',
+        title: 'Add a thing',
+        body: '',
+        isDraft: false,
+        state: 'open',
+        mergeable: 'CONFLICTING',
+      }),
+    })
+
+    const session = await startOn(withGitHub)
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+    await withGitHub.openPullRequest(session.id)
+
+    const details = await withGitHub.getPullRequest(session.id)
+    expect(details?.mergeable).toBe('CONFLICTING')
+
+    await withGitHub.stopAll()
+  })
+
+  it('refuses to merge when GitHub reports conflicts', async () => {
+    const merged: string[] = []
+    const { manager: withGitHub } = managerWithGitHub({
+      findPullRequest: async () => ({
+        url: 'https://github.com/diego/dukebox/pull/1',
+        title: 'Add a thing',
+        body: '',
+        isDraft: false,
+        state: 'open',
+        mergeable: 'CONFLICTING',
+      }),
+      viewPullRequest: async () => ({
+        url: 'https://github.com/diego/dukebox/pull/1',
+        title: 'Add a thing',
+        body: '',
+        isDraft: false,
+        state: 'open',
+        mergeable: 'CONFLICTING',
+      }),
+      mergePullRequest: async (options) => {
+        merged.push(options.url)
+      },
+    })
+
+    const session = await startOn(withGitHub)
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+    await withGitHub.openPullRequest(session.id)
+
+    await expect(withGitHub.mergePullRequest(session.id)).rejects.toThrow(MergeConflictError)
+    expect(merged).toHaveLength(0)
+
+    await withGitHub.stopAll()
+  })
+
+  it('prompts the agent when merging the base branch conflicts', async () => {
+    const sha = (
+      await originContainer!.exec(['git', '-C', '/tmp/origin.git', 'rev-parse', 'main'])
+    ).stdout.trim()
+
+    const { manager: withGitHub } = managerWithGitHub({
+      findPullRequest: async () => ({
+        url: 'https://github.com/diego/dukebox/pull/1',
+        title: 'Add a thing',
+        body: '',
+        isDraft: false,
+        state: 'open',
+        mergeable: 'CONFLICTING',
+      }),
+    })
+
+    try {
+      const session = await startOn(withGitHub)
+      const container = await sandbox.get(session.id)
+      await container?.exec(['sh', '-c', 'echo session > README.md'], { cwd: '/workspace/repo' })
+      await withGitHub.openPullRequest(session.id)
+
+      const advanced = await originContainer!.exec([
+        'sh',
+        '-c',
+        `set -e
+         cd /tmp/seed
+         echo from-base > README.md
+         git add README.md
+         git commit -q -m "base moved"
+         git push -q /tmp/origin.git main`,
+      ])
+      if (advanced.exitCode !== 0) {
+        throw new Error(`failed to advance origin: ${advanced.stderr}`)
+      }
+
+      const result = await withGitHub.resolvePullRequestConflicts(session.id)
+      expect(result).toEqual({ status: 'resolving', conflictedFiles: ['README.md'] })
+      expect(adapter.prompts.at(-1)?.text).toContain('merge conflicts with `main`')
+      expect(adapter.prompts.at(-1)?.text).toContain('README.md')
+    } finally {
+      await originContainer!.exec([
+        'sh',
+        '-c',
+        `git -C /tmp/origin.git update-ref refs/heads/main ${sha} && git -C /tmp/seed reset --hard ${sha}`,
+      ])
+      await withGitHub.stopAll()
+    }
   })
 
   it('opens a draft when a coding turn ends with changes', async () => {

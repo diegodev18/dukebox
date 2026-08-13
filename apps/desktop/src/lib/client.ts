@@ -16,9 +16,11 @@ import type {
   PairRedeemResponse,
   ProjectEnvironmentResponse,
   ProjectSummary,
+  PullRequestDetails,
   PullRequestSummary,
   PutProjectEnvironmentRequest,
   RepositorySummary,
+  ResolvePullRequestConflictsResponse,
   SessionSummary,
   UpdateEnvironmentRequest,
   UpsertOpencodeProviderRequest,
@@ -324,7 +326,7 @@ export class DukeboxClient {
     })
   }
 
-  async getPullRequest(sessionId: string): Promise<PullRequestSummary> {
+  async getPullRequest(sessionId: string): Promise<PullRequestDetails> {
     return this.request(`/api/sessions/${sessionId}/pr`)
   }
 
@@ -336,6 +338,15 @@ export class DukeboxClient {
     return this.request(`/api/sessions/${sessionId}/pr/merge`, {
       method: 'POST',
       body: JSON.stringify(method ? { method } : {}),
+    })
+  }
+
+  async resolvePullRequestConflicts(
+    sessionId: string,
+  ): Promise<ResolvePullRequestConflictsResponse> {
+    return this.request(`/api/sessions/${sessionId}/pr/resolve-conflicts`, {
+      method: 'POST',
+      body: '{}',
     })
   }
 

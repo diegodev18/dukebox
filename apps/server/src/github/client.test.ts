@@ -259,6 +259,34 @@ describe('findPullRequest', () => {
   })
 })
 
+describe('viewPullRequest', () => {
+  it('asks gh for one pull request by URL, including mergeable', async () => {
+    const { client, run } = clientReturning(
+      JSON.stringify({
+        url: 'https://github.com/diego/dukebox/pull/42',
+        title: 'Add a health check',
+        body: 'Adds /health.',
+        isDraft: false,
+        state: 'OPEN',
+        mergeable: 'CONFLICTING',
+      }),
+    )
+
+    expect(
+      await client.viewPullRequest('diego/dukebox', 'https://github.com/diego/dukebox/pull/42'),
+    ).toMatchObject({
+      url: 'https://github.com/diego/dukebox/pull/42',
+      state: 'open',
+      mergeable: 'CONFLICTING',
+    })
+
+    const args = run.mock.calls[0]?.[0] as unknown as string[]
+    expect(args.slice(0, 2)).toEqual(['pr', 'view'])
+    expect(args).toContain('--json')
+    expect(args[args.indexOf('--json') + 1]).toContain('mergeable')
+  })
+})
+
 describe('markReady', () => {
   it('asks gh to mark the pull request ready', async () => {
     const { client, run } = clientReturning('')
