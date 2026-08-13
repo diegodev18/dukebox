@@ -43,7 +43,9 @@ describe('VirtualRows', () => {
 
     const sizer = container.querySelector('[data-line-width-sizer]')
     expect(sizer).toHaveAttribute('aria-hidden', 'true')
-    expect(sizer).toHaveTextContent('x'.repeat(80))
+    expect((sizer as HTMLElement).style.getPropertyValue('--sizer-text')).toBe(
+      JSON.stringify('x'.repeat(80)),
+    )
     expect(screen.getByTestId('gutter')).toBeInTheDocument()
     expect(longestLine(['ab', 'abcdefgh', 'cd'])).toBe('abcdefgh')
   })

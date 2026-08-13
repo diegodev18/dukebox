@@ -175,3 +175,12 @@
   width: clamp(min(100%, 620px), 74%, 860px);
   margin-inline: auto;
 }
+
+@utility sizer-text {
+  /* Longest-line width for virtualized diffs. Generated content so the real
+     row stays the only copy of the text in the tree. */
+  &::after {
+    content: var(--sizer-text);
+    white-space: pre;
+  }
+}

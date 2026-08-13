@@ -99,6 +99,6 @@ describe('Diff', () => {
       expect(screen.getByText(long).closest('[aria-busy="false"]')).not.toBeNull()
     })
     const sizer = document.querySelector('[data-line-width-sizer]')
-    expect(sizer).toHaveTextContent(long)
+    expect((sizer as HTMLElement).style.getPropertyValue('--sizer-text')).toBe(JSON.stringify(long))
   })
 })

@@ -1,5 +1,12 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Fragment, useLayoutEffect, useState, type ReactNode, type RefObject } from 'react'
+import {
+  Fragment,
+  useLayoutEffect,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 
 /**
  * Window a long list against an existing scroller.
@@ -41,7 +48,8 @@ interface Props {
  * Absolute virtual rows cannot grow their parent, so the longest line would
  * overflow while every other row stayed panel-wide. Horizontal scroll then
  * shows leftover slices of long lines and a void to the right. This sizer
- * is the width those rows stretch to.
+ * is the width those rows stretch to. The line itself is CSS `content`, not a
+ * text node, so the visible row stays the only copy queries can find.
  */
 export function LineWidthSizer({ text, gutter }: { text: string; gutter?: ReactNode }) {
   return (
@@ -49,10 +57,11 @@ export function LineWidthSizer({ text, gutter }: { text: string; gutter?: ReactN
       data-line-width-sizer
       aria-hidden
       className="pointer-events-none h-0 w-max overflow-hidden font-mono text-[12px] leading-[1.55]"
+      style={{ '--sizer-text': JSON.stringify(text || ' ') } as CSSProperties}
     >
       <div className="flex">
         {gutter}
-        <span className="whitespace-pre pr-3">{text || ' '}</span>
+        <span className="sizer-text pr-3" />
       </div>
     </div>
   )
