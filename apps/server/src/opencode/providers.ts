@@ -43,9 +43,27 @@ export async function loadOpencodeProviders(store: SecretStore): Promise<StoredO
 
   try {
     const parsed = storedOpencodeProviders.safeParse(JSON.parse(raw))
-    return parsed.success ? parsed.data : []
+    return parsed.success ? parsed.data.map(withLiveCatalogModels) : []
   } catch {
     return []
+  }
+}
+
+/**
+ * Catalog kinds snapshot their models at save time. Overlay the live catalog
+ * so a stored DeepSeek key picks up V4 Flash / V4 Pro without a re-save, while
+ * keeping any extra models the operator listed.
+ */
+export function withLiveCatalogModels(provider: StoredOpencodeProvider): StoredOpencodeProvider {
+  if (provider.kind === 'openai-compatible') return provider
+
+  const catalog = catalogEntry(provider.kind)
+  if (!catalog) return provider
+
+  const catalogIds = new Set(catalog.models.map((model) => model.id))
+  return {
+    ...provider,
+    models: [...catalog.models, ...provider.models.filter((model) => !catalogIds.has(model.id))],
   }
 }
 

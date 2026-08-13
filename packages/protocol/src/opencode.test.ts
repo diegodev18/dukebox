@@ -115,4 +115,13 @@ describe('OPENCODE_CATALOG', () => {
     expect(catalogEntry('anthropic')?.name).toBe('Anthropic')
     expect(catalogEntry('openai-compatible')).toBeUndefined()
   })
+
+  it('offers the DeepSeek models OpenCode addresses as deepseek/<id>', () => {
+    expect(catalogEntry('deepseek')?.models).toEqual([
+      { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
+      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
+      { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+      { id: 'deepseek-chat', label: 'DeepSeek Chat' },
+    ])
+  })
 })
