@@ -13,6 +13,7 @@ import {
   FileIcon,
 } from '@/components/icons'
 import { Terminal } from '@/components/Terminal'
+import { pullRequestTabLabel } from '@/lib/pullRequest'
 
 /**
  * What the session is changing: files, diffs, a terminal, a preview.
@@ -169,7 +170,12 @@ export function Workspace({
         />
       ) : (
         <>
-          <TabBar tabs={tabs} active={tab} onSelect={setTab} />
+          <TabBar
+            tabs={tabs}
+            active={tab}
+            onSelect={setTab}
+            labels={{ pr: pullRequestTabLabel(prUrl) }}
+          />
           {tab === 'files' ? (
             <div
               role="tabpanel"
@@ -229,10 +235,12 @@ function TabBar({
   tabs,
   active,
   onSelect,
+  labels,
 }: {
   tabs: WorkspaceTab[]
   active: WorkspaceTab
   onSelect: (tab: WorkspaceTab) => void
+  labels?: Partial<Record<WorkspaceTab, string>>
 }) {
   const list = useRef<HTMLDivElement>(null)
 
@@ -300,7 +308,7 @@ function TabBar({
               : 'text-muted-foreground hover:bg-muted hover:text-foreground'
           }`}
         >
-          {TAB_LABELS[tab]}
+          {labels?.[tab] ?? TAB_LABELS[tab]}
         </button>
       ))}
     </div>

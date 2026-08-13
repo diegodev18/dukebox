@@ -11,6 +11,7 @@ import {
   Folder01Icon,
   GitBranchIcon,
   GitCommitIcon,
+  GitPullRequestIcon,
   PlusSignIcon,
   Refresh01Icon,
   Search01Icon,
@@ -56,6 +57,7 @@ export const PlusIcon = icon(PlusSignIcon)
 export const SearchIcon = icon(Search01Icon)
 export const BranchIcon = icon(GitBranchIcon)
 export const CommitIcon = icon(GitCommitIcon)
+export const PullRequestIcon = icon(GitPullRequestIcon)
 export const ServerIcon = icon(ServerStack01Icon)
 export const FolderIcon = icon(Folder01Icon)
 export const FileIcon = icon(File01Icon)

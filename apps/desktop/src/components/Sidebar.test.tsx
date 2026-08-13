@@ -49,6 +49,7 @@ function renderSidebar({
   onManageEnvironments = vi.fn(),
   onRemoveProject = vi.fn(),
   projectOverride = {},
+  sessionOverride = {},
 }: {
   onArchive?: ReturnType<typeof vi.fn>
   onNewSession?: ReturnType<typeof vi.fn>
@@ -56,12 +57,14 @@ function renderSidebar({
   onManageEnvironments?: ReturnType<typeof vi.fn>
   onRemoveProject?: ReturnType<typeof vi.fn>
   projectOverride?: Partial<ProjectSummary>
+  sessionOverride?: Partial<SessionSummary>
 } = {}) {
+  const row = { ...session, ...sessionOverride }
   render(
     <Sidebar
       projects={[{ ...project, ...projectOverride }]}
-      sessions={[session]}
-      selectedId={session.id}
+      sessions={[row]}
+      selectedId={row.id}
       identity={DEFAULT_COMMIT_IDENTITY}
       role="owner"
       onOpenSettings={vi.fn()}
@@ -188,5 +191,81 @@ describe('Sidebar', () => {
 
     await userEvent.click(confirm)
     expect(onRemoveProject).toHaveBeenCalledWith(project.id)
+  })
+
+  it('does not show a pull request mark when none exists', () => {
+    renderSidebar()
+
+    expect(screen.queryByRole('img', { name: /pull request/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'Ready for review' })).not.toBeInTheDocument()
+  })
+
+  it('shows a draft pull request mark next to the time', () => {
+    renderSidebar({
+      sessionOverride: {
+        pullRequestUrl: 'https://github.com/acme/app/pull/4',
+        pullRequest: {
+          url: 'https://github.com/acme/app/pull/4',
+          title: 'Fix the demux bug',
+          isDraft: true,
+          state: 'open',
+        },
+      },
+    })
+
+    expect(screen.getByRole('img', { name: 'Draft pull request' })).toBeInTheDocument()
+  })
+
+  it('shows ready, merged, and closed marks from the pull request state', () => {
+    const cases = [
+      {
+        isDraft: false,
+        state: 'open' as const,
+        name: 'Ready for review',
+      },
+      {
+        isDraft: false,
+        state: 'merged' as const,
+        name: 'Merged pull request',
+      },
+      {
+        isDraft: false,
+        state: 'closed' as const,
+        name: 'Closed pull request',
+      },
+    ]
+
+    for (const { isDraft, state, name } of cases) {
+      const { unmount } = render(
+        <Sidebar
+          projects={[project]}
+          sessions={[
+            {
+              ...session,
+              pullRequestUrl: 'https://github.com/acme/app/pull/4',
+              pullRequest: {
+                url: 'https://github.com/acme/app/pull/4',
+                title: 'Fix the demux bug',
+                isDraft,
+                state,
+              },
+            },
+          ]}
+          selectedId={session.id}
+          identity={DEFAULT_COMMIT_IDENTITY}
+          role="owner"
+          onOpenSettings={vi.fn()}
+          onSelect={vi.fn()}
+          onNewSession={vi.fn()}
+          onConfigureEnvironment={vi.fn()}
+          onManageEnvironments={vi.fn()}
+          onArchive={vi.fn()}
+          onRemoveProject={vi.fn()}
+        />,
+      )
+
+      expect(screen.getByRole('img', { name })).toBeInTheDocument()
+      unmount()
+    }
   })
 })

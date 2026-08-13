@@ -4,6 +4,8 @@ import { useState } from 'react'
 import type { DukeboxClient } from '@/lib/client'
 import { Diff, changeCounts } from '@/components/Diff'
 import { BranchIcon, ChevronDownIcon, ChevronRightIcon, FileIcon } from '@/components/icons'
+import { PullRequestStatusIcon } from '@/components/PullRequestStatusIcon'
+import { pullRequestStatus, pullRequestStatusLabel } from '@/lib/pullRequest'
 
 /**
  * The workspace tab for a session's pull request.
@@ -146,10 +148,13 @@ export function PullRequestPanel({ client, session, files, onUpdated }: Props) {
 }
 
 function StatusBadge({ pr }: { pr: PullRequestSummary }) {
-  if (pr.state === 'merged') return <span>Merged</span>
-  if (pr.state === 'closed') return <span>Closed</span>
-  if (pr.isDraft) return <span>Draft</span>
-  return <span>Ready for review</span>
+  const status = pullRequestStatus(pr)
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <PullRequestStatusIcon pr={pr} />
+      {pullRequestStatusLabel(status)}
+    </span>
+  )
 }
 
 function PrDiffs({ files }: { files: FileChange[] }) {
