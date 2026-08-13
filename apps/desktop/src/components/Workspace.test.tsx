@@ -46,7 +46,7 @@ const terminalHandlers = {
 async function openTerminalPanel() {
   render(<Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />)
 
-  await userEvent.click(screen.getByRole('tab', { name: /terminal/i }))
+  await userEvent.click(screen.getByRole('tab', { name: 'Terminal' }))
 }
 
 describe('Workspace terminal tabs', () => {
@@ -98,7 +98,7 @@ describe('Workspace terminal tabs', () => {
       />,
     )
 
-    await userEvent.click(screen.getByRole('tab', { name: /terminal/i }))
+    await userEvent.click(screen.getByRole('tab', { name: 'Terminal' }))
     expect(screen.getByRole('button', { name: 'New terminal' })).toBeDisabled()
     await userEvent.click(screen.getByRole('button', { name: 'New terminal' }))
     expect(terminalHandlers.onOpenTerminal).not.toHaveBeenCalled()
