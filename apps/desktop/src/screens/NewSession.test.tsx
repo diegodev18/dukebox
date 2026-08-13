@@ -717,7 +717,7 @@ describe('NewSession picker placement', () => {
     expect(screen.getByRole('button', { name: 'Reconfigure environment' })).toBeInTheDocument()
   })
 
-  it('keeps mutable pickers on the environment setup form', async () => {
+  it('keeps the model picker on the environment setup form', async () => {
     const client = makeClient({ listEnvironments: vi.fn().mockResolvedValue([]) })
     renderScreen(client, { environmentCount: 0 })
 
@@ -726,7 +726,8 @@ describe('NewSession picker placement', () => {
     const form = screen.getByRole('heading', { name: 'Configure environment' }).closest('div')
     expect(form).not.toBeNull()
     expect(within(form!).getByRole('button', { name: 'Model' })).toBeInTheDocument()
-    expect(within(form!).getByRole('button', { name: 'Permission mode' })).toBeInTheDocument()
+    // Setup always runs in bypass, so the mode picker would be a lie.
+    expect(within(form!).queryByRole('button', { name: 'Permission mode' })).not.toBeInTheDocument()
     expect(within(form!).queryByRole('button', { name: 'Agent' })).not.toBeInTheDocument()
   })
 })
