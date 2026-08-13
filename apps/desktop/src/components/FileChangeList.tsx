@@ -1,6 +1,6 @@
 import type { FileChange } from '@dukebox/protocol'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Diff, changeCounts } from '@/components/Diff'
+import { Diff, changeCounts, expandedPaths } from '@/components/Diff'
 import { ChevronDownIcon, ChevronRightIcon } from '@/components/icons'
 
 /**
@@ -17,28 +17,14 @@ import { ChevronDownIcon, ChevronRightIcon } from '@/components/icons'
  * there is.
  */
 export function FileChangeList({ files }: { files: FileChange[] }) {
-  const [open, setOpen] = useState<string | null>(null)
-  const autoOpened = useRef(false)
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set())
   const panel = useRef<HTMLDivElement>(null)
 
-  // Open the first file when the list goes from empty to having something.
-  // Later files arriving must not steal the file someone is already reading.
+  // Diffs default to open — the Changes and Pull request tabs exist to review
+  // what changed — and a file that arrives later is open too. Only a diff the
+  // user collapsed stays closed.
   useEffect(() => {
-    if (files.length === 0) {
-      autoOpened.current = false
-      setOpen(null)
-      return
-    }
-
-    if (!autoOpened.current) {
-      autoOpened.current = true
-      setOpen(files[0]!.path)
-      return
-    }
-
-    setOpen((current) =>
-      current && files.some((file) => file.path === current) ? current : files[0]!.path,
-    )
+    setOpen((current) => (files.length === 0 ? new Set() : expandedPaths(current, files)))
   }, [files])
 
   // Sticky headers need the *visible* panel width. `100%` is the scrolled
@@ -61,13 +47,20 @@ export function FileChangeList({ files }: { files: FileChange[] }) {
     <div ref={panel} className="min-h-0 flex-1 overflow-auto">
       <div className="w-max min-w-full">
         {files.map((file) => {
-          const expanded = open === file.path
+          const expanded = open.has(file.path)
 
           return (
             <div key={file.path} className="border-b border-border last:border-b-0">
               <button
                 type="button"
-                onClick={() => setOpen(expanded ? null : file.path)}
+                onClick={() =>
+                  setOpen((current) => {
+                    const next = new Set(current)
+                    if (next.has(file.path)) next.delete(file.path)
+                    else next.add(file.path)
+                    return next
+                  })
+                }
                 aria-expanded={expanded}
                 aria-label={basename(file.path)}
                 className="sticky top-0 left-0 z-10 box-border flex w-[var(--workspace-files-width)] min-w-0 items-center gap-2 bg-surface px-3 py-2 text-left text-[12.5px] hover:bg-muted"
