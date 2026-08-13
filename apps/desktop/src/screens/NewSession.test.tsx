@@ -651,7 +651,7 @@ describe('NewSession picker placement', () => {
     expect(screen.getByRole('button', { name: 'Instance' })).toBeInTheDocument()
   })
 
-  it('puts OpenCode provider and model inside the prompt', async () => {
+  it('puts OpenCode provider, model, and permission mode inside the prompt', async () => {
     const client = makeClient({
       listOpencodeProviders: vi.fn().mockResolvedValue([
         {
@@ -674,7 +674,7 @@ describe('NewSession picker placement', () => {
     const inside = within(promptComposer())
     expect(inside.getByRole('button', { name: 'Provider' })).toBeInTheDocument()
     expect(inside.getByRole('button', { name: 'Model' })).toBeInTheDocument()
-    expect(inside.queryByRole('button', { name: 'Permission mode' })).not.toBeInTheDocument()
+    expect(inside.getByRole('button', { name: 'Permission mode' })).toBeInTheDocument()
     expect(inside.queryByRole('button', { name: 'Agent' })).not.toBeInTheDocument()
   })
 

@@ -44,8 +44,8 @@ import type { LastNewSession } from '@/lib/settings'
  * repository that is not yet a project becomes one on the way through.
  *
  * Choices that can change during a session sit inside the prompt, the same
- * place the composer keeps them: model, OpenCode's provider, and Claude
- * Code's permission mode.
+ * place the composer keeps them: model, permission mode, and OpenCode's
+ * provider.
  *
  * Environments are offered, never required: a branch no environment covers
  * runs on the base image, with a quiet notice rather than a blocked form.
