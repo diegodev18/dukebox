@@ -6,6 +6,7 @@ import {
 } from '@dukebox/protocol'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ThinkingOrb } from 'thinking-orbs'
 import { pullRequestStatus, pullRequestStatusAriaLabel } from '@/lib/pullRequest'
 import { relativeAge } from '@/lib/relativeTime'
@@ -17,6 +18,7 @@ import {
 } from '@/lib/viewedSessions'
 import { statusLabel } from '@/screens/Session'
 import type { SettingsCategory } from '@/screens/Settings'
+import { agentLabel } from '@/components/AgentIcon'
 import { PullRequestStatusIcon } from '@/components/PullRequestStatusIcon'
 import {
   BookOpenIcon,
@@ -27,6 +29,9 @@ import {
   SettingsIcon,
 } from '@/components/icons'
 import { UserMenu } from '@/components/UserMenu'
+
+/** Pause before the truncated row shows its full name, branch, agent, and server. */
+const SESSION_NAV_TOOLTIP_DELAY_MS = 400
 
 /**
  * Sessions, grouped by the repository they run against.
@@ -42,6 +47,8 @@ interface Props {
   selectedId: string | null
   /** Who commits are authored as — the identity from settings, if configured. */
   identity: CommitIdentity
+  /** The paired server these sessions run on. */
+  serverName: string
   role: DeviceRole | null
   onOpenSettings: (category: SettingsCategory) => void
   onSelect: (sessionId: string) => void
@@ -63,6 +70,7 @@ export function Sidebar({
   sessions,
   selectedId,
   identity,
+  serverName,
   role,
   onOpenSettings,
   onSelect,
@@ -129,6 +137,7 @@ export function Sidebar({
                 sessions={sessions.filter((session) => session.projectId === project.id)}
                 selectedId={selectedId}
                 viewed={viewed}
+                serverName={serverName}
                 onSelect={onSelect}
                 onConfigureEnvironment={() => onConfigureEnvironment(project.id)}
                 onManageEnvironments={() => onManageEnvironments(project.id)}
@@ -265,6 +274,7 @@ function ProjectGroup({
   sessions,
   selectedId,
   viewed,
+  serverName,
   onSelect,
   onConfigureEnvironment,
   onManageEnvironments,
@@ -276,6 +286,7 @@ function ProjectGroup({
   sessions: SessionSummary[]
   selectedId: string | null
   viewed: ViewedSessions
+  serverName: string
   onSelect: (sessionId: string) => void
   onConfigureEnvironment: () => void
   onManageEnvironments: () => void
@@ -320,60 +331,180 @@ function ProjectGroup({
       </div>
 
       {sessions.map((session) => (
-        <div key={session.id} className="group relative">
-          <button
-            type="button"
-            onClick={() => onSelect(session.id)}
-            onContextMenu={(event) => {
-              event.preventDefault()
-              onOpenSessionMenu(session.id, event.clientX, event.clientY)
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== 'Delete' && event.key !== 'Backspace') return
-              event.preventDefault()
-              const rect = event.currentTarget.getBoundingClientRect()
-              onOpenSessionMenu(session.id, rect.left, rect.bottom)
-            }}
-            aria-current={session.id === selectedId}
-            aria-label={sessionRowLabel(session, viewed[session.id])}
-            className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2.5 py-1.5 pr-8 pl-7.5 text-left text-[13.5px] text-muted-foreground hover:bg-muted hover:text-foreground aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
-          >
-            <SessionNavIndicator
-              status={session.status}
-              lastSeq={session.lastSeq}
-              viewedSeq={viewed[session.id]}
-            />
-            <span className="truncate">{session.title}</span>
-            <span className="flex items-center gap-1.5">
-              {session.pullRequest ? (
-                <PullRequestStatusIcon pr={session.pullRequest} size={12} />
-              ) : null}
-              <span className="text-[11.5px] tabular-nums opacity-75">
-                {relativeAge(session.updatedAt)}
-              </span>
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-label={`Session actions for ${session.title}`}
-            aria-haspopup="menu"
-            disabled={disabled}
-            onClick={(event) => {
-              event.stopPropagation()
-              const rect = event.currentTarget.getBoundingClientRect()
-              onOpenSessionMenu(session.id, rect.right, rect.bottom)
-            }}
-            className={`absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-[calc(var(--radius)*0.5)] text-[13px] text-muted-foreground hover:bg-border hover:text-foreground disabled:opacity-40 ${
-              session.id === selectedId
-                ? 'opacity-100'
-                : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
-            }`}
-          >
-            ⋯
-          </button>
-        </div>
+        <SessionRow
+          key={session.id}
+          session={session}
+          selected={session.id === selectedId}
+          viewedSeq={viewed[session.id]}
+          serverName={serverName}
+          disabled={disabled}
+          onSelect={() => onSelect(session.id)}
+          onOpenMenu={(x, y) => onOpenSessionMenu(session.id, x, y)}
+        />
       ))}
     </>
+  )
+}
+
+/**
+ * One session in the nav.
+ *
+ * The 236px column truncates the title and has no room for the branch, agent,
+ * or server. Those details appear on hover, portaled out of the scrolling list
+ * so the sidebar's overflow does not clip them.
+ */
+function SessionRow({
+  session,
+  selected,
+  viewedSeq,
+  serverName,
+  disabled,
+  onSelect,
+  onOpenMenu,
+}: {
+  session: SessionSummary
+  selected: boolean
+  viewedSeq: number | undefined
+  serverName: string
+  disabled: boolean
+  onSelect: () => void
+  onOpenMenu: (x: number, y: number) => void
+}) {
+  const [tooltip, setTooltip] = useState<{ top: number; left: number } | null>(null)
+  const showTimer = useRef(0)
+  const tooltipId = `session-nav-tooltip-${session.id}`
+
+  const hideTooltip = () => {
+    window.clearTimeout(showTimer.current)
+    setTooltip(null)
+  }
+
+  const scheduleTooltip = (node: HTMLElement) => {
+    window.clearTimeout(showTimer.current)
+    showTimer.current = window.setTimeout(() => {
+      const rect = node.getBoundingClientRect()
+      setTooltip({ top: rect.top, left: rect.right + 8 })
+    }, SESSION_NAV_TOOLTIP_DELAY_MS)
+  }
+
+  useEffect(() => () => window.clearTimeout(showTimer.current), [])
+
+  useEffect(() => {
+    if (!tooltip) return
+    const hide = () => hideTooltip()
+    window.addEventListener('scroll', hide, true)
+    window.addEventListener('resize', hide)
+    return () => {
+      window.removeEventListener('scroll', hide, true)
+      window.removeEventListener('resize', hide)
+    }
+  }, [tooltip])
+
+  return (
+    <div
+      className="group relative"
+      onMouseEnter={(event) => scheduleTooltip(event.currentTarget)}
+      onMouseLeave={hideTooltip}
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        onFocus={(event) =>
+          scheduleTooltip(event.currentTarget.parentElement ?? event.currentTarget)
+        }
+        onBlur={hideTooltip}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          hideTooltip()
+          onOpenMenu(event.clientX, event.clientY)
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== 'Delete' && event.key !== 'Backspace') return
+          event.preventDefault()
+          hideTooltip()
+          const rect = event.currentTarget.getBoundingClientRect()
+          onOpenMenu(rect.left, rect.bottom)
+        }}
+        aria-current={selected}
+        aria-label={sessionRowLabel(session, viewedSeq)}
+        aria-describedby={tooltip ? tooltipId : undefined}
+        className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2.5 py-1.5 pr-8 pl-7.5 text-left text-[13.5px] text-muted-foreground hover:bg-muted hover:text-foreground aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
+      >
+        <SessionNavIndicator
+          status={session.status}
+          lastSeq={session.lastSeq}
+          viewedSeq={viewedSeq}
+        />
+        <span className="truncate">{session.title}</span>
+        <span className="flex items-center gap-1.5">
+          {session.pullRequest ? (
+            <PullRequestStatusIcon pr={session.pullRequest} size={12} />
+          ) : null}
+          <span className="text-[11.5px] tabular-nums opacity-75">
+            {relativeAge(session.updatedAt)}
+          </span>
+        </span>
+      </button>
+      <button
+        type="button"
+        aria-label={`Session actions for ${session.title}`}
+        aria-haspopup="menu"
+        disabled={disabled}
+        onClick={(event) => {
+          event.stopPropagation()
+          hideTooltip()
+          const rect = event.currentTarget.getBoundingClientRect()
+          onOpenMenu(rect.right, rect.bottom)
+        }}
+        className={`absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-[calc(var(--radius)*0.5)] text-[13px] text-muted-foreground hover:bg-border hover:text-foreground disabled:opacity-40 ${
+          selected
+            ? 'opacity-100'
+            : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+        }`}
+      >
+        ⋯
+      </button>
+      {tooltip && (
+        <SessionNavTooltip
+          id={tooltipId}
+          session={session}
+          serverName={serverName}
+          anchor={tooltip}
+        />
+      )}
+    </div>
+  )
+}
+
+function SessionNavTooltip({
+  id,
+  session,
+  serverName,
+  anchor,
+}: {
+  id: string
+  session: SessionSummary
+  serverName: string
+  anchor: { top: number; left: number }
+}) {
+  return createPortal(
+    <div
+      id={id}
+      role="tooltip"
+      style={{ top: anchor.top, left: anchor.left }}
+      className="pointer-events-none fixed z-50 w-64 rounded-[calc(var(--radius)*0.7)] border border-border bg-background px-3 py-2.5 shadow-md"
+    >
+      <p className="text-[13px] leading-snug font-medium break-words">{session.title}</p>
+      <dl className="mt-2 grid grid-cols-[3.75rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1 text-[12px]">
+        <dt className="text-muted-foreground">Branch</dt>
+        <dd className="min-w-0 font-mono text-[11.5px] break-all">{session.branch}</dd>
+        <dt className="text-muted-foreground">Agent</dt>
+        <dd className="min-w-0">{agentLabel(session.agentId) ?? session.agentId}</dd>
+        <dt className="text-muted-foreground">Server</dt>
+        <dd className="min-w-0 break-all">{serverName}</dd>
+      </dl>
+    </div>,
+    document.body,
   )
 }
 

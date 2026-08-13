@@ -83,6 +83,7 @@ function renderSidebar({
       sessions={[row]}
       selectedId={selectedId === undefined ? row.id : selectedId}
       identity={DEFAULT_COMMIT_IDENTITY}
+      serverName="debian-01"
       role="owner"
       onOpenSettings={vi.fn()}
       onSelect={vi.fn()}
@@ -196,6 +197,7 @@ describe('Sidebar', () => {
         sessions={[session]}
         selectedId={session.id}
         identity={DEFAULT_COMMIT_IDENTITY}
+        serverName="debian-01"
         role="owner"
         onOpenSettings={vi.fn()}
         onSelect={vi.fn()}
@@ -331,6 +333,7 @@ describe('Sidebar', () => {
           ]}
           selectedId={session.id}
           identity={DEFAULT_COMMIT_IDENTITY}
+          serverName="debian-01"
           role="owner"
           onOpenSettings={vi.fn()}
           onSelect={vi.fn()}
@@ -390,5 +393,32 @@ describe('Sidebar', () => {
     renderSidebar({ selectedId: null })
 
     expect(screen.queryByRole('img', { name: 'Unread' })).not.toBeInTheDocument()
+  })
+
+  it('shows the full title, branch, agent, and server on hover', async () => {
+    renderSidebar({
+      sessionOverride: { title: 'Fix the demux bug that truncates in the nav' },
+    })
+
+    await userEvent.hover(
+      screen.getByRole('button', { name: /fix the demux bug that truncates/i, current: true }),
+    )
+
+    const tip = await screen.findByRole('tooltip')
+    expect(tip).toHaveTextContent('Fix the demux bug that truncates in the nav')
+    expect(tip).toHaveTextContent('duke/abc')
+    expect(tip).toHaveTextContent('Claude Code')
+    expect(tip).toHaveTextContent('debian-01')
+  })
+
+  it('hides the session tooltip when the pointer leaves', async () => {
+    renderSidebar()
+
+    const row = screen.getByRole('button', { name: /fix the demux bug/i, current: true })
+    await userEvent.hover(row)
+    expect(await screen.findByRole('tooltip')).toBeInTheDocument()
+
+    await userEvent.unhover(row)
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 })
