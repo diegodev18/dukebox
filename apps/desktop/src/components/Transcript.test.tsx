@@ -278,4 +278,17 @@ describe('Transcript', () => {
 
     expect(document.querySelector('strong')).not.toBeNull()
   })
+
+  it('still paints a long conversation when the scroller has no viewport yet', () => {
+    const blocks = Array.from({ length: 40 }, (_, index) => ({
+      kind: 'text' as const,
+      id: `t-${index}`,
+      text: `Block ${index}`,
+    }))
+
+    render(<Transcript transcript={transcript({ blocks })} onRespond={vi.fn()} />)
+
+    expect(screen.getByText('Block 0')).toBeInTheDocument()
+    expect(screen.getByText('Block 39')).toBeInTheDocument()
+  })
 })

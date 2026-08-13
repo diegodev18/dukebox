@@ -1,12 +1,12 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Fragment, type ReactNode, type RefObject } from 'react'
+import { Fragment, useLayoutEffect, useState, type ReactNode, type RefObject } from 'react'
 
 /**
  * Window a long list against an existing scroller.
  *
- * Short lists render in full: jsdom has no viewport height, and a handful of
- * rows is cheaper to map than to virtualize. Past the threshold, only the
- * visible window (plus overscan) is mounted.
+ * Virtualizing before the scroller has a height paints an empty window — the
+ * library cannot choose a visible range, so it mounts nothing. Short lists,
+ * jsdom, and the first layout pass therefore render in full.
  */
 
 export const DEFAULT_VIRTUALIZE_AFTER = 40
@@ -32,7 +32,40 @@ export function VirtualRows({
   wide = false,
   children,
 }: Props) {
-  const virtualize = count >= after
+  const [viewport, setViewport] = useState(0)
+
+  useLayoutEffect(() => {
+    let frame: number | null = null
+    let observer: ResizeObserver | null = null
+
+    const attach = (element: HTMLElement) => {
+      const sync = () => setViewport(element.clientHeight)
+      sync()
+      if (typeof ResizeObserver === 'undefined') return
+      observer = new ResizeObserver(sync)
+      observer.observe(element)
+    }
+
+    const element = scrollRef.current
+    if (element) {
+      attach(element)
+    } else {
+      // The scroller's ref is often on an ancestor. Child layout effects run
+      // before that host ref is attached, so try once more after paint.
+      frame = requestAnimationFrame(() => {
+        frame = null
+        const next = scrollRef.current
+        if (next) attach(next)
+      })
+    }
+
+    return () => {
+      if (frame != null) cancelAnimationFrame(frame)
+      observer?.disconnect()
+    }
+  }, [scrollRef, count])
+
+  const virtualize = count >= after && viewport > 0
   const virtualizer = useVirtualizer({
     count: virtualize ? count : 0,
     getScrollElement: () => scrollRef.current,
@@ -41,7 +74,18 @@ export function VirtualRows({
     enabled: virtualize,
   })
 
-  if (!virtualize) {
+  const virtualItems = virtualizer.getVirtualItems()
+  const windowed = virtualize && virtualItems.length > 0
+
+  useLayoutEffect(() => {
+    if (!windowed) return
+    const element = scrollRef.current
+    if (!element) return
+    const distance = element.scrollHeight - element.scrollTop - element.clientHeight
+    if (distance < 80) element.scrollTop = element.scrollHeight
+  }, [windowed, count, scrollRef])
+
+  if (!windowed) {
     return (
       <>
         {Array.from({ length: count }, (_, index) => (
@@ -60,7 +104,7 @@ export function VirtualRows({
         position: 'relative',
       }}
     >
-      {virtualizer.getVirtualItems().map((item) => (
+      {virtualItems.map((item) => (
         <div
           key={item.key}
           data-index={item.index}
