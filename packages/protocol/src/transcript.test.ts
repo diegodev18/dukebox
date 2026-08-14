@@ -274,6 +274,23 @@ describe('user prompts', () => {
     expect(transcript.running).toBe(true)
   })
 
+  it('keeps attached images on the prompt block so the UI can show them', () => {
+    const png = 'data:image/png;base64,QUFB'
+    const transcript = fold(
+      at(1, {
+        type: 'user_prompt',
+        text: 'what is this',
+        attachments: [{ name: 'shot.png', mediaType: 'image/png', data: png }],
+      }),
+    )
+
+    expect(transcript.blocks[0]).toMatchObject({
+      kind: 'prompt',
+      text: 'what is this',
+      attachments: [{ name: 'shot.png', mediaType: 'image/png', data: png }],
+    })
+  })
+
   it('keeps the opening prompt above the reply it produced', () => {
     // The case the transcript used to lose entirely: the first prompt is sent
     // while the session provisions, so nothing but the log can carry it.

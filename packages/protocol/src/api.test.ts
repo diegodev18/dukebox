@@ -9,6 +9,7 @@ import {
   resolvePullRequestConflictsResponse,
   pullRequestResponse,
   partitionAttachments,
+  promptAttachmentsFrom,
 } from '@/api'
 
 describe('createSessionRequest', () => {
@@ -135,6 +136,20 @@ describe('partitionAttachments', () => {
 
   it('returns nothing when there are no attachments', () => {
     expect(partitionAttachments()).toEqual({})
+  })
+
+  it('records image data URIs and file names for the transcript', () => {
+    const png = 'data:image/png;base64,QUFB'
+    const notes = { name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }
+
+    expect(promptAttachmentsFrom([notes, { name: 'shot.png', data: png }])).toEqual([
+      { name: 'notes.txt', mediaType: 'text/plain' },
+      { name: 'shot.png', mediaType: 'image/png', data: png },
+    ])
+  })
+
+  it('omits the list when nothing was attached', () => {
+    expect(promptAttachmentsFrom()).toBeUndefined()
   })
 
   it('leaves svg and other types as files rather than inline images', () => {

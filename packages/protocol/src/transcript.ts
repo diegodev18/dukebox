@@ -1,4 +1,4 @@
-import type { AgentEvent, EnvelopedEvent } from '@/events'
+import type { AgentEvent, EnvelopedEvent, PromptAttachment } from '@/events'
 import { countLineChanges } from '@/lineChanges'
 import type { PermissionMode } from '@/session'
 
@@ -68,6 +68,7 @@ export interface PromptBlock {
   kind: 'prompt'
   id: string
   text: string
+  attachments?: PromptAttachment[]
 }
 
 export type Block =
@@ -167,7 +168,17 @@ function fold(draft: Transcript, event: AgentEvent, seq: number): void {
       // prompt is sent and then nothing arrives until the first token, and a
       // transcript that looks idle in that gap reads as a prompt that was lost.
       draft.running = true
-      draft.blocks = [...draft.blocks, { kind: 'prompt', id: `prompt-${seq}`, text: event.text }]
+      draft.blocks = [
+        ...draft.blocks,
+        {
+          kind: 'prompt',
+          id: `prompt-${seq}`,
+          text: event.text,
+          ...(event.attachments && event.attachments.length > 0
+            ? { attachments: event.attachments }
+            : {}),
+        },
+      ]
       return
     }
 

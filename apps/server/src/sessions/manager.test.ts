@@ -346,6 +346,14 @@ describe('start', () => {
         text: 'read this',
         files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
       })
+
+    const prompts = (await bus.replay(session.id))
+      .map((event) => event.event)
+      .filter((event) => event.type === 'user_prompt')
+    expect(prompts[0]).toMatchObject({
+      text: 'read this',
+      attachments: [{ name: 'notes.txt', mediaType: 'text/plain' }],
+    })
   })
 
   it('records the container id, so it can be found again after a restart', async () => {
@@ -616,6 +624,17 @@ describe('prompt, interrupt, and stop', () => {
       text: 'what is this',
       images: [png],
       files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
+    })
+
+    const recorded = (await bus.replay(session.id))
+      .map((event) => event.event)
+      .filter((event) => event.type === 'user_prompt')
+    expect(recorded.at(-1)).toMatchObject({
+      text: 'what is this',
+      attachments: [
+        { name: 'shot.png', mediaType: 'image/png', data: png },
+        { name: 'notes.txt', mediaType: 'text/plain' },
+      ],
     })
   })
 

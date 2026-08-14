@@ -214,6 +214,19 @@ describe('Composer', () => {
     expect(screen.queryByText('notes.txt')).not.toBeInTheDocument()
   })
 
+  it('shows a thumbnail for an attached image', async () => {
+    const { container } = render(
+      <Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />,
+    )
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, {
+      target: { files: [new File(['x'], 'shot.png', { type: 'image/png' })] },
+    })
+
+    expect(await screen.findByRole('img', { name: 'shot.png' })).toBeInTheDocument()
+  })
+
   it('attaches several files at once', async () => {
     const { container } = render(
       <Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />,
