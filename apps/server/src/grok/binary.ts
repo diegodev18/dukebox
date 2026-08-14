@@ -44,7 +44,7 @@ export function grokBinCandidates(env: NodeJS.ProcessEnv = process.env): string[
 }
 
 export function defaultGrokBinDir(): string {
-  return grokBinCandidates()[0]
+  return grokBinCandidates()[0] ?? join(tmpdir(), 'dukebox-grok')
 }
 
 /**
