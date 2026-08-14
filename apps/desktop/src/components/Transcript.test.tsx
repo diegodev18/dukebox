@@ -664,22 +664,7 @@ describe('Transcript tool groups', () => {
 })
 
 describe('Transcript message actions', () => {
-  it('keeps copy actions out of the message layout', () => {
-    render(
-      <Transcript
-        transcript={transcript({
-          blocks: [{ kind: 'prompt', id: 'p', text: 'Si' }],
-        })}
-        onRespond={vi.fn()}
-        onEdit={vi.fn()}
-      />,
-    )
-
-    const actions = screen.getByRole('button', { name: 'Copy' }).parentElement
-    expect(actions).toHaveClass('absolute')
-  })
-
-  it('anchors actions beside the bubble so they do not cover the next message', () => {
+  it('reserves space below the bubble so actions do not cover the next message', () => {
     render(
       <Transcript
         transcript={transcript({
@@ -698,7 +683,8 @@ describe('Transcript message actions', () => {
     )
 
     const actions = screen.getAllByRole('button', { name: 'Copy' })[0]?.parentElement
-    expect(actions).toHaveClass('left-full')
+    expect(actions).not.toHaveClass('absolute')
+    expect(actions).not.toHaveClass('left-full')
     expect(actions).not.toHaveClass('top-full')
   })
 })
