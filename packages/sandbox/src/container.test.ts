@@ -1,9 +1,13 @@
 import { randomUUID } from 'node:crypto'
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
   clampTerminalSize,
+  createExecDuplex,
   cpuQuota,
   DEFAULT_LIMITS,
+  endWhenExecCloses,
   parseMemory,
   Sandbox,
   SESSION_LABEL,
@@ -60,6 +64,52 @@ describe('toBind', () => {
       expect(() => toBind({ source, target: '/mnt' })).toThrow(/refusing to mount/)
     },
   )
+})
+
+describe('endWhenExecCloses', () => {
+  it('ends stdout when the hijack stream closes without an end event', () => {
+    const raw = new EventEmitter()
+    const stdout = new PassThrough()
+
+    endWhenExecCloses(raw, stdout)
+    raw.emit('close')
+
+    expect(stdout.writableEnded).toBe(true)
+  })
+
+  it('does not end stdout twice when both end and close fire', () => {
+    const raw = new EventEmitter()
+    const stdout = new PassThrough()
+
+    endWhenExecCloses(raw, stdout)
+    raw.emit('end')
+    raw.emit('close')
+
+    expect(stdout.writableEnded).toBe(true)
+  })
+})
+
+describe('createExecDuplex', () => {
+  it('ends the hijack writable when the caller ends the duplex', async () => {
+    const raw = new PassThrough()
+    const stdout = new PassThrough()
+    const stream = createExecDuplex(raw, stdout, true)
+
+    stream.write('echoed back\n')
+    stream.end()
+
+    await new Promise<void>((resolve) => raw.once('finish', resolve))
+    expect(raw.writableEnded).toBe(true)
+  })
+
+  it('forwards writes to the hijack stream', () => {
+    const raw = new PassThrough()
+    const stdout = new PassThrough()
+    const stream = createExecDuplex(raw, stdout, true)
+
+    stream.write('hello')
+    expect(raw.read()?.toString()).toBe('hello')
+  })
 })
 
 describe('clampTerminalSize', () => {
