@@ -261,6 +261,7 @@ export function Workspace({
               session={session}
               files={files}
               onUpdated={pullRequest.onUpdated}
+              {...(pullRequest.onContinue ? { onContinue: pullRequest.onContinue } : {})}
               disabled={Boolean(terminalProps.disabled)}
             />
           ) : null}

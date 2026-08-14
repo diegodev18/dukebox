@@ -18,7 +18,7 @@ import {
 } from 'react'
 import { DukeboxClient, isAuthFailure } from '@/lib/client'
 import { removeConnection, type Connection } from '@/lib/connection'
-import { lastNewSessionFromSummary, type Settings } from '@/lib/settings'
+import { lastNewSessionFromSummary, type LastNewSession, type Settings } from '@/lib/settings'
 import type { SettingsCategory } from '@/lib/settingsCategories'
 import { INITIAL_RETRY_MS, MAX_RETRY_MS, isStreamConnected } from '@/lib/stream'
 import { NAV_DEFAULT, NAV_MIN, WORKSPACE_MIN } from '@/lib/columnWidths'
@@ -100,6 +100,8 @@ export function Session({
   const [archiveError, setArchiveError] = useState<string | null>(null)
   const [role, setRole] = useState<DeviceRole | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  // Prefill New Session from a merged PR, even before settings persist.
+  const [continueFrom, setContinueFrom] = useState<LastNewSession | null>(null)
 
   const refreshProjects = async () => {
     try {
@@ -258,6 +260,7 @@ export function Session({
     setPreferProjectId(null)
     setManagingProjectId(null)
     setPreferAgentId(null)
+    setContinueFrom(null)
   }
 
   const openSettings = (category: SettingsCategory) => {
@@ -267,6 +270,7 @@ export function Session({
     setManagingProjectId(null)
     setPreferAgentId(null)
     setSearchOpen(false)
+    setContinueFrom(null)
     setSettingsCategory(category)
     setSettingsOpen(true)
     if (category === 'updates') update.check(true)
@@ -280,6 +284,7 @@ export function Session({
     setManagingProjectId(null)
     setPreferAgentId(null)
     setSearchOpen(false)
+    setContinueFrom(null)
     setSelected(sessionId)
   }
 
@@ -290,6 +295,19 @@ export function Session({
     setPreferAgentId(null)
     setSettingsOpen(false)
     setSearchOpen(false)
+    setContinueFrom(null)
+    setCreating(true)
+  }
+
+  const continueAfterMerge = (session: SessionSummary) => {
+    const last = lastNewSessionFromSummary(session, projects)
+    setSetupProjectId(null)
+    setPreferProjectId(session.projectId)
+    setManagingProjectId(null)
+    setPreferAgentId(session.agentId)
+    setSettingsOpen(false)
+    setSearchOpen(false)
+    setContinueFrom(last)
     setCreating(true)
   }
 
@@ -503,7 +521,9 @@ export function Session({
               preferProjectId={preferProjectId}
               preferAgentId={preferAgentId}
               lastNewSession={
-                settings.lastNewSession ?? lastNewSessionFromSummary(sessions[0], projects)
+                continueFrom ??
+                settings.lastNewSession ??
+                lastNewSessionFromSummary(sessions[0], projects)
               }
               onRemember={(last) => onSaveSettings({ lastNewSession: last })}
               disabled={disconnected}
@@ -517,7 +537,13 @@ export function Session({
           </Suspense>
         ) : current ? (
           <>
-            <SessionColumn key={current.id} session={current} live={live} connection={connection} />
+            <SessionColumn
+              key={current.id}
+              session={current}
+              live={live}
+              connection={connection}
+              onContinueAfterMerge={() => continueAfterMerge(current)}
+            />
             <ConnectedWorkspace
               session={current}
               width={workspaceWidth}
@@ -544,6 +570,7 @@ export function Session({
                             session.id === selected ? { ...session, ...patch } : session,
                           ),
                         ),
+                      onContinue: () => continueAfterMerge(current),
                     }
                   : null
               }
@@ -591,10 +618,12 @@ function SessionColumn({
   session,
   live,
   connection,
+  onContinueAfterMerge,
 }: {
   session: SessionSummary
   live: LiveSession
   connection: Connection
+  onContinueAfterMerge: () => void
 }) {
   const transcript = useLiveSession((state) => state.transcript)
   const streamStatus = useLiveSession((state) => state.status)
@@ -636,6 +665,22 @@ function SessionColumn({
           This session stopped when the server restarted. Send a message or open a terminal to
           continue in the same workspace.
         </p>
+      )}
+
+      {session.pullRequest?.state === 'merged' && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-surface px-4.5 py-2 text-[12.5px] text-muted-foreground">
+          <p>
+            This pull request was merged. A message here stays on this branch. For new work, start
+            from {session.baseBranch}.
+          </p>
+          <button
+            type="button"
+            onClick={onContinueAfterMerge}
+            className="rounded-[calc(var(--radius)*0.6)] border border-border px-2 py-0.5 text-[12px] font-medium text-foreground hover:bg-muted"
+          >
+            New session from {session.baseBranch}
+          </button>
+        </div>
       )}
 
       {error && (

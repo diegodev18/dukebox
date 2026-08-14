@@ -175,6 +175,35 @@ export function parseGitPreferences(raw: unknown): GitPreferences {
   return parsed.success ? parsed.data : DEFAULT_GIT_PREFERENCES
 }
 
+/**
+ * Whether this session should still commit, push, or open a pull request.
+ *
+ * A merged session keeps its transcript and workspace, but the branch is no
+ * longer a review destination — further work starts a new session.
+ */
+export function sessionOpensPullRequests(state: PullRequestState | null | undefined): boolean {
+  return state !== 'merged'
+}
+
+/**
+ * Reuse the GitHub pull request already open for this branch.
+ *
+ * Merged and closed PRs are not destinations: attaching new commits to a
+ * merged review leaves the work without a place to land.
+ */
+export function reuseExistingPullRequest(state: PullRequestState): boolean {
+  return state === 'open'
+}
+
+/**
+ * Prefixed onto the next agent prompt after this session's pull request merges.
+ *
+ * The agent has its own conversation and never sees Dukebox session rows, so
+ * without this it keeps treating the (possibly deleted) branch as live.
+ */
+export const MERGED_SESSION_AGENT_NOTICE =
+  'The pull request for this session was merged. Do not push this branch or open another pull request from it. For new work, start a new session from the base branch.'
+
 /** GitHub's view of a pull request opened from a session. */
 export const pullRequestState = z.enum(['open', 'merged', 'closed'])
 

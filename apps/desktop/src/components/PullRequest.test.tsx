@@ -215,6 +215,31 @@ describe('PullRequestPanel', () => {
     expect(client.resolvePullRequestConflicts).not.toHaveBeenCalled()
   })
 
+  it('offers a new session from the base branch after a merge', async () => {
+    const onContinue = vi.fn()
+
+    render(
+      <PullRequestPanel
+        client={{} as never}
+        session={sessionWithPr({
+          baseBranch: 'develop',
+          pullRequest: { ...openPr, state: 'merged' },
+        })}
+        files={[]}
+        onUpdated={vi.fn()}
+        onContinue={onContinue}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Merge' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Ready for review' })).not.toBeInTheDocument()
+    expect(screen.getByText(/This pull request was merged/, { exact: false })).toBeInTheDocument()
+    expect(screen.getByText(/start from develop/, { exact: false })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'New session from develop' }))
+    expect(onContinue).toHaveBeenCalledOnce()
+  })
+
   it('keeps the pull request chrome still and scrolls only the diff', async () => {
     render(
       <PullRequestPanel
