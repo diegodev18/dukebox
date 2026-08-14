@@ -264,6 +264,54 @@ describe('Transcript', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('does not copy the in-progress turn until the agent finishes it', () => {
+    const { rerender } = render(
+      <Transcript
+        transcript={transcript({
+          running: true,
+          blocks: [
+            { kind: 'prompt', id: 'p1', text: 'fix it' },
+            { kind: 'text', id: 'answer', text: 'On it…' },
+          ],
+        })}
+        onRespond={vi.fn()}
+        running
+        status="running"
+      />,
+    )
+
+    // Only the prompt is copyable while the answer is still streaming.
+    expect(screen.getAllByRole('button', { name: 'Copy' })).toHaveLength(1)
+    expect(
+      within(screen.getByText('On it…').closest('.group')!).queryByRole('button', {
+        name: 'Copy',
+      }),
+    ).not.toBeInTheDocument()
+
+    rerender(
+      <Transcript
+        transcript={transcript({
+          running: false,
+          blocks: [
+            { kind: 'prompt', id: 'p1', text: 'fix it' },
+            { kind: 'text', id: 'answer', text: 'On it…' },
+          ],
+        })}
+        onRespond={vi.fn()}
+        running={false}
+        status="done"
+      />,
+    )
+
+    // Once the turn settles, the answer is the copyable one.
+    expect(screen.getAllByRole('button', { name: 'Copy' })).toHaveLength(2)
+    expect(
+      within(screen.getByText('On it…').closest('.group')!).getByRole('button', {
+        name: 'Copy',
+      }),
+    ).toBeInTheDocument()
+  })
+
   it('does not edit a prompt while disconnected', async () => {
     const onEdit = vi.fn()
     render(

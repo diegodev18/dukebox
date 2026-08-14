@@ -116,7 +116,8 @@ export function Transcript({
   const turnActive = Boolean(running || transcript.running)
   const last = transcript.blocks.at(-1)
   // Copy is available for user prompts and the last assistant message of each
-  // turn (the answer worth grabbing, not the interim chatter mid-turn).
+  // finished turn (the answer worth grabbing, not the interim chatter mid-turn).
+  // A turn still in progress gets nothing to copy until the agent is done.
   const copyableTextIds = useMemo(() => {
     const ids = new Set<string>()
     let lastTextId: string | undefined
@@ -128,9 +129,9 @@ export function Transcript({
         lastTextId = block.id
       }
     }
-    if (lastTextId) ids.add(lastTextId)
+    if (lastTextId && !running) ids.add(lastTextId)
     return ids
-  }, [transcript.blocks])
+  }, [transcript.blocks, running])
   const streamingTextId = turnActive && last?.kind === 'text' ? last.id : undefined
   const streamingThinkingId = turnActive && last?.kind === 'thinking' ? last.id : undefined
   const settled = status !== undefined && isTerminal(status)
@@ -273,9 +274,9 @@ const BlockView = memo(function BlockView({
  * A user prompt or assistant reply, with copy (and, for prompts, edit) on hover.
  *
  * Copy appears only for user messages and the last assistant message of each
- * turn — the answer worth grabbing. Edit loads the text into the composer
- * rather than rewriting history: the protocol has no rewind, so a follow-up
- * is the honest action.
+ * finished turn — the answer worth grabbing, never the stream still arriving.
+ * Edit loads the text into the composer rather than rewriting history: the
+ * protocol has no rewind, so a follow-up is the honest action.
  */
 function MessageBlock({
   text,
