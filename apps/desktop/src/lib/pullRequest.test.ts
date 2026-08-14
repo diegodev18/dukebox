@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { PullRequestSummary } from '@dukebox/protocol'
 import {
+  pullRequestCheckRunLabel,
+  pullRequestChecksTabLabel,
+  pullRequestCommitSha,
+  pullRequestMergeHint,
   pullRequestNumber,
+  pullRequestReviewStateLabel,
   pullRequestStatus,
   pullRequestStatusAriaLabel,
   pullRequestStatusLabel,
@@ -58,5 +63,29 @@ describe('pullRequestTabLabel', () => {
 
   it('includes the number once the pull request is opened', () => {
     expect(pullRequestTabLabel('https://github.com/diego/dukebox/pull/1')).toBe('Pull request #1')
+  })
+})
+
+describe('pullRequestMergeHint', () => {
+  it('names the merge block without the GitHub prefix', () => {
+    expect(pullRequestMergeHint({ checks: 'pending' })).toBe('Checks are still running')
+    expect(pullRequestMergeHint({ checks: 'failing' })).toBe('Status checks have not passed')
+    expect(pullRequestMergeHint({ reviewDecision: 'REVIEW_REQUIRED' })).toBe('Needs a review')
+    expect(pullRequestMergeHint({ reviewDecision: 'CHANGES_REQUESTED' })).toBe('Changes requested')
+    expect(pullRequestMergeHint({ checks: 'passing' })).toBeNull()
+  })
+})
+
+describe('pull request list labels', () => {
+  it('shortens a commit sha and names check and review states', () => {
+    expect(pullRequestCommitSha('abc123def456')).toBe('abc123d')
+    expect(pullRequestCheckRunLabel('pending')).toBe('In progress')
+    expect(pullRequestReviewStateLabel('CHANGES_REQUESTED')).toBe('Changes requested')
+    expect(
+      pullRequestChecksTabLabel([
+        { name: 'ci', state: 'passing' },
+        { name: 'lint', state: 'pending' },
+      ]),
+    ).toBe('Checks · 1/2')
   })
 })

@@ -1,4 +1,13 @@
-import type { PullRequestSummary } from '@dukebox/protocol'
+import type {
+  PullRequestCheckRun,
+  PullRequestCheckRunState,
+  PullRequestChecks,
+  PullRequestDetails,
+  PullRequestMergeStateStatus,
+  PullRequestReviewDecision,
+  PullRequestReviewState,
+  PullRequestSummary,
+} from '@dukebox/protocol'
 
 /**
  * How a session's pull request looks in the app.
@@ -55,4 +64,77 @@ export function pullRequestTabLabel(url: string | null | undefined): string {
   if (!url) return 'Pull request'
   const n = pullRequestNumber(url)
   return n ? `Pull request #${n}` : 'Pull request'
+}
+
+/** Short header hint for why merge is not ready. Null when nothing blocks. */
+export function pullRequestMergeHint(pr: {
+  checks?: PullRequestChecks | undefined
+  reviewDecision?: PullRequestReviewDecision | null | undefined
+  mergeStateStatus?: PullRequestMergeStateStatus | null | undefined
+}): string | null {
+  if (pr.checks === 'failing') return 'Status checks have not passed'
+  if (pr.checks === 'pending') return 'Checks are still running'
+  if (
+    (pr.checks === 'none' || pr.checks === undefined) &&
+    (pr.mergeStateStatus === 'BLOCKED' || pr.mergeStateStatus === 'UNSTABLE')
+  ) {
+    return 'Checks are still running'
+  }
+  if (pr.reviewDecision === 'CHANGES_REQUESTED') return 'Changes requested'
+  if (pr.reviewDecision === 'REVIEW_REQUIRED') return 'Needs a review'
+  return null
+}
+
+export function pullRequestCheckRunLabel(state: PullRequestCheckRunState): string {
+  return {
+    pending: 'In progress',
+    passing: 'Passed',
+    failing: 'Failed',
+    neutral: 'Neutral',
+  }[state]
+}
+
+export function pullRequestCheckRunClass(state: PullRequestCheckRunState): string {
+  return {
+    pending: 'text-muted-foreground',
+    passing: 'text-done',
+    failing: 'text-destructive',
+    neutral: 'text-muted-foreground',
+  }[state]
+}
+
+export function pullRequestReviewStateLabel(state: PullRequestReviewState): string {
+  return {
+    APPROVED: 'Approved',
+    CHANGES_REQUESTED: 'Changes requested',
+    COMMENTED: 'Commented',
+    DISMISSED: 'Dismissed',
+    PENDING: 'Pending',
+  }[state]
+}
+
+export function pullRequestCommitSha(sha: string): string {
+  return sha.slice(0, 7)
+}
+
+export function pullRequestChecksTabLabel(
+  runs: readonly PullRequestCheckRun[] | undefined,
+): string {
+  if (!runs || runs.length === 0) return 'Checks'
+  const done = runs.filter((run) => run.state !== 'pending').length
+  return `Checks · ${done}/${runs.length}`
+}
+
+/** How often to refresh GitHub while checks are still running. */
+export const PULL_REQUEST_POLL_MS = 10_000
+
+export function pullRequestDetailsSummary(
+  details: PullRequestDetails,
+): Pick<PullRequestSummary, 'url' | 'title' | 'isDraft' | 'state'> {
+  return {
+    url: details.url,
+    title: details.title,
+    isDraft: details.isDraft,
+    state: details.state,
+  }
 }

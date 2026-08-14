@@ -311,6 +311,9 @@ describe('viewPullRequest', () => {
     expect(args[args.indexOf('--json') + 1]).toContain('mergeable')
     expect(args[args.indexOf('--json') + 1]).toContain('statusCheckRollup')
     expect(args[args.indexOf('--json') + 1]).toContain('reviewDecision')
+    expect(args[args.indexOf('--json') + 1]).toContain('commits')
+    expect(args[args.indexOf('--json') + 1]).toContain('reviews')
+    expect(args[args.indexOf('--json') + 1]).toContain('mergeStateStatus')
   })
 
   it('maps a failing check rollup', async () => {
@@ -322,7 +325,7 @@ describe('viewPullRequest', () => {
         isDraft: false,
         state: 'OPEN',
         mergeable: 'MERGEABLE',
-        statusCheckRollup: [{ name: 'ci', state: 'FAILURE' }],
+        statusCheckRollup: [{ name: 'ci', state: 'FAILURE', detailsUrl: 'https://ci.example/1' }],
         reviewDecision: 'REVIEW_REQUIRED',
       }),
     )
@@ -332,6 +335,72 @@ describe('viewPullRequest', () => {
     ).toMatchObject({
       checks: 'failing',
       reviewDecision: 'REVIEW_REQUIRED',
+      checkRuns: [{ name: 'ci', state: 'failing', url: 'https://ci.example/1' }],
+    })
+  })
+
+  it('treats a blocked merge with an empty rollup as pending', async () => {
+    const { client } = clientReturning(
+      JSON.stringify({
+        url: 'https://github.com/diego/dukebox/pull/42',
+        title: 'Add a health check',
+        body: '',
+        isDraft: false,
+        state: 'OPEN',
+        mergeable: 'MERGEABLE',
+        mergeStateStatus: 'BLOCKED',
+        statusCheckRollup: [],
+      }),
+    )
+
+    expect(
+      await client.viewPullRequest('diego/dukebox', 'https://github.com/diego/dukebox/pull/42'),
+    ).toMatchObject({
+      checks: 'pending',
+      mergeStateStatus: 'BLOCKED',
+      checkRuns: [],
+    })
+  })
+
+  it('maps commits and reviews', async () => {
+    const { client } = clientReturning(
+      JSON.stringify({
+        url: 'https://github.com/diego/dukebox/pull/42',
+        title: 'Add a health check',
+        body: 'Adds /health.',
+        isDraft: false,
+        state: 'OPEN',
+        mergeable: 'MERGEABLE',
+        commits: [
+          {
+            oid: 'abc123def456',
+            messageHeadline: 'Add a health check',
+            authors: [{ login: 'diego' }],
+          },
+        ],
+        reviews: [
+          {
+            author: { login: 'reviewer' },
+            state: 'APPROVED',
+            body: 'Looks good.',
+            submittedAt: '2026-08-14T12:00:00Z',
+          },
+        ],
+      }),
+    )
+
+    expect(
+      await client.viewPullRequest('diego/dukebox', 'https://github.com/diego/dukebox/pull/42'),
+    ).toMatchObject({
+      commits: [{ sha: 'abc123def456', title: 'Add a health check', author: 'diego' }],
+      reviews: [
+        {
+          author: 'reviewer',
+          state: 'APPROVED',
+          body: 'Looks good.',
+          submittedAt: '2026-08-14T12:00:00Z',
+        },
+      ],
     })
   })
 })
@@ -389,8 +458,27 @@ describe('pullRequestFailureMessage', () => {
       pullRequestFailureMessage(new GitHubError('gh pr failed: Pull request is already merged')),
     ).toBe('this pull request is no longer open')
     expect(
-      pullRequestFailureMessage(new GitHubError('gh pr failed: required status checks have not')),
-    ).toBe('GitHub refused to merge this pull request')
+      pullRequestFailureMessage(
+        new GitHubError('gh pr failed: required status checks have not completed'),
+      ),
+    ).toBe('GitHub status checks are still running')
+    expect(
+      pullRequestFailureMessage(
+        new GitHubError('gh pr failed: required status checks have failed'),
+      ),
+    ).toBe('GitHub status checks have not passed')
+    expect(
+      pullRequestFailureMessage(new GitHubError('gh pr failed: at least 1 approving review')),
+    ).toBe('this pull request still needs a review')
+    expect(
+      pullRequestFailureMessage(new GitHubError('gh pr failed: changes requested by a reviewer')),
+    ).toBe('changes were requested on this pull request')
+    expect(pullRequestFailureMessage(new GitHubError('gh pr failed: protected branch rules'))).toBe(
+      'the branch is protected and this merge is not allowed',
+    )
+    expect(pullRequestFailureMessage(new GitHubError('gh pr failed: not allowed to merge'))).toBe(
+      'you do not have permission to merge this pull request',
+    )
     expect(
       pullRequestFailureMessage(new GitHubError('gh pr failed: explosion in /tmp/secret')),
     ).toBe('the pull request action failed')

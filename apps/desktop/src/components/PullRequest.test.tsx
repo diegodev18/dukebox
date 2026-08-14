@@ -268,25 +268,33 @@ describe('PullRequestPanel', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/status checks have not passed/)
   })
 
-  it('hides merge while the agent is running', () => {
+  it('hides merge while the agent is running', async () => {
+    const client = {
+      getPullRequest: vi.fn().mockResolvedValue({ ...openPr, mergeable: 'MERGEABLE' }),
+    }
+
     render(
       <PullRequestPanel
-        client={{} as never}
+        client={client as never}
         session={sessionWithPr({ status: 'running' })}
         files={[]}
         onUpdated={vi.fn()}
       />,
     )
 
+    await waitFor(() => expect(client.getPullRequest).toHaveBeenCalled())
     expect(screen.queryByRole('button', { name: 'Merge' })).not.toBeInTheDocument()
   })
 
   it('offers a new session from the base branch after a merge', async () => {
     const onContinue = vi.fn()
+    const client = {
+      getPullRequest: vi.fn().mockResolvedValue({ ...openPr, state: 'merged' as const }),
+    }
 
     render(
       <PullRequestPanel
-        client={{} as never}
+        client={client as never}
         session={sessionWithPr({
           baseBranch: 'develop',
           pullRequest: { ...openPr, state: 'merged' },
@@ -307,9 +315,13 @@ describe('PullRequestPanel', () => {
   })
 
   it('keeps the pull request chrome still and scrolls only the diff', async () => {
+    const client = {
+      getPullRequest: vi.fn().mockResolvedValue({ ...openPr, mergeable: 'MERGEABLE' }),
+    }
+
     render(
       <PullRequestPanel
-        client={{} as never}
+        client={client as never}
         session={sessionWithPr()}
         files={[
           {
@@ -335,5 +347,104 @@ describe('PullRequestPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('return demuxed').closest('[aria-busy="false"]')).not.toBeNull()
     })
+  })
+
+  it('shows why merge is blocked and opens the checks panel', async () => {
+    const client = {
+      getPullRequest: vi.fn().mockResolvedValue({
+        ...openPr,
+        mergeable: 'MERGEABLE',
+        checks: 'pending',
+        checkRuns: [{ name: 'ci', state: 'pending' }],
+      }),
+      mergePullRequest: vi.fn(),
+    }
+
+    render(
+      <PullRequestPanel
+        client={client as never}
+        session={sessionWithPr()}
+        files={[]}
+        onUpdated={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Checks are still running')).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    expect(client.mergePullRequest).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent(/still running/)
+    expect(screen.getByRole('tab', { name: /Checks/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('ci')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'See checks' })).toBeInTheDocument()
+  })
+
+  it('renders description, commits, checks, and reviews', async () => {
+    const client = {
+      getPullRequest: vi.fn().mockResolvedValue({
+        ...openPr,
+        body: 'Adds /health.',
+        checks: 'passing',
+        commits: [{ sha: 'abc1234ffff', title: 'Wire /health into the server', author: 'diego' }],
+        checkRuns: [{ name: 'ci', state: 'passing' }],
+        reviews: [{ author: 'ada', state: 'APPROVED', body: 'Nice.' }],
+      }),
+    }
+
+    render(
+      <PullRequestPanel
+        client={client as never}
+        session={sessionWithPr()}
+        files={[]}
+        onUpdated={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => expect(client.getPullRequest).toHaveBeenCalled())
+    expect(screen.getByRole('tab', { name: 'Changes' })).toHaveAttribute('aria-selected', 'true')
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Description' }))
+    expect(screen.getByText('Adds /health.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Commits' }))
+    expect(screen.getByText('Wire /health into the server')).toBeInTheDocument()
+    expect(screen.getByText('abc1234')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: /Checks/ }))
+    expect(screen.getByText('ci')).toBeInTheDocument()
+    expect(screen.getByText('Passed')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Reviews' }))
+    expect(screen.getByText('ada')).toBeInTheDocument()
+    expect(screen.getByText(/Approved/)).toBeInTheDocument()
+    expect(screen.getByText('Nice.')).toBeInTheDocument()
+  })
+
+  it('explains a refused merge instead of a generic refusal', async () => {
+    const client = {
+      getPullRequest: vi.fn().mockResolvedValue({ ...openPr, mergeable: 'MERGEABLE' }),
+      mergePullRequest: vi
+        .fn()
+        .mockRejectedValue(
+          new ApiFailure(409, 'conflict', 'GitHub status checks are still running'),
+        ),
+    }
+
+    render(
+      <PullRequestPanel
+        client={client as never}
+        session={sessionWithPr()}
+        files={[]}
+        onUpdated={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm merge' }))
+    expect(screen.getByRole('alert')).toHaveTextContent(/still running/)
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/refused/)
+    expect(screen.getByRole('button', { name: 'See checks' })).toBeInTheDocument()
   })
 })

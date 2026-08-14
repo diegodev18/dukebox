@@ -856,6 +856,32 @@ describe('POST /api/sessions/:id/pr', () => {
     expect(await response.json()).toMatchObject({ isDraft: true })
   })
 
+  it('forwards check runs, commits, and reviews', async () => {
+    vi.mocked(sessionManager.getPullRequest).mockResolvedValueOnce({
+      url: 'https://github.com/diego/dukebox/pull/1',
+      title: 'Add a thing',
+      isDraft: false,
+      state: 'open',
+      mergeable: 'MERGEABLE',
+      checks: 'pending',
+      checkRuns: [{ name: 'ci', state: 'pending' }],
+      commits: [{ sha: 'abc1234', title: 'Add a thing', author: 'diego' }],
+      reviews: [{ author: 'reviewer', state: 'COMMENTED', body: 'nits' }],
+    })
+
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await request(`/api/sessions/${session.id}/pr`)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      checks: 'pending',
+      checkRuns: [{ name: 'ci', state: 'pending' }],
+      commits: [{ sha: 'abc1234', title: 'Add a thing' }],
+      reviews: [{ author: 'reviewer', state: 'COMMENTED' }],
+    })
+  })
+
   it('marks a pull request ready', async () => {
     const project = await createProject()
     const session = await createSession(project.id)
@@ -872,6 +898,22 @@ describe('POST /api/sessions/:id/pr', () => {
     const response = await post(`/api/sessions/${session.id}/pr/merge`, { method: 'squash' })
     expect(response.status).toBe(200)
     expect(sessionManager.mergePullRequest).toHaveBeenCalledWith(session.id, 'squash')
+  })
+
+  it('maps a GitHub required-checks refusal to a specific conflict', async () => {
+    vi.mocked(sessionManager.mergePullRequest).mockRejectedValueOnce(
+      new GitHubError('gh pr failed: required status checks have not completed'),
+    )
+
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await post(`/api/sessions/${session.id}/pr/merge`, {})
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({
+      error: 'conflict',
+      message: 'GitHub status checks are still running',
+    })
   })
 
   it('maps a GitHub draft refusal to a conflict, not an internal error', async () => {

@@ -8,6 +8,7 @@ import {
   permissionMode,
   resolvePermissionMode,
   pullRequestMergeBlock,
+  pullRequestMergeBlockPanel,
   reuseExistingPullRequest,
   sessionOpensPullRequests,
   sessionSummary,
@@ -179,5 +180,19 @@ describe('pullRequestMergeBlock', () => {
     expect(pullRequestMergeBlock({ reviewDecision: 'REVIEW_REQUIRED' })).toMatch(/needs a review/)
     expect(pullRequestMergeBlock({ checks: 'passing', reviewDecision: 'APPROVED' })).toBeNull()
     expect(pullRequestMergeBlock({ checks: 'none' })).toBeNull()
+  })
+
+  it('treats a blocked merge with an empty check rollup as still running', () => {
+    expect(pullRequestMergeBlock({ mergeStateStatus: 'BLOCKED' })).toMatch(/still running/)
+    expect(pullRequestMergeBlock({ checks: 'none', mergeStateStatus: 'UNSTABLE' })).toMatch(
+      /still running/,
+    )
+    expect(pullRequestMergeBlock({ checks: 'passing', mergeStateStatus: 'BLOCKED' })).toBeNull()
+  })
+
+  it('names the panel that explains the block', () => {
+    expect(pullRequestMergeBlockPanel({ checks: 'pending' })).toBe('checks')
+    expect(pullRequestMergeBlockPanel({ reviewDecision: 'REVIEW_REQUIRED' })).toBe('reviews')
+    expect(pullRequestMergeBlockPanel({ checks: 'passing' })).toBeNull()
   })
 })

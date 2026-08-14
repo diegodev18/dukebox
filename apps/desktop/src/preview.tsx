@@ -355,9 +355,18 @@ const fakeClient = {
   getPullRequest: async () => ({
     url: 'https://github.com/diegodev18/dukebox/pull/1',
     title: 'Fix the demux bug',
+    body: '## Summary\n\nFixes the demux so the last chunk is not dropped.',
     isDraft: false,
     state: 'open' as const,
     mergeable: 'MERGEABLE' as const,
+    checks: 'passing' as const,
+    checkRuns: [
+      { name: 'test', state: 'passing' as const },
+      { name: 'typecheck', state: 'passing' as const },
+    ],
+    commits: [{ sha: 'a1b2c3d4e5f67890', title: 'Fix the demux bug', author: 'diego' }],
+    reviews: [{ author: 'ada', state: 'APPROVED' as const, body: 'Nice catch.' }],
+    reviewDecision: 'APPROVED' as const,
   }),
   resolvePullRequestConflicts: async () => ({ status: 'resolved' as const }),
   listWorkspaceTree: async () => ['CLAUDE.md', 'src/app.ts'],
