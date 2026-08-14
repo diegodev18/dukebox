@@ -1,5 +1,5 @@
 import { emptyTranscript, type Transcript as TranscriptData } from '@dukebox/protocol'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { Transcript } from '@/components/Transcript'
@@ -227,6 +227,41 @@ describe('Transcript', () => {
 
     expect(writeText).toHaveBeenCalledWith('I found the bug.')
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
+  })
+
+  it('copies the last assistant message of each turn, not the interim ones', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [
+            { kind: 'prompt', id: 'p1', text: 'investigate' },
+            { kind: 'text', id: 'interim', text: 'Looking into it.' },
+            { kind: 'text', id: 'answer1', text: 'The bug is in the parser.' },
+            { kind: 'prompt', id: 'p2', text: 'fix it' },
+            { kind: 'text', id: 'answer2', text: 'Fixed and verified.' },
+          ],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    // Both prompts plus the final answer of each turn get a copy button.
+    expect(screen.getAllByRole('button', { name: 'Copy' })).toHaveLength(4)
+    expect(
+      within(screen.getByText('The bug is in the parser.').closest('.group')!).getByRole('button', {
+        name: 'Copy',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      within(screen.getByText('Fixed and verified.').closest('.group')!).getByRole('button', {
+        name: 'Copy',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      within(screen.getByText('Looking into it.').closest('.group')!).queryByRole('button', {
+        name: 'Copy',
+      }),
+    ).not.toBeInTheDocument()
   })
 
   it('does not edit a prompt while disconnected', async () => {

@@ -115,13 +115,21 @@ export function Transcript({
   const showWorking = transcript.running && (status === undefined || !isTerminal(status))
   const turnActive = Boolean(running || transcript.running)
   const last = transcript.blocks.at(-1)
-  // Copy is available for user prompts and the final assistant reply only.
-  const lastAgentMessageId = useMemo(() => {
-    for (let index = transcript.blocks.length - 1; index >= 0; index -= 1) {
-      const block = transcript.blocks[index]
-      if (block?.kind === 'text') return block.id
+  // Copy is available for user prompts and the last assistant message of each
+  // turn (the answer worth grabbing, not the interim chatter mid-turn).
+  const copyableTextIds = useMemo(() => {
+    const ids = new Set<string>()
+    let lastTextId: string | undefined
+    for (const block of transcript.blocks) {
+      if (block.kind === 'prompt') {
+        if (lastTextId) ids.add(lastTextId)
+        lastTextId = undefined
+      } else if (block.kind === 'text') {
+        lastTextId = block.id
+      }
     }
-    return undefined
+    if (lastTextId) ids.add(lastTextId)
+    return ids
   }, [transcript.blocks])
   const streamingTextId = turnActive && last?.kind === 'text' ? last.id : undefined
   const streamingThinkingId = turnActive && last?.kind === 'thinking' ? last.id : undefined
@@ -169,7 +177,7 @@ export function Transcript({
                     streaming={block.id === streamingTextId || block.id === streamingThinkingId}
                     running={block.id === setupPromptId ? running : undefined}
                     status={block.id === setupPromptId ? status : undefined}
-                    copyable={block.kind === 'prompt' || block.id === lastAgentMessageId}
+                    copyable={block.kind === 'prompt' || copyableTextIds.has(block.id)}
                   />
                 )
               }}
@@ -264,10 +272,10 @@ const BlockView = memo(function BlockView({
 /**
  * A user prompt or assistant reply, with copy (and, for prompts, edit) on hover.
  *
- * Copy appears only for user messages and the final assistant reply — the
- * answer worth grabbing. Edit loads the text into the composer rather than
- * rewriting history: the protocol has no rewind, so a follow-up is the honest
- * action.
+ * Copy appears only for user messages and the last assistant message of each
+ * turn — the answer worth grabbing. Edit loads the text into the composer
+ * rather than rewriting history: the protocol has no rewind, so a follow-up
+ * is the honest action.
  */
 function MessageBlock({
   text,
