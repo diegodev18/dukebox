@@ -20,6 +20,27 @@ import { GrokBuildMapper } from '@/grok-build/mapper'
  * hijacked stream is unused.
  */
 
+export const GROK_AUTH_PATH = '/home/node/.grok/auth.json'
+export const GROK_AUTH_ENV = 'DUKEBOX_GROK_AUTH_JSON'
+
+/**
+ * Write the subscription session into the container, if one was injected.
+ *
+ * SuperGrok / X Premium Plus credentials live in `~/.grok/auth.json`, not in
+ * `XAI_API_KEY`. The control plane passes the file as env so it never has to
+ * be shell-quoted; Grok prefers that session over an API key when both exist.
+ */
+export async function materializeGrokHome(context: SessionContext): Promise<void> {
+  await context.container.exec([
+    'sh',
+    '-c',
+    [
+      'mkdir -p /home/node/.grok',
+      `if [ -n "$${GROK_AUTH_ENV}" ]; then printf '%s' "$${GROK_AUTH_ENV}" > ${GROK_AUTH_PATH}; chmod 600 ${GROK_AUTH_PATH}; fi`,
+    ].join('\n'),
+  ])
+}
+
 export const GROK_BUILD_CAPABILITIES: AgentCapabilities = {
   // Sessions run with --yolo (or plan), so the agent acts without asking.
   // The container is the boundary that makes that safe.
@@ -92,6 +113,7 @@ export class GrokBuildAdapter implements AgentAdapter {
     this.mapper.rememberSession(context.resumeFrom, context.model)
     this.mode = context.permissionMode ?? DEFAULT_PERMISSION_MODE
 
+    await materializeGrokHome(context)
     this.emit({ type: 'permission_mode', mode: this.mode })
   }
 

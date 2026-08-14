@@ -7,7 +7,10 @@
       "outputs": ["dist/**"]
     },
     "typecheck": {
-      "dependsOn": ["^build"]
+      // Own `build` first: `tsc -b` and the alias rewrite both write `dist/`,
+      // and running them in parallel with `typecheck` leaves `@/` specifiers
+      // in protocol/dist that Node cannot load (`Cannot find module '@/events'`).
+      "dependsOn": ["build"]
     },
     "test": {
       "dependsOn": ["^build"],

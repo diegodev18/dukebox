@@ -50,7 +50,12 @@ import { connect } from 'node:net'
 import { join } from 'node:path'
 import type { EventBus } from '@/events/bus'
 import { GitHubError, type GitHubClient } from '@/github/client'
-import { AGENT_CREDENTIAL_SECRET, GROK_CREDENTIAL_SECRET, type SecretStore } from '@/secrets/store'
+import {
+  AGENT_CREDENTIAL_SECRET,
+  GROK_AUTH_SECRET,
+  GROK_CREDENTIAL_SECRET,
+  type SecretStore,
+} from '@/secrets/store'
 import { buildOpencodeSessionEnv, loadOpencodeProviders } from '@/opencode/providers'
 import {
   ENVIRONMENT_SETUP_PROMPT,
@@ -1344,6 +1349,8 @@ export class SessionManager {
       if (agentId === 'grok-build') {
         const key = await store.get(GROK_CREDENTIAL_SECRET)
         if (key) environment.XAI_API_KEY = key
+        const authJson = await store.get(GROK_AUTH_SECRET)
+        if (authJson) environment.DUKEBOX_GROK_AUTH_JSON = authJson
         environment.GROK_DISABLE_AUTOUPDATER = '1'
       }
     }

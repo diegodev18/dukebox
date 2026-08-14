@@ -415,20 +415,29 @@ export class DukeboxClient {
     await this.request('/api/agent-credentials', { method: 'DELETE' })
   }
 
-  async grokCredentialsConfigured(): Promise<boolean> {
-    const body = await this.request<{ configured: boolean }>('/api/grok-credentials')
-    return body.configured
+  async grokCredentialsStatus(): Promise<{
+    configured: boolean
+    apiKey: boolean
+    subscription: boolean
+  }> {
+    return this.request('/api/grok-credentials')
   }
 
-  async setGrokCredentials(token: string): Promise<void> {
+  async grokCredentialsConfigured(): Promise<boolean> {
+    return (await this.grokCredentialsStatus()).configured
+  }
+
+  async setGrokCredentials(input: string | { token?: string; authJson?: string }): Promise<void> {
+    const body = typeof input === 'string' ? { token: input } : input
     await this.request('/api/grok-credentials', {
       method: 'PUT',
-      body: JSON.stringify({ token }),
+      body: JSON.stringify(body),
     })
   }
 
-  async clearGrokCredentials(): Promise<void> {
-    await this.request('/api/grok-credentials', { method: 'DELETE' })
+  async clearGrokCredentials(kind?: 'apiKey' | 'subscription'): Promise<void> {
+    const query = kind ? `?kind=${kind}` : ''
+    await this.request(`/api/grok-credentials${query}`, { method: 'DELETE' })
   }
 
   async listOpencodeCatalog(): Promise<ListOpencodeCatalogResponse['providers']> {

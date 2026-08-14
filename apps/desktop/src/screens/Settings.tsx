@@ -609,55 +609,65 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
 }
 
 function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
-  const [configured, setConfigured] = useState<boolean | null>(null)
+  const [status, setStatus] = useState<{
+    apiKey: boolean
+    subscription: boolean
+  } | null>(null)
   const [token, setToken] = useState('')
+  const [authJson, setAuthJson] = useState('')
   const [working, setWorking] = useState(false)
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
+
+  const reload = async () => {
+    const next = await client.grokCredentialsStatus()
+    setStatus({ apiKey: next.apiKey, subscription: next.subscription })
+  }
 
   useEffect(() => {
     let cancelled = false
     client
-      .grokCredentialsConfigured()
-      .then((found) => {
-        if (!cancelled) setConfigured(found)
+      .grokCredentialsStatus()
+      .then((next) => {
+        if (!cancelled) setStatus({ apiKey: next.apiKey, subscription: next.subscription })
       })
       .catch(() => {
-        if (!cancelled) setConfigured(false)
+        if (!cancelled) setStatus({ apiKey: false, subscription: false })
       })
     return () => {
       cancelled = true
     }
   }, [client])
 
-  const saveToken = async () => {
+  const save = async (body: { token?: string; authJson?: string }, ok: string) => {
     setWorking(true)
     setMessage(null)
     try {
-      await client.setGrokCredentials(token.trim())
+      await client.setGrokCredentials(body)
       setToken('')
-      setConfigured(true)
-      setMessage({ tone: 'ok', text: 'Key saved.' })
+      setAuthJson('')
+      await reload()
+      setMessage({ tone: 'ok', text: ok })
     } catch (error) {
       setMessage({
         tone: 'error',
-        text: error instanceof Error ? error.message : 'Could not save the key.',
+        text: error instanceof Error ? error.message : 'Could not save Grok Build credentials.',
       })
     } finally {
       setWorking(false)
     }
   }
 
-  const clearToken = async () => {
+  const clear = async (kind: 'apiKey' | 'subscription', ok: string) => {
     setWorking(true)
     setMessage(null)
     try {
-      await client.clearGrokCredentials()
-      setConfigured(false)
-      setMessage({ tone: 'ok', text: 'Key removed.' })
+      await client.clearGrokCredentials(kind)
+      await reload()
+      setMessage({ tone: 'ok', text: ok })
     } catch (error) {
       setMessage({
         tone: 'error',
-        text: error instanceof Error ? error.message : 'Could not remove the key.',
+        text: error instanceof Error ? error.message : 'Could not remove Grok Build credentials.',
       })
     } finally {
       setWorking(false)
@@ -670,15 +680,57 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
         Grok Build
       </h3>
       <p className="mt-1 text-[12.5px] text-muted-foreground">
-        API key from console.x.ai. Injected as <code>XAI_API_KEY</code> into Grok Build sessions.
+        A SuperGrok or X Premium Plus login uses your subscription. An API key from console.x.ai is
+        billed separately. If both are set, Grok uses the subscription.
       </p>
 
-      <div className="mt-3 flex items-center gap-2">
+      <p className="mt-3 text-[12px] font-medium text-foreground">Subscription</p>
+      <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+        Run <code>grok login</code> on any machine, then paste <code>~/.grok/auth.json</code>.
+      </p>
+      <textarea
+        value={authJson}
+        onChange={(event) => setAuthJson(event.target.value)}
+        placeholder={status?.subscription ? 'Replace auth.json…' : '{ … }'}
+        spellCheck={false}
+        autoComplete="off"
+        disabled={working}
+        aria-label="Grok Build auth.json"
+        rows={4}
+        className="mt-2 w-full resize-y rounded-[calc(var(--radius)*0.6)] border border-border-strong bg-background px-2.5 py-1.5 font-mono text-[12.5px] outline-none placeholder:text-muted-foreground disabled:opacity-60"
+      />
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          disabled={working || authJson.trim() === ''}
+          onClick={() => void save({ authJson: authJson.trim() }, 'Session saved.')}
+          className="flex-none rounded-[calc(var(--radius)*0.6)] bg-foreground px-3.5 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
+        >
+          Save session
+        </button>
+        {status?.subscription && (
+          <button
+            type="button"
+            disabled={working}
+            onClick={() => void clear('subscription', 'Session removed.')}
+            className="flex-none rounded-[calc(var(--radius)*0.6)] border border-border px-3.5 py-1.5 text-[12.5px] font-medium hover:bg-muted disabled:opacity-40"
+          >
+            Clear session
+          </button>
+        )}
+        <StatusChip configured={status === null ? null : status.subscription} />
+      </div>
+
+      <p className="mt-4 text-[12px] font-medium text-foreground">API key</p>
+      <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+        From console.x.ai. Injected as <code>XAI_API_KEY</code>.
+      </p>
+      <div className="mt-2 flex items-center gap-2">
         <input
           type="password"
           value={token}
           onChange={(event) => setToken(event.target.value)}
-          placeholder={configured ? 'Replace xAI key…' : 'xai-…'}
+          placeholder={status?.apiKey ? 'Replace xAI key…' : 'xai-…'}
           spellCheck={false}
           autoComplete="off"
           disabled={working}
@@ -688,25 +740,25 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
         <button
           type="button"
           disabled={working || token.trim() === ''}
-          onClick={() => void saveToken()}
+          onClick={() => void save({ token: token.trim() }, 'Key saved.')}
           className="flex-none rounded-[calc(var(--radius)*0.6)] bg-foreground px-3.5 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
         >
-          Save
+          Save key
         </button>
-        {configured && (
+        {status?.apiKey && (
           <button
             type="button"
             disabled={working}
-            onClick={() => void clearToken()}
+            onClick={() => void clear('apiKey', 'Key removed.')}
             className="flex-none rounded-[calc(var(--radius)*0.6)] border border-border px-3.5 py-1.5 text-[12.5px] font-medium hover:bg-muted disabled:opacity-40"
           >
-            Clear
+            Clear key
           </button>
         )}
       </div>
 
       <div className="mt-2 flex items-center gap-2 text-[12px]">
-        <StatusChip configured={configured} />
+        <StatusChip configured={status === null ? null : status.apiKey} />
         {message && (
           <span className={message.tone === 'ok' ? 'text-muted-foreground' : 'text-destructive'}>
             {message.text}

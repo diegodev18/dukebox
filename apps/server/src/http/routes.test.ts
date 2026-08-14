@@ -2,7 +2,12 @@ import { environments, projects, sessions } from '@dukebox/db'
 import { randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { AGENT_CREDENTIAL_SECRET, GROK_CREDENTIAL_SECRET, SecretStore } from '@/secrets/store'
+import {
+  AGENT_CREDENTIAL_SECRET,
+  GROK_AUTH_SECRET,
+  GROK_CREDENTIAL_SECRET,
+  SecretStore,
+} from '@/secrets/store'
 import { OPENCODE_PROVIDERS_SECRET } from '@/opencode/providers'
 import { issuePairingCode, redeemPairingCode } from '@/auth/pairing'
 import { EventBus } from '@/events/bus'
@@ -1035,9 +1040,14 @@ describe('agent credentials', () => {
 
 describe('Grok Build credentials', () => {
   const TOKEN = 'xai-a-real-looking-key'
+  const AUTH_JSON = '{"https://auth.x.ai":{"key":"sess-test"}}'
 
   it('reports none configured on a fresh server', async () => {
-    expect(await (await request('/api/grok-credentials')).json()).toEqual({ configured: false })
+    expect(await (await request('/api/grok-credentials')).json()).toEqual({
+      configured: false,
+      apiKey: false,
+      subscription: false,
+    })
   })
 
   it('stores a token', async () => {
@@ -1048,6 +1058,36 @@ describe('Grok Build credentials', () => {
 
     expect(response.status).toBe(200)
     expect(await secretStore.get(GROK_CREDENTIAL_SECRET)).toBe(TOKEN)
+    expect(await response.json()).toEqual({
+      configured: true,
+      apiKey: true,
+      subscription: false,
+    })
+  })
+
+  it('stores a subscription auth.json', async () => {
+    const response = await request('/api/grok-credentials', {
+      method: 'PUT',
+      body: JSON.stringify({ authJson: AUTH_JSON }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(await secretStore.get(GROK_AUTH_SECRET)).toBe(AUTH_JSON)
+    expect(await response.json()).toEqual({
+      configured: true,
+      apiKey: false,
+      subscription: true,
+    })
+  })
+
+  it('rejects auth.json that is not a JSON object', async () => {
+    const response = await request('/api/grok-credentials', {
+      method: 'PUT',
+      body: JSON.stringify({ authJson: 'not-json' }),
+    })
+
+    expect(response.status).toBe(400)
+    expect(await secretStore.has(GROK_AUTH_SECRET)).toBe(false)
   })
 
   it('never returns the token it stored', async () => {
@@ -1059,7 +1099,19 @@ describe('Grok Build credentials', () => {
     const body = await (await request('/api/grok-credentials')).text()
 
     expect(body).not.toContain(TOKEN)
-    expect(JSON.parse(body)).toEqual({ configured: true })
+    expect(JSON.parse(body)).toEqual({ configured: true, apiKey: true, subscription: false })
+  })
+
+  it('never returns the auth.json it stored', async () => {
+    await request('/api/grok-credentials', {
+      method: 'PUT',
+      body: JSON.stringify({ authJson: AUTH_JSON }),
+    })
+
+    const body = await (await request('/api/grok-credentials')).text()
+
+    expect(body).not.toContain('sess-test')
+    expect(JSON.parse(body)).toEqual({ configured: true, apiKey: false, subscription: true })
   })
 
   it('replaces an existing token', async () => {
@@ -1080,6 +1132,19 @@ describe('Grok Build credentials', () => {
 
     expect((await request('/api/grok-credentials', { method: 'DELETE' })).status).toBe(200)
     expect(await secretStore.has(GROK_CREDENTIAL_SECRET)).toBe(false)
+  })
+
+  it('removes only the subscription when asked', async () => {
+    await request('/api/grok-credentials', {
+      method: 'PUT',
+      body: JSON.stringify({ token: TOKEN, authJson: AUTH_JSON }),
+    })
+
+    expect(
+      (await request('/api/grok-credentials?kind=subscription', { method: 'DELETE' })).status,
+    ).toBe(200)
+    expect(await secretStore.has(GROK_AUTH_SECRET)).toBe(false)
+    expect(await secretStore.has(GROK_CREDENTIAL_SECRET)).toBe(true)
   })
 
   it('returns 404 when removing one that was never set', async () => {

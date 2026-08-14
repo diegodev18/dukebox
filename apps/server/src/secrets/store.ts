@@ -18,6 +18,8 @@ import { and, eq, isNull } from 'drizzle-orm'
 /** Names Dukebox itself uses. Project secrets can be called anything. */
 export const AGENT_CREDENTIAL_SECRET = 'CLAUDE_CODE_OAUTH_TOKEN'
 export const GROK_CREDENTIAL_SECRET = 'XAI_API_KEY'
+/** Grok Build subscription session (`~/.grok/auth.json` after `grok login`). */
+export const GROK_AUTH_SECRET = 'GROK_AUTH_JSON'
 
 const ALGORITHM = 'aes-256-gcm'
 const IV_BYTES = 12
