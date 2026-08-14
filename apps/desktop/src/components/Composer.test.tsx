@@ -144,6 +144,44 @@ describe('Composer', () => {
     expect(onPermissionModeChange).toHaveBeenCalledWith('plan')
   })
 
+  it('only offers Plan and Bypass for OpenCode', async () => {
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        permissionMode="plan"
+        onPermissionModeChange={vi.fn()}
+        agentId="opencode"
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Permission mode' }))
+
+    expect(screen.getByRole('option', { name: 'Plan' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Bypass' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Auto' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Accept edits' })).not.toBeInTheDocument()
+  })
+
+  it('cycles OpenCode from Plan to Bypass with Shift+Tab', async () => {
+    const onPermissionModeChange = vi.fn()
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        permissionMode="plan"
+        onPermissionModeChange={onPermissionModeChange}
+        agentId="opencode"
+      />,
+    )
+
+    await userEvent.type(screen.getByLabelText('Message'), '{Shift>}{Tab}{/Shift}')
+
+    expect(onPermissionModeChange).toHaveBeenCalledWith('bypass')
+  })
+
   it('leaves Shift+Tab alone when the agent has no modes', async () => {
     const onPermissionModeChange = vi.fn()
     render(<Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />)
