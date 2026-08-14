@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import type { PermissionMode } from '@dukebox/protocol'
-import { cyclePermissionMode } from '@/components/AgentIcon'
+import { availablePermissionModes, cyclePermissionMode } from '@/components/AgentIcon'
 import { PermissionModePicker } from '@/components/RepoBranchPickers'
 import { AttachIcon, CloseIcon, FileIcon } from '@/components/icons'
 
@@ -34,6 +34,8 @@ interface Props {
   error?: string | null
   permissionMode?: PermissionMode | null
   onPermissionModeChange?: (mode: PermissionMode) => void
+  /** Which agent's modes the picker and Shift+Tab cycle should offer. */
+  agentId?: string
   /**
    * A prompt loaded from the transcript (Edit). `key` changes when the same
    * text is edited again, so the field refills rather than looking unchanged.
@@ -50,6 +52,7 @@ export const Composer = memo(function Composer({
   error,
   permissionMode,
   onPermissionModeChange,
+  agentId,
   draft,
 }: Props) {
   const [text, setText] = useState('')
@@ -143,7 +146,7 @@ export const Composer = memo(function Composer({
               !disabled
             ) {
               event.preventDefault()
-              onPermissionModeChange(cyclePermissionMode(permissionMode))
+              onPermissionModeChange(cyclePermissionMode(permissionMode, agentId))
               return
             }
             if (event.key === 'Enter' && !event.shiftKey) {
@@ -199,6 +202,7 @@ export const Composer = memo(function Composer({
               <PermissionModePicker
                 value={permissionMode}
                 onChange={onPermissionModeChange}
+                {...(agentId ? { modes: availablePermissionModes(agentId) } : {})}
                 {...(disabled ? { disabled: true } : {})}
               />
             ) : null}

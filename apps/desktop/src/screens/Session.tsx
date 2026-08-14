@@ -664,6 +664,7 @@ function SessionColumn({
         running={working}
         disabled={!isStreamConnected(streamStatus)}
         error={error}
+        agentId={session.agentId}
         {...(composerDraft ? { draft: composerDraft } : {})}
         {...(session.purpose !== 'environment_setup' && session.permissionMode
           ? {

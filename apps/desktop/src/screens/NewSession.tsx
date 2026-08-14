@@ -18,6 +18,7 @@ import {
   DEFAULT_MODEL,
   DEFAULT_PERMISSION_MODE,
   agentHasPermissionModes,
+  availablePermissionModes,
   cyclePermissionMode,
   type AvailablePermissionModeId,
 } from '@/components/AgentIcon'
@@ -634,7 +635,7 @@ export function NewSession({
                   !busy
                 ) {
                   event.preventDefault()
-                  setPermissionMode(cyclePermissionMode(permissionMode))
+                  setPermissionMode(cyclePermissionMode(permissionMode, agentId))
                   return
                 }
                 if (event.key === 'Enter' && !event.shiftKey) {
@@ -770,6 +771,7 @@ function SessionMutablePickers({
           value={permissionMode}
           onChange={onPermissionModeChange}
           disabled={busy}
+          modes={availablePermissionModes(agentId)}
         />
       )}
     </div>

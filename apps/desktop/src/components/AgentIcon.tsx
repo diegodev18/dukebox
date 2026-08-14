@@ -47,15 +47,35 @@ export const AVAILABLE_PERMISSION_MODES = [
 
 export type AvailablePermissionModeId = (typeof AVAILABLE_PERMISSION_MODES)[number]['id']
 
+/**
+ * The modes each agent actually supports, in picker order.
+ *
+ * OpenCode has no `auto` or `acceptEdits`: its `--auto` flag always approves
+ * and the only other agent is `plan`, so offering those modes would let a
+ * session pick a mode that silently runs identically to Bypass. Unknown agents
+ * default to the full list so the UI keeps working before an adapter lands.
+ */
+export const PERMISSION_MODES_BY_AGENT: Record<string, readonly AvailablePermissionModeId[]> = {
+  'claude-code': ['plan', 'auto', 'acceptEdits', 'bypass'],
+  opencode: ['plan', 'bypass'],
+}
+
 export const DEFAULT_PERMISSION_MODE: AvailablePermissionModeId = 'bypass'
 
 export function permissionModeLabel(mode: string): string | undefined {
   return AVAILABLE_PERMISSION_MODES.find((entry) => entry.id === mode)?.label
 }
 
-/** Next permission mode in picker order, wrapping past Bypass back to Plan. */
-export function cyclePermissionMode(mode: string): AvailablePermissionModeId {
-  const ids = AVAILABLE_PERMISSION_MODES.map((entry) => entry.id)
+/** The permission modes an agent supports, defaulting to every known mode. */
+export function availablePermissionModes(agentId: string): readonly AvailablePermissionModeId[] {
+  return PERMISSION_MODES_BY_AGENT[agentId] ?? AVAILABLE_PERMISSION_MODES.map((entry) => entry.id)
+}
+
+/** Next permission mode for this agent, wrapping past the last back to the first. */
+export function cyclePermissionMode(mode: string, agentId?: string): AvailablePermissionModeId {
+  const ids = agentId
+    ? availablePermissionModes(agentId)
+    : AVAILABLE_PERMISSION_MODES.map((entry) => entry.id)
   const index = ids.indexOf(mode as AvailablePermissionModeId)
   if (index < 0) return ids[0]!
   return ids[(index + 1) % ids.length]!

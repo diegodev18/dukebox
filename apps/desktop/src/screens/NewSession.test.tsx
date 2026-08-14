@@ -392,7 +392,7 @@ describe('NewSession permission mode', () => {
     )
   })
 
-  it('offers the permission modes for OpenCode', async () => {
+  it('offers only Plan and Bypass for OpenCode', async () => {
     const client = makeClient({
       listOpencodeProviders: vi.fn().mockResolvedValue([
         {
@@ -408,9 +408,37 @@ describe('NewSession permission mode', () => {
     const agents = await openPicker('Agent')
     await userEvent.click(within(agents).getByRole('option', { name: /OpenCode/ }))
 
+    const modes = await openPicker('Permission mode')
+    expect(within(modes).getByRole('option', { name: 'Plan' })).toBeInTheDocument()
+    expect(within(modes).getByRole('option', { name: 'Bypass' })).toBeInTheDocument()
+    expect(within(modes).queryByRole('option', { name: 'Auto' })).not.toBeInTheDocument()
+    expect(within(modes).queryByRole('option', { name: 'Accept edits' })).not.toBeInTheDocument()
+  })
+
+  it('cycles OpenCode between Plan and Bypass with Shift+Tab', async () => {
+    const client = makeClient({
+      listOpencodeProviders: vi.fn().mockResolvedValue([
+        {
+          id: 'openai',
+          kind: 'openai',
+          name: 'OpenAI',
+          models: [{ id: 'gpt-5.2', label: 'GPT-5.2' }],
+        },
+      ]),
+    })
+    renderScreen(client)
+
+    const agents = await openPicker('Agent')
+    await userEvent.click(within(agents).getByRole('option', { name: /OpenCode/ }))
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Permission mode' })).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: 'Permission mode' })).toHaveTextContent('Bypass'),
     )
+
+    await userEvent.type(screen.getByLabelText(/what should it do/i), '{Shift>}{Tab}{/Shift}')
+    expect(screen.getByRole('button', { name: 'Permission mode' })).toHaveTextContent('Plan')
+
+    await userEvent.type(screen.getByLabelText(/what should it do/i), '{Shift>}{Tab}{/Shift}')
+    expect(screen.getByRole('button', { name: 'Permission mode' })).toHaveTextContent('Bypass')
   })
 
   it('sends a chosen mode when starting an OpenCode session', async () => {
