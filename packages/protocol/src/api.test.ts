@@ -85,6 +85,35 @@ describe('createSessionRequest', () => {
     expect(parsed.gitPreferences?.mergeMethod).toBe('rebase')
     expect(parsed.gitPreferences?.createAsDraft).toBe(true)
   })
+
+  it('accepts files to stage before the first prompt', () => {
+    const parsed = createSessionRequest.parse({
+      projectId: '00000000-0000-4000-8000-000000000001',
+      agentId: 'claude-code',
+      prompt: 'fix it',
+      files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
+    })
+    expect(parsed.files).toEqual([{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }])
+  })
+
+  it('rejects an attached file without a name', () => {
+    const parsed = createSessionRequest.safeParse({
+      projectId: '00000000-0000-4000-8000-000000000001',
+      agentId: 'claude-code',
+      prompt: 'fix it',
+      files: [{ data: 'data:text/plain;base64,aGVsbG8=' }],
+    })
+    expect(parsed.success).toBe(false)
+  })
+
+  it('omits files when none were attached', () => {
+    const parsed = createSessionRequest.parse({
+      projectId: '00000000-0000-4000-8000-000000000001',
+      agentId: 'claude-code',
+      prompt: 'fix it',
+    })
+    expect(parsed.files).toBeUndefined()
+  })
 })
 
 describe('environment schemas', () => {

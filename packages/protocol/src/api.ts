@@ -190,6 +190,19 @@ export const listEnvironmentsResponse = z.object({
 // Sessions
 // ---------------------------------------------------------------------------
 
+/**
+ * A file attached to a prompt.
+ *
+ * `data` is a base64 data URI; the agent sees the decoded bytes at
+ * `/tmp/imgs/<name>`, staged by the adapter before the prompt runs.
+ */
+export const attachedFile = z.object({
+  name: z.string().min(1),
+  data: z.string().min(1),
+})
+
+export type AttachedFile = z.infer<typeof attachedFile>
+
 export const createSessionRequest = z
   .object({
     projectId: z.string().uuid(),
@@ -240,6 +253,13 @@ export const createSessionRequest = z
     purpose: sessionPurpose.default('coding'),
     /** Required for coding sessions; ignored for environment_setup (server prompt). */
     prompt: z.string().optional(),
+    /**
+     * Files to stage into the sandbox before the session's first prompt runs.
+     *
+     * `data` is a base64 data URI; the agent sees the decoded bytes at
+     * `/tmp/imgs/<name>`.
+     */
+    files: z.array(attachedFile).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.purpose === 'coding' && (!data.prompt || data.prompt.trim().length === 0)) {

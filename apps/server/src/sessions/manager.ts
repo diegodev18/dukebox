@@ -141,6 +141,13 @@ export interface StartSessionOptions {
    * Absent means the Cursor-like defaults (draft, auto-open, squash).
    */
   gitPreferences?: GitPreferences
+  /**
+   * Files to stage into the sandbox before the session's first prompt runs.
+   *
+   * `data` is a base64 data URI; the agent sees the decoded bytes at
+   * `/tmp/imgs/<name>`.
+   */
+  files?: { name: string; data: string }[]
   /** The paired device that asked to start this session. */
   createdByDeviceId?: string
 }
@@ -422,6 +429,7 @@ export class SessionManager {
       options.model,
       options.commitIdentity,
       permissionMode ?? undefined,
+      options.files,
     ).catch(async (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error)
 
@@ -441,6 +449,7 @@ export class SessionManager {
     model?: string,
     commitIdentity?: CommitIdentity,
     permissionMode?: PermissionMode,
+    files?: { name: string; data: string }[],
   ): Promise<void> {
     // Started before the container so the socket exists to be mounted. It
     // answers only for this session's repository, so an agent that asks for
@@ -456,6 +465,7 @@ export class SessionManager {
         model,
         commitIdentity,
         permissionMode,
+        files,
       )
     } catch (error) {
       // The session never reached `running`, so `stop` would not find it and
@@ -473,6 +483,7 @@ export class SessionManager {
     model?: string,
     commitIdentity?: CommitIdentity,
     permissionMode?: PermissionMode,
+    files?: { name: string; data: string }[],
   ): Promise<void> {
     const purpose = (session.purpose as SessionPurpose) || 'coding'
     const config = await this.configFor(session.environmentId)
@@ -568,7 +579,10 @@ export class SessionManager {
 
     // The prompt is already in the log — appended when the row was created,
     // so a crash mid-provision still has the text needed to retry.
-    await adapter.send({ text: prompt })
+    await adapter.send({
+      text: prompt,
+      ...(files ? { files } : {}),
+    })
   }
 
   /**

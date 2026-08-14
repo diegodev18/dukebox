@@ -195,6 +195,21 @@ describe('DukeboxClient', () => {
     })
   })
 
+  it('forwards attached files when the caller attaches them', async () => {
+    const fetchMock = respondWith({ id: 's1' })
+    await client.startSession({
+      projectId: 'p1',
+      agentId: 'claude-code',
+      prompt: 'go',
+      files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
+    })
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string).files).toEqual([
+      { name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' },
+    ])
+  })
+
   it('archives a session', async () => {
     const fetchMock = respondWith({ archived: true })
     await client.archiveSession('00000000-0000-4000-8000-000000000001')

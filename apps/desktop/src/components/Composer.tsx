@@ -244,7 +244,7 @@ export const Composer = memo(function Composer({
 })
 
 /** Read a picked file into the base64 data URI the protocol stages. */
-function readFile(file: File): Promise<ComposerFile> {
+export function readFile(file: File): Promise<ComposerFile> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve({ name: file.name, data: String(reader.result) })

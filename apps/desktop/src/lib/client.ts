@@ -210,6 +210,11 @@ export class DukeboxClient {
      */
     commitIdentity?: { name: string; email: string }
     gitPreferences?: Partial<GitPreferences>
+    /**
+     * Files to stage into the sandbox before the first prompt runs, as
+     * base64 data URIs.
+     */
+    files?: { name: string; data: string }[]
   }): Promise<SessionSummary> {
     return this.request('/api/sessions', { method: 'POST', body: JSON.stringify(options) })
   }

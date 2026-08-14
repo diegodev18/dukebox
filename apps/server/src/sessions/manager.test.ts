@@ -328,6 +328,26 @@ describe('start', () => {
     await waitForPrompt('add a multiply function')
   })
 
+  it('stages files attached at session creation with the first prompt', async () => {
+    const project = await createTestProject()
+    const session = await manager.start({
+      projectId: project.id,
+      agentId: 'fake',
+      prompt: 'read this',
+      files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
+    })
+    createdSessions.push(session.id)
+
+    await waitForStatus(session.id, 'running')
+
+    await expect
+      .poll(() => adapter.prompts[0], { timeout: 90_000 })
+      .toEqual({
+        text: 'read this',
+        files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
+      })
+  })
+
   it('records the container id, so it can be found again after a restart', async () => {
     const session = await startSession()
     await waitForStatus(session.id, 'running')

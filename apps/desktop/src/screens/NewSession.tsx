@@ -10,7 +10,7 @@ import {
   type RepositorySummary,
   type SessionSummary,
 } from '@dukebox/protocol'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
   AVAILABLE_AGENTS,
   AVAILABLE_MODELS,
@@ -22,8 +22,9 @@ import {
   cyclePermissionMode,
   type AvailablePermissionModeId,
 } from '@/components/AgentIcon'
+import { readFile, type ComposerFile } from '@/components/Composer'
 import { modelsForProvider } from '@/components/OpenCodeProviders'
-import { SendIcon } from '@/components/icons'
+import { AttachIcon, CloseIcon, FileIcon, SendIcon } from '@/components/icons'
 import {
   AgentPicker,
   BASE_IMAGE_VALUE,
@@ -134,6 +135,7 @@ export function NewSession({
   >('loading')
   const [providerId, setProviderId] = useState(initialProviderId(lastNewSession, initialAgent))
   const [prompt, setPrompt] = useState('')
+  const [files, setFiles] = useState<ComposerFile[]>([])
   // Coming back from provider settings with OpenCode already selected must
   // not bounce straight into settings again if the list is still empty. The
   // same applies when the last session was OpenCode: restoring that agent
@@ -146,6 +148,7 @@ export function NewSession({
   const [newEnvironmentPattern, setNewEnvironmentPattern] = useState('**')
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const field = useRef<HTMLTextAreaElement>(null)
+  const picker = useRef<HTMLInputElement>(null)
 
   // Setup is offered, not required: a branch with no environment runs on the
   // base image rather than being blocked.
@@ -409,6 +412,27 @@ export function NewSession({
     setBaseBranch(project?.defaultBranch || repository?.defaultBranch || 'main')
   }
 
+  // Selected files are read once, immediately, and held as base64 data URIs so
+  // the start request is a single message. Re-selecting the same file works
+  // because the input's value is reset after every pick.
+  const handleFiles = async (event: ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    if (picked.length === 0 || busy) return
+
+    try {
+      const read = await Promise.all(picked.map(readFile))
+      setFiles((current) => [...current, ...read])
+    } catch {
+      // A file that could not be read is dropped rather than blocking the
+      // ones that could.
+    }
+  }
+
+  const removeFile = (index: number) => {
+    setFiles((current) => current.filter((_, i) => i !== index))
+  }
+
   const remember = (usedEnvironmentId: string) => {
     onRemember?.({
       repoFullName: target,
@@ -487,6 +511,7 @@ export function NewSession({
         baseBranch,
         purpose: 'coding',
         ...(environmentId ? { environmentId } : {}),
+        ...(files.length > 0 ? { files } : {}),
         ...(mode ? { permissionMode: mode } : {}),
         ...(identity ? { commitIdentity: identity } : {}),
         ...(gitPreferences ? { gitPreferences } : {}),
@@ -650,22 +675,57 @@ export function NewSession({
               className="block w-full resize-none bg-transparent px-3.5 pt-3.5 pb-2 outline-none placeholder:text-muted-foreground disabled:opacity-50"
             />
 
+            {files.length > 0 && (
+              <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto px-3 pb-2">
+                {files.map((file, index) => (
+                  <span
+                    key={`${file.name}-${index}`}
+                    className="inline-flex max-w-56 items-center gap-1.5 rounded-md border border-border bg-muted/50 py-1 pr-1 pl-2 text-[12px]"
+                  >
+                    <FileIcon size={13} className="shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 truncate">{file.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(index)}
+                      disabled={busy}
+                      aria-label={`Remove ${file.name}`}
+                      className="rounded p-0.5 text-muted-foreground hover:bg-border hover:text-foreground disabled:opacity-40"
+                    >
+                      <CloseIcon size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
             <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
-              <SessionMutablePickers
-                busy={busy}
-                usingOpenCode={usingOpenCode}
-                opencodeProvidersStatus={opencodeProvidersStatus}
-                opencodeProviders={opencodeProviders}
-                providerId={providerId}
-                onProviderChange={selectProvider}
-                onAddProvider={onConfigureProviders}
-                models={models}
-                model={model}
-                onModelChange={setModel}
-                agentId={agentId}
-                permissionMode={permissionMode}
-                onPermissionModeChange={setPermissionMode}
-              />
+              <div className="flex min-w-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => picker.current?.click()}
+                  disabled={busy}
+                  aria-label="Attach files"
+                  title="Attach files"
+                  className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+                >
+                  <AttachIcon size={15} />
+                </button>
+                <SessionMutablePickers
+                  busy={busy}
+                  usingOpenCode={usingOpenCode}
+                  opencodeProvidersStatus={opencodeProvidersStatus}
+                  opencodeProviders={opencodeProviders}
+                  providerId={providerId}
+                  onProviderChange={selectProvider}
+                  onAddProvider={onConfigureProviders}
+                  models={models}
+                  model={model}
+                  onModelChange={setModel}
+                  agentId={agentId}
+                  permissionMode={permissionMode}
+                  onPermissionModeChange={setPermissionMode}
+                />
+              </div>
               <button
                 type="button"
                 onClick={() => void submit()}
@@ -680,6 +740,7 @@ export function NewSession({
                 )}
               </button>
             </div>
+            <input ref={picker} type="file" multiple className="hidden" onChange={handleFiles} />
           </div>
         )}
 
