@@ -1,4 +1,9 @@
-import type { FileChange, PullRequestSummary, SessionSummary } from '@dukebox/protocol'
+import {
+  pullRequestMergeBlock,
+  type FileChange,
+  type PullRequestSummary,
+  type SessionSummary,
+} from '@dukebox/protocol'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useRef, useState } from 'react'
 import { ApiFailure, type DukeboxClient } from '@/lib/client'
@@ -122,6 +127,11 @@ export function PullRequestPanel({
       })
       if (details.state !== 'open' || details.isDraft) {
         setAction({ kind: 'idle' })
+        return
+      }
+      const blocked = pullRequestMergeBlock(details)
+      if (blocked) {
+        setAction({ kind: 'failed', message: blocked })
         return
       }
       if (details.mergeable === 'CONFLICTING') {

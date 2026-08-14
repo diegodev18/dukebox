@@ -244,6 +244,30 @@ describe('PullRequestPanel', () => {
     expect(client.getPullRequest).toHaveBeenCalledWith(session.id)
   })
 
+  it('refuses merge when status checks have not passed', async () => {
+    const client = {
+      getPullRequest: vi.fn().mockResolvedValue({
+        ...openPr,
+        mergeable: 'MERGEABLE',
+        checks: 'failing',
+      }),
+      mergePullRequest: vi.fn(),
+    }
+
+    render(
+      <PullRequestPanel
+        client={client as never}
+        session={sessionWithPr()}
+        files={[]}
+        onUpdated={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    expect(client.mergePullRequest).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent(/status checks have not passed/)
+  })
+
   it('hides merge while the agent is running', () => {
     render(
       <PullRequestPanel

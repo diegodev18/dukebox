@@ -309,6 +309,30 @@ describe('viewPullRequest', () => {
     expect(args.slice(0, 2)).toEqual(['pr', 'view'])
     expect(args).toContain('--json')
     expect(args[args.indexOf('--json') + 1]).toContain('mergeable')
+    expect(args[args.indexOf('--json') + 1]).toContain('statusCheckRollup')
+    expect(args[args.indexOf('--json') + 1]).toContain('reviewDecision')
+  })
+
+  it('maps a failing check rollup', async () => {
+    const { client } = clientReturning(
+      JSON.stringify({
+        url: 'https://github.com/diego/dukebox/pull/42',
+        title: 'Add a health check',
+        body: '',
+        isDraft: false,
+        state: 'OPEN',
+        mergeable: 'MERGEABLE',
+        statusCheckRollup: [{ name: 'ci', state: 'FAILURE' }],
+        reviewDecision: 'REVIEW_REQUIRED',
+      }),
+    )
+
+    expect(
+      await client.viewPullRequest('diego/dukebox', 'https://github.com/diego/dukebox/pull/42'),
+    ).toMatchObject({
+      checks: 'failing',
+      reviewDecision: 'REVIEW_REQUIRED',
+    })
   })
 })
 

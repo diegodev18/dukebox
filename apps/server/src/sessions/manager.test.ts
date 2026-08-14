@@ -1466,6 +1466,37 @@ describe('pull requests', () => {
     await withGitHub.stopAll()
   })
 
+  it('refuses to merge when status checks have not passed', async () => {
+    const merged: string[] = []
+    const { manager: withGitHub } = managerWithGitHub({
+      viewPullRequest: async () => ({
+        url: 'https://github.com/diego/dukebox/pull/1',
+        title: 'Add a thing',
+        body: '',
+        isDraft: false,
+        state: 'open',
+        mergeable: 'MERGEABLE',
+        checks: 'failing',
+        reviewDecision: null,
+      }),
+      mergePullRequest: async (options) => {
+        merged.push(options.url)
+      },
+    })
+    const session = await startOn(withGitHub)
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+    await withGitHub.openPullRequest(session.id)
+    await db.update(sessions).set({ status: 'done' }).where(eq(sessions.id, session.id))
+
+    await expect(withGitHub.mergePullRequest(session.id)).rejects.toThrow(
+      /status checks have not passed/,
+    )
+    expect(merged).toHaveLength(0)
+
+    await withGitHub.stopAll()
+  })
+
   it('refuses to merge a draft pull request', async () => {
     const { manager: withGitHub } = managerWithGitHub({
       viewPullRequest: async () => ({

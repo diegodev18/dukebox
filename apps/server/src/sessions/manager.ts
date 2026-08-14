@@ -13,6 +13,7 @@ import {
   mergeProjectConfig,
   MERGED_SESSION_AGENT_NOTICE,
   parseGitPreferences,
+  pullRequestMergeBlock,
   parseSecretReference,
   pullRequestState,
   reuseExistingPullRequest,
@@ -992,6 +993,8 @@ export class SessionManager {
       state: found.state,
       ...(found.body ? { body: found.body } : {}),
       mergeable,
+      ...('checks' in found && found.checks ? { checks: found.checks } : {}),
+      ...('reviewDecision' in found ? { reviewDecision: found.reviewDecision } : {}),
     }
   }
 
@@ -1038,6 +1041,9 @@ export class SessionManager {
     if (view.isDraft) {
       throw new SessionError('this pull request is still a draft')
     }
+
+    const blocked = pullRequestMergeBlock(view)
+    if (blocked) throw new SessionError(blocked)
 
     const mergeable = await this.settleMergeable(github, repo, session.prUrl, view.mergeable)
     if (mergeable === 'CONFLICTING') {

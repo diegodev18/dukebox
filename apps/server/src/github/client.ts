@@ -57,6 +57,14 @@ export type Repository = z.infer<typeof repository>
 
 const branch = z.object({ name: z.string() })
 
+const checkRollupEntry = z
+  .object({
+    state: z.string().optional(),
+    conclusion: z.string().optional(),
+    status: z.string().optional(),
+  })
+  .passthrough()
+
 const pullRequestView = z.object({
   url: z.string(),
   title: z.string(),
@@ -64,6 +72,8 @@ const pullRequestView = z.object({
   isDraft: z.boolean(),
   state: z.enum(['OPEN', 'MERGED', 'CLOSED', 'open', 'merged', 'closed']),
   mergeable: z.enum(['MERGEABLE', 'CONFLICTING', 'UNKNOWN']).nullish(),
+  statusCheckRollup: z.array(checkRollupEntry).nullish(),
+  reviewDecision: z.enum(['APPROVED', 'CHANGES_REQUESTED', 'REVIEW_REQUIRED']).nullish(),
 })
 
 export type PullRequestView = {
@@ -73,15 +83,38 @@ export type PullRequestView = {
   isDraft: boolean
   state: 'open' | 'merged' | 'closed'
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN' | null
+  checks: 'passing' | 'pending' | 'failing' | 'none'
+  reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null
+}
+
+export function checksFromRollup(rollup: unknown): PullRequestView['checks'] {
+  if (!Array.isArray(rollup) || rollup.length === 0) return 'none'
+  const tokens = rollup.map((entry) => {
+    const row = entry as { state?: string; conclusion?: string; status?: string }
+    return (row.conclusion ?? row.state ?? row.status ?? '').toUpperCase()
+  })
+  if (tokens.some((token) => token === 'FAILURE' || token === 'ERROR' || token === 'FAILING')) {
+    return 'failing'
+  }
+  if (
+    tokens.some((token) =>
+      ['PENDING', 'QUEUED', 'IN_PROGRESS', 'EXPECTED', 'PENDING'].includes(token),
+    )
+  ) {
+    return 'pending'
+  }
+  return 'passing'
 }
 
 function toPullRequestView(raw: {
   url: string
   title: string
-  body?: string | null | undefined
+  body?: string | null
   isDraft: boolean
   state: string
-  mergeable?: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN' | null | undefined
+  mergeable?: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN' | null
+  statusCheckRollup?: unknown
+  reviewDecision?: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null
 }): PullRequestView {
   const state = raw.state.toLowerCase()
   return {
@@ -91,6 +124,8 @@ function toPullRequestView(raw: {
     isDraft: raw.isDraft,
     state: state === 'merged' || state === 'closed' ? state : 'open',
     mergeable: raw.mergeable ?? null,
+    checks: checksFromRollup(raw.statusCheckRollup),
+    reviewDecision: raw.reviewDecision ?? null,
   }
 }
 
@@ -287,7 +322,7 @@ export class GitHubClient {
         '--head',
         head,
         '--json',
-        'url,title,body,isDraft,state,mergeable',
+        'url,title,body,isDraft,state,mergeable,statusCheckRollup,reviewDecision',
         '--state',
         'all',
         '--limit',
@@ -297,7 +332,7 @@ export class GitHubClient {
     )
 
     const first = results[0]
-    return first ? toPullRequestView(first) : null
+    return first ? toPullRequestView(first as Parameters<typeof toPullRequestView>[0]) : null
   }
 
   /** One pull request, identified by URL. */
@@ -310,12 +345,12 @@ export class GitHubClient {
         '--repo',
         repoFullName,
         '--json',
-        'url,title,body,isDraft,state,mergeable',
+        'url,title,body,isDraft,state,mergeable,statusCheckRollup,reviewDecision',
       ],
       pullRequestView,
     )
 
-    return toPullRequestView(raw)
+    return toPullRequestView(raw as Parameters<typeof toPullRequestView>[0])
   }
 
   /** Mark a draft pull request ready for review. */
