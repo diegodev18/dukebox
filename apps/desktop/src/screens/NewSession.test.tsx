@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { LastNewSession } from '@/lib/settings'
@@ -688,6 +688,103 @@ describe('NewSession last session', () => {
         }),
       ),
     )
+  })
+})
+
+describe('NewSession file attachments', () => {
+  function fileInput(container: HTMLElement) {
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    if (!input) throw new Error('expected a hidden file input')
+    return input
+  }
+
+  it('attaches files and sends them with the session', async () => {
+    const client = makeClient()
+    const { container } = renderScreen(client)
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Environment' })).toHaveTextContent('Default'),
+    )
+
+    fireEvent.change(fileInput(container), {
+      target: { files: [new File(['hello'], 'notes.txt', { type: 'text/plain' })] },
+    })
+
+    expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText(/what should it do/i), 'read this')
+    await userEvent.click(screen.getByRole('button', { name: /start session/i }))
+
+    await waitFor(() =>
+      expect(client.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: 'read this',
+          files: [
+            expect.objectContaining({
+              name: 'notes.txt',
+              data: expect.stringMatching(/^data:text\/plain;base64,/),
+            }),
+          ],
+        }),
+      ),
+    )
+  })
+
+  it('attaches several files at once', async () => {
+    const { container } = renderScreen(makeClient())
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Environment' })).toHaveTextContent('Default'),
+    )
+
+    fireEvent.change(fileInput(container), {
+      target: {
+        files: [
+          new File(['a'], 'one.txt', { type: 'text/plain' }),
+          new File(['b'], 'two.txt', { type: 'text/plain' }),
+        ],
+      },
+    })
+
+    expect(await screen.findByText('one.txt')).toBeInTheDocument()
+    expect(await screen.findByText('two.txt')).toBeInTheDocument()
+  })
+
+  it('removes an attached file from the draft', async () => {
+    const { container } = renderScreen(makeClient())
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Environment' })).toHaveTextContent('Default'),
+    )
+
+    fireEvent.change(fileInput(container), {
+      target: { files: [new File(['x'], 'drop.txt', { type: 'text/plain' })] },
+    })
+
+    await screen.findByText('drop.txt')
+    await userEvent.click(screen.getByRole('button', { name: 'Remove drop.txt' }))
+
+    expect(screen.queryByText('drop.txt')).not.toBeInTheDocument()
+  })
+
+  it('disables attaching while disconnected', async () => {
+    renderScreen(makeClient(), {}, { disabled: true })
+
+    expect(await screen.findByRole('button', { name: 'Attach files' })).toBeDisabled()
+  })
+
+  it('omits files when none were attached', async () => {
+    const client = makeClient()
+    renderScreen(client)
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Environment' })).toHaveTextContent('Default'),
+    )
+    await userEvent.type(screen.getByLabelText(/what should it do/i), 'do a thing')
+    await userEvent.click(screen.getByRole('button', { name: /start session/i }))
+
+    await waitFor(() => expect(client.startSession).toHaveBeenCalled())
+    expect(client.startSession.mock.calls[0][0]).not.toHaveProperty('files')
   })
 })
 

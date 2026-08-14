@@ -478,6 +478,34 @@ describe('POST /api/sessions', () => {
     )
   })
 
+  it('passes attached files through when given', async () => {
+    const project = await createProject()
+    vi.mocked(sessionManager.start).mockResolvedValueOnce(await createSession(project.id))
+
+    await post('/api/sessions', {
+      projectId: project.id,
+      agentId: 'claude-code',
+      prompt: 'x',
+      files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
+    })
+
+    expect(sessionManager.start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
+      }),
+    )
+  })
+
+  it('omits attached files entirely when not given', async () => {
+    const project = await createProject()
+    vi.mocked(sessionManager.start).mockResolvedValueOnce(await createSession(project.id))
+
+    await post('/api/sessions', { projectId: project.id, agentId: 'claude-code', prompt: 'x' })
+
+    const options = vi.mocked(sessionManager.start).mock.calls[0]?.[0]
+    expect(options && 'files' in options).toBe(false)
+  })
+
   it('passes the commit identity through when given', async () => {
     const project = await createProject()
     vi.mocked(sessionManager.start).mockResolvedValueOnce(await createSession(project.id))

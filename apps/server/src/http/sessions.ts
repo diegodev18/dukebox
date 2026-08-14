@@ -85,6 +85,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
         commitIdentity,
         gitPreferences,
         permissionMode,
+        files,
         ...rest
       } = parsed.data
 
@@ -104,6 +105,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
         ...(environmentId ? { environmentId } : {}),
         ...(commitIdentity ? { commitIdentity } : {}),
         ...(gitPreferences ? { gitPreferences } : {}),
+        ...(files ? { files } : {}),
       })
 
       return c.json(toSummary(session), 202)
