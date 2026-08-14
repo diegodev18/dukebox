@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import type { PermissionMode } from '@dukebox/protocol'
+import { cyclePermissionMode } from '@/components/AgentIcon'
 import { PermissionModePicker } from '@/components/RepoBranchPickers'
 import { AttachIcon, CloseIcon, FileIcon } from '@/components/icons'
 
@@ -134,6 +135,17 @@ export const Composer = memo(function Composer({
             element.style.height = `${Math.min(element.scrollHeight, 200)}px`
           }}
           onKeyDown={(event) => {
+            if (
+              event.key === 'Tab' &&
+              event.shiftKey &&
+              permissionMode &&
+              onPermissionModeChange &&
+              !disabled
+            ) {
+              event.preventDefault()
+              onPermissionModeChange(cyclePermissionMode(permissionMode))
+              return
+            }
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
               submit()
@@ -190,7 +202,11 @@ export const Composer = memo(function Composer({
                 {...(disabled ? { disabled: true } : {})}
               />
             ) : null}
-            <p className="text-[11.5px] text-muted-foreground">↵ Send · ⇧↵ Newline</p>
+            <p className="text-[11.5px] text-muted-foreground">
+              {permissionMode && onPermissionModeChange
+                ? '↵ Send · ⇧↵ Newline · ⇧⇥ Mode'
+                : '↵ Send · ⇧↵ Newline'}
+            </p>
           </div>
           {running ? (
             <button

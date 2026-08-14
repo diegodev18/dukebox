@@ -18,6 +18,7 @@ import {
   DEFAULT_MODEL,
   DEFAULT_PERMISSION_MODE,
   agentHasPermissionModes,
+  cyclePermissionMode,
   type AvailablePermissionModeId,
 } from '@/components/AgentIcon'
 import { modelsForProvider } from '@/components/OpenCodeProviders'
@@ -626,6 +627,16 @@ export function NewSession({
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               onKeyDown={(event) => {
+                if (
+                  event.key === 'Tab' &&
+                  event.shiftKey &&
+                  agentHasPermissionModes(agentId) &&
+                  !busy
+                ) {
+                  event.preventDefault()
+                  setPermissionMode(cyclePermissionMode(permissionMode))
+                  return
+                }
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault()
                   void submit()

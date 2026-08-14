@@ -54,6 +54,21 @@ describe('Composer', () => {
     render(<Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />)
 
     expect(screen.getByText(/↵ Send/)).toBeInTheDocument()
+    expect(screen.queryByText(/⇧⇥ Mode/)).not.toBeInTheDocument()
+  })
+
+  it('hints Shift+Tab when the session has modes', () => {
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        permissionMode="plan"
+        onPermissionModeChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(/⇧⇥ Mode/)).toBeInTheDocument()
   })
 
   it('shows a permission mode picker when the session has modes', () => {
@@ -93,6 +108,49 @@ describe('Composer', () => {
     await userEvent.click(screen.getByRole('option', { name: 'Auto' }))
 
     expect(onPermissionModeChange).toHaveBeenCalledWith('auto')
+  })
+
+  it('cycles the permission mode with Shift+Tab', async () => {
+    const onPermissionModeChange = vi.fn()
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        permissionMode="plan"
+        onPermissionModeChange={onPermissionModeChange}
+      />,
+    )
+
+    await userEvent.type(screen.getByLabelText('Message'), '{Shift>}{Tab}{/Shift}')
+
+    expect(onPermissionModeChange).toHaveBeenCalledWith('auto')
+  })
+
+  it('wraps Shift+Tab from Bypass back to Plan', async () => {
+    const onPermissionModeChange = vi.fn()
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        permissionMode="bypass"
+        onPermissionModeChange={onPermissionModeChange}
+      />,
+    )
+
+    await userEvent.type(screen.getByLabelText('Message'), '{Shift>}{Tab}{/Shift}')
+
+    expect(onPermissionModeChange).toHaveBeenCalledWith('plan')
+  })
+
+  it('leaves Shift+Tab alone when the agent has no modes', async () => {
+    const onPermissionModeChange = vi.fn()
+    render(<Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />)
+
+    await userEvent.type(screen.getByLabelText('Message'), '{Shift>}{Tab}{/Shift}')
+
+    expect(onPermissionModeChange).not.toHaveBeenCalled()
   })
 
   it('attaches files and sends them with the prompt', async () => {

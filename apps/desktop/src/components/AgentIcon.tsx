@@ -53,6 +53,14 @@ export function permissionModeLabel(mode: string): string | undefined {
   return AVAILABLE_PERMISSION_MODES.find((entry) => entry.id === mode)?.label
 }
 
+/** Next permission mode in picker order, wrapping past Bypass back to Plan. */
+export function cyclePermissionMode(mode: string): AvailablePermissionModeId {
+  const ids = AVAILABLE_PERMISSION_MODES.map((entry) => entry.id)
+  const index = ids.indexOf(mode as AvailablePermissionModeId)
+  if (index < 0) return ids[0]!
+  return ids[(index + 1) % ids.length]!
+}
+
 export function agentHasPermissionModes(agentId: string): boolean {
   return agentId === 'claude-code' || agentId === 'opencode'
 }
