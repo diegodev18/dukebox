@@ -40,6 +40,8 @@ function makeClient(overrides = {}) {
     listBranches: vi.fn().mockResolvedValue(['main', 'refact/auth']),
     listEnvironments: vi.fn().mockResolvedValue(environments),
     listOpencodeProviders: vi.fn().mockResolvedValue([]),
+    agentCredentialsConfigured: vi.fn().mockResolvedValue(true),
+    grokCredentialsConfigured: vi.fn().mockResolvedValue(false),
     upsertOpencodeProvider: vi.fn().mockResolvedValue({
       id: 'anthropic',
       kind: 'anthropic',
@@ -218,14 +220,89 @@ describe('NewSession environment picker', () => {
   })
 })
 
-describe('NewSession OpenCode', () => {
-  it('offers OpenCode in the agent picker', async () => {
+describe('NewSession configured agents', () => {
+  it('hides agents that have no credentials', async () => {
     renderScreen(makeClient())
+
+    const agents = await openPicker('Agent')
+    expect(within(agents).getByRole('option', { name: /Claude Code/ })).toBeInTheDocument()
+    expect(within(agents).queryByRole('option', { name: /OpenCode/ })).not.toBeInTheDocument()
+    expect(within(agents).queryByRole('option', { name: /Grok Build/ })).not.toBeInTheDocument()
+  })
+
+  it('offers OpenCode only when a provider is configured', async () => {
+    const client = makeClient({
+      listOpencodeProviders: vi.fn().mockResolvedValue([
+        {
+          id: 'openai',
+          kind: 'openai',
+          name: 'OpenAI',
+          models: [{ id: 'gpt-5.2', label: 'GPT-5.2' }],
+        },
+      ]),
+    })
+    renderScreen(client)
 
     const agents = await openPicker('Agent')
     expect(within(agents).getByRole('option', { name: /OpenCode/ })).toBeInTheDocument()
   })
 
+  it('offers Grok Build only when its API key is configured', async () => {
+    const client = makeClient({
+      grokCredentialsConfigured: vi.fn().mockResolvedValue(true),
+    })
+    renderScreen(client)
+
+    const agents = await openPicker('Agent')
+    expect(within(agents).getByRole('option', { name: /Grok Build/ })).toBeInTheDocument()
+  })
+
+  it('blocks New Session when no agent is configured', async () => {
+    const onConfigureProviders = vi.fn()
+    renderScreen(
+      makeClient({
+        agentCredentialsConfigured: vi.fn().mockResolvedValue(false),
+        grokCredentialsConfigured: vi.fn().mockResolvedValue(false),
+        listOpencodeProviders: vi.fn().mockResolvedValue([]),
+      }),
+      {},
+      { onConfigureProviders },
+    )
+
+    expect(await screen.findByRole('heading', { name: /configure an agent/i })).toBeInTheDocument()
+    expect(screen.queryByLabelText(/what should it do/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /start session/i })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /configure agents/i }))
+    expect(onConfigureProviders).toHaveBeenCalled()
+  })
+
+  it('falls back when the last agent is no longer configured', async () => {
+    renderScreen(
+      makeClient({
+        grokCredentialsConfigured: vi.fn().mockResolvedValue(false),
+      }),
+      {},
+      {
+        lastNewSession: {
+          repoFullName: 'acme/app',
+          baseBranch: 'main',
+          environmentId: environments[1].id,
+          agentId: 'grok-build',
+          model: 'grok-build',
+          providerId: '',
+          permissionMode: 'bypass',
+        },
+      },
+    )
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Agent' })).toHaveTextContent('Claude Code'),
+    )
+  })
+})
+
+describe('NewSession OpenCode', () => {
   it('lists OpenCode models from the selected provider', async () => {
     const client = makeClient({
       listOpencodeProviders: vi.fn().mockResolvedValue([
@@ -286,16 +363,6 @@ describe('NewSession OpenCode', () => {
     )
   })
 
-  it('opens provider settings when OpenCode is selected with no providers', async () => {
-    const onConfigureProviders = vi.fn()
-    renderScreen(makeClient(), {}, { onConfigureProviders })
-
-    const agents = await openPicker('Agent')
-    await userEvent.click(within(agents).getByRole('option', { name: /OpenCode/ }))
-
-    await waitFor(() => expect(onConfigureProviders).toHaveBeenCalled())
-  })
-
   it('offers a provider picker and Add provider opens settings', async () => {
     const onConfigureProviders = vi.fn()
     const client = makeClient({
@@ -337,19 +404,15 @@ describe('NewSession OpenCode', () => {
     expect(onConfigureProviders).toHaveBeenCalled()
   })
 
-  it('does not bounce to settings when returning with OpenCode and no providers', async () => {
+  it('does not keep OpenCode selected when returning with no providers', async () => {
     const onConfigureProviders = vi.fn()
-    const client = makeClient()
-    renderScreen(client, {}, { onConfigureProviders, preferAgentId: 'opencode' })
+    renderScreen(makeClient(), {}, { onConfigureProviders, preferAgentId: 'opencode' })
 
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Agent' })).toHaveTextContent('OpenCode'),
+      expect(screen.getByRole('button', { name: 'Agent' })).toHaveTextContent('Claude Code'),
     )
-    await waitFor(() => expect(client.listOpencodeProviders).toHaveBeenCalled())
     expect(onConfigureProviders).not.toHaveBeenCalled()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Provider' })).toBeInTheDocument(),
-    )
+    expect(screen.queryByRole('button', { name: 'Provider' })).not.toBeInTheDocument()
   })
 })
 
@@ -393,7 +456,9 @@ describe('NewSession permission mode', () => {
   })
 
   it('offers Grok Build and sends its model id', async () => {
-    const client = makeClient()
+    const client = makeClient({
+      grokCredentialsConfigured: vi.fn().mockResolvedValue(true),
+    })
     renderScreen(client)
 
     const agents = await openPicker('Agent')
@@ -422,7 +487,11 @@ describe('NewSession permission mode', () => {
   })
 
   it('offers only Plan and Bypass for Grok Build', async () => {
-    renderScreen(makeClient())
+    renderScreen(
+      makeClient({
+        grokCredentialsConfigured: vi.fn().mockResolvedValue(true),
+      }),
+    )
 
     const agents = await openPicker('Agent')
     await userEvent.click(within(agents).getByRole('option', { name: /Grok Build/ }))

@@ -301,6 +301,8 @@ const fakeClient = {
       hasDraft: false,
     },
   ],
+  agentCredentialsConfigured: async () => true,
+  grokCredentialsConfigured: async () => false,
   listOpencodeProviders: async () => [
     {
       id: 'anthropic',
