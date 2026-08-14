@@ -1,10 +1,13 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defaultSettings } from '@/lib/settings'
 
 const activeConnection = vi.fn()
 const removeConnection = vi.fn()
 const whoami = vi.fn()
+const saveSettings = vi.hoisted(() => vi.fn())
+const checkForUpdates = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/connection', () => ({
   activeConnection: (...args: unknown[]) => activeConnection(...args),
@@ -12,7 +15,7 @@ vi.mock('@/lib/connection', () => ({
 }))
 
 vi.mock('@/lib/useSettings', () => ({
-  useSettings: () => ({ settings: defaultSettings(), save: vi.fn() }),
+  useSettings: () => ({ settings: defaultSettings(), save: saveSettings }),
 }))
 
 vi.mock('@/lib/useUpdate', () => ({
@@ -21,7 +24,7 @@ vi.mock('@/lib/useUpdate', () => ({
     checked: true,
     dismissed: false,
     announcing: false,
-    check: vi.fn(),
+    check: checkForUpdates,
     install: vi.fn(),
     dismiss: vi.fn(),
   }),
@@ -109,5 +112,27 @@ describe('App', () => {
       await screen.findByRole('heading', { name: 'Connect to your server' }),
     ).toBeInTheDocument()
     await waitFor(() => expect(removeConnection).not.toHaveBeenCalled())
+  })
+
+  it('applies a command-palette preference from any screen', async () => {
+    activeConnection.mockResolvedValueOnce(null)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Connect to your server' })
+
+    await userEvent.keyboard('{Control>}{Shift>}p{/Shift}{/Control}')
+    await userEvent.click(screen.getByRole('option', { name: 'Theme: Dark' }))
+
+    expect(saveSettings).toHaveBeenCalledWith({ theme: 'dark' })
+  })
+
+  it('checks for updates from the command palette', async () => {
+    activeConnection.mockResolvedValueOnce(null)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Connect to your server' })
+
+    await userEvent.keyboard('{Control>}{Shift>}p{/Shift}{/Control}')
+    await userEvent.click(screen.getByRole('option', { name: 'Check for updates now' }))
+
+    expect(checkForUpdates).toHaveBeenCalledWith(true)
   })
 })

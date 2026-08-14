@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CommandPalette } from '@/components/CommandPalette'
 import { UpdateBanner } from '@/components/UpdateBanner'
-import { COMMANDS } from '@/lib/commands'
+import { commandsFor, runCommand } from '@/lib/commands'
 import { DukeboxClient, isAuthFailure } from '@/lib/client'
 import { activeConnection, removeConnection, type Connection } from '@/lib/connection'
 import { preventWindowFileNavigation } from '@/lib/useFileDrop'
@@ -123,8 +123,8 @@ function Loaded({
   // unpairs, and if it is merely down the screen reconnects on its own.
   const switchServer = (connection: Connection) => setState({ kind: 'ready', connection })
 
-  // The command palette is app-wide: reloading the webview matters from any
-  // screen, so Ctrl/Cmd+Shift+P is owned here rather than inside a screen.
+  // The command palette is app-wide: theme, git prefs, and a webview reload
+  // all matter from any screen, so Ctrl/Cmd+Shift+P is owned here.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return
@@ -175,10 +175,15 @@ function Loaded({
 
       {commandOpen && (
         <CommandPalette
-          commands={COMMANDS}
+          commands={commandsFor(settings)}
           onRun={(command) => {
             setCommandOpen(false)
-            if (command.id === 'reload-webview') window.location.reload()
+            runCommand(command.id, {
+              settings,
+              save: onSaveSettings,
+              checkForUpdates: () => update.check(true),
+              reload: () => window.location.reload(),
+            })
           }}
           onDismiss={() => setCommandOpen(false)}
         />

@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { RefreshIcon } from '@/components/icons'
+import { SearchIcon } from '@/components/icons'
 import type { Command } from '@/lib/commands'
 import { filterCommands } from '@/lib/commands'
 
 /**
  * The command palette: Ctrl/Cmd+Shift+P.
  *
- * A searchable menu of app commands — reload the webview for now, more later.
- * Same centred modal as the search palette, but for actions rather than the
- * things a person navigates to. It is presentational on purpose: what a
- * command does is the caller's job, so the caller passes `onRun`.
+ * A searchable menu of app commands — reload, theme, git preferences. Same
+ * centred modal as the search palette, but for actions rather than the things
+ * a person navigates to. It is presentational on purpose: what a command does
+ * is the caller's job, so the caller passes `onRun`.
  */
 
 interface Props {
@@ -107,7 +107,7 @@ export function CommandPalette({ commands, onRun, onDismiss }: Props) {
 
         <div className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
           <span className="text-muted-foreground">
-            <RefreshIcon size={16} />
+            <SearchIcon size={16} />
           </span>
           <input
             ref={input}
@@ -152,6 +152,11 @@ export function CommandPalette({ commands, onRun, onDismiss }: Props) {
                     className={`size-1.5 flex-none rounded-full ${active ? 'bg-primary' : 'bg-transparent'}`}
                   />
                   <span className="min-w-0 flex-1 truncate">{command.label}</span>
+                  {command.detail && (
+                    <span className="flex-none text-[12px] text-muted-foreground">
+                      {command.detail}
+                    </span>
+                  )}
                 </button>
               )
             })
