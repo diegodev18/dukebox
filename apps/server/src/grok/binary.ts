@@ -1,5 +1,6 @@
 import { access, chmod, mkdir, writeFile } from 'node:fs/promises'
-import { constants } from 'node:fs'
+import { constants, existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /**
@@ -25,8 +26,19 @@ export function grokDownloadUrls(version = GROK_CLI_VERSION, platform = grokPlat
   return [`${PRIMARY}/${name}`, `${FALLBACK}/${name}`]
 }
 
+/**
+ * Where the login CLI is cached.
+ *
+ * The systemd unit is `ProtectSystem=strict` and only `ReadWritePaths=/run/dukebox`
+ * (RuntimeDirectory) is writable on current installs. `$HOME` (`/var/lib/dukebox`)
+ * is read-only until the unit is updated. Prefer the runtime dir, then HOME,
+ * then a process tmp.
+ */
 export function defaultGrokBinDir(): string {
-  return process.env.DUKEBOX_GROK_BIN_DIR ?? '/var/lib/dukebox/grok'
+  if (process.env.DUKEBOX_GROK_BIN_DIR) return process.env.DUKEBOX_GROK_BIN_DIR
+  if (existsSync('/run/dukebox')) return '/run/dukebox/grok'
+  if (process.env.HOME) return join(process.env.HOME, 'grok')
+  return join(tmpdir(), 'dukebox-grok')
 }
 
 /**
@@ -39,12 +51,10 @@ export async function ensureGrokBinary(options: {
   dir?: string
   download?: (url: string) => Promise<Buffer>
 }): Promise<string> {
-  const dir = options.dir ?? defaultGrokBinDir()
+  const dir = await writableDir(options.dir ?? defaultGrokBinDir())
   const dest = join(dir, `grok-${GROK_CLI_VERSION}`)
 
   if (await isExecutable(dest)) return dest
-
-  await mkdir(dir, { recursive: true })
   const download = options.download ?? downloadUrl
   let lastError: Error | undefined
 
@@ -60,6 +70,17 @@ export async function ensureGrokBinary(options: {
   }
 
   throw lastError ?? new Error('could not download grok')
+}
+
+async function writableDir(preferred: string): Promise<string> {
+  try {
+    await mkdir(preferred, { recursive: true })
+    return preferred
+  } catch {
+    const fallback = join(tmpdir(), 'dukebox-grok')
+    await mkdir(fallback, { recursive: true })
+    return fallback
+  }
 }
 
 async function isExecutable(path: string): Promise<boolean> {
