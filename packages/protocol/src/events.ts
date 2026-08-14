@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { permissionMode } from './session.js'
+import { permissionMode } from '@/session'
 
 /**
  * The normalized event stream every agent is translated into.

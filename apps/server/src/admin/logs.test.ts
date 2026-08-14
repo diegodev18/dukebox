@@ -1,7 +1,7 @@
 import type { AgentEvent, EnvelopedEvent } from '@dukebox/protocol'
 import { EventEmitter } from 'node:events'
 import { describe, expect, it } from 'vitest'
-import { ConfigError } from '../config.js'
+import { ConfigError } from '@/config'
 import {
   DEFAULT_LOG_LINES,
   dockerLogsArgs,
@@ -13,7 +13,7 @@ import {
   runInherited,
   takeLast,
   untilInterrupted,
-} from './logs.js'
+} from '@/admin/logs'
 
 const SESSION_ID = '00000000-0000-4000-8000-000000000000'
 

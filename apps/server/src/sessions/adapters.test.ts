@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createAgentAdapter, SessionError } from './manager.js'
+import { createAgentAdapter, SessionError } from '@/sessions/manager'
 
 describe('createAgentAdapter', () => {
   it('returns Claude Code for claude-code', () => {

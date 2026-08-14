@@ -2,8 +2,8 @@ import type { AgentEvent } from '@dukebox/protocol'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { JsonlReader } from '../jsonl.js'
-import { GrokBuildMapper } from './mapper.js'
+import { JsonlReader } from '@/jsonl'
+import { GrokBuildMapper } from '@/grok-build/mapper'
 
 /**
  * Tests against documented-shape fixtures of `grok -p --output-format streaming-json`.

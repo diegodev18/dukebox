@@ -3,7 +3,7 @@ import {
   ENVIRONMENT_SETUP_PROMPT,
   environmentSetupVerifyRetryPrompt,
   parseEnvironmentProposalJson,
-} from './environmentSetup.js'
+} from '@/sessions/environmentSetup'
 
 describe('parseEnvironmentProposalJson', () => {
   it('accepts a valid proposal', () => {

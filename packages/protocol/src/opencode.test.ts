@@ -5,7 +5,7 @@ import {
   upsertOpencodeProviderRequest,
   storedOpencodeProviders,
   opencodeProvider,
-} from './opencode.js'
+} from '@/opencode'
 
 describe('upsertOpencodeProviderRequest', () => {
   it('accepts a catalog provider with only a kind and an api key', () => {

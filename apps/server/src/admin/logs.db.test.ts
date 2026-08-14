@@ -1,7 +1,7 @@
 import { projects, sessions } from '@dukebox/db'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { close, db, prepareDatabase, resetDatabase } from '../testing/database.js'
-import { listActiveSessions, resolveSessionId } from './logs.js'
+import { close, db, prepareDatabase, resetDatabase } from '@/testing/database'
+import { listActiveSessions, resolveSessionId } from '@/admin/logs'
 
 afterAll(close)
 beforeAll(prepareDatabase)

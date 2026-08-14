@@ -1,6 +1,6 @@
 import type { AgentEvent } from '@dukebox/protocol'
-import type { SessionContainer } from './container.js'
-import { HELPER_SCRIPT } from './credentials.js'
+import type { SessionContainer } from '@/container'
+import { HELPER_SCRIPT } from '@/credentials'
 
 /**
  * Repository setup and diffing inside a session container.

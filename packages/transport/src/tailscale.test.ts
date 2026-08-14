@@ -5,8 +5,8 @@ import {
   selectBindIp,
   TailscaleTransport,
   type TailscaleStatus,
-} from './tailscale.js'
-import { TransportError } from './types.js'
+} from '@/tailscale'
+import { TransportError } from '@/types'
 
 /**
  * The status documents here are shaped after real `tailscale status --json`

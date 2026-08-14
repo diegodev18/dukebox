@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RingBuffer } from './ringBuffer.js'
+import { RingBuffer } from '@/sessions/ringBuffer'
 
 describe('RingBuffer', () => {
   it('returns everything it was given while under capacity', () => {

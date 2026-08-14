@@ -12,7 +12,7 @@ import {
   HELPER_SCRIPT,
   matchesRepository,
   parseCredentialRequest,
-} from './credentials.js'
+} from '@/credentials'
 
 /**
  * The helper as git actually invokes it.

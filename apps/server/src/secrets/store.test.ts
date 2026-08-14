@@ -4,8 +4,8 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { close, db, prepareDatabase, resetDatabase } from '../testing/database.js'
-import { decrypt, encrypt, readMasterKey, SecretError, SecretStore } from './store.js'
+import { close, db, prepareDatabase, resetDatabase } from '@/testing/database'
+import { decrypt, encrypt, readMasterKey, SecretError, SecretStore } from '@/secrets/store'
 
 const key = randomBytes(32)
 const store = new SecretStore(db, key)

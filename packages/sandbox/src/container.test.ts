@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, describe, expect, it } from 'vitest'
-import { cpuQuota, DEFAULT_LIMITS, parseMemory, Sandbox, SESSION_LABEL } from './container.js'
+import { cpuQuota, DEFAULT_LIMITS, parseMemory, Sandbox, SESSION_LABEL } from '@/container'
 
 describe('parseMemory', () => {
   it.each([

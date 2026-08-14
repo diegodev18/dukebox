@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { findMigrationsFolder } from './migrate.js'
+import { findMigrationsFolder } from '@/db/migrate'
 
 async function fixtureRoot(): Promise<string> {
   return mkdtemp(join(tmpdir(), 'dukebox-migrate-'))

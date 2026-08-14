@@ -13,18 +13,18 @@ import {
   revokeDevice,
   revokeInvite,
   RevokeError,
-} from '../auth/pairing.js'
-import type { EventBus } from '../events/bus.js'
-import type { GitHubClient } from '../github/client.js'
-import type { SecretStore } from '../secrets/store.js'
-import type { SessionManager } from '../sessions/manager.js'
-import { OWNER_FORBIDDEN, requireOwner, type AuthedVariables } from './auth.js'
-import { clientKey, tooManyAttempts } from './rateLimit.js'
-import { environmentRoutes } from './environments.js'
-import { projectRoutes } from './projects.js'
-import { opencodeRoutes } from './opencode.js'
-import { secretRoutes } from './secrets.js'
-import { sessionRoutes } from './sessions.js'
+} from '@/auth/pairing'
+import type { EventBus } from '@/events/bus'
+import type { GitHubClient } from '@/github/client'
+import type { SecretStore } from '@/secrets/store'
+import type { SessionManager } from '@/sessions/manager'
+import { OWNER_FORBIDDEN, requireOwner, type AuthedVariables } from '@/http/auth'
+import { clientKey, tooManyAttempts } from '@/http/rateLimit'
+import { environmentRoutes } from '@/http/environments'
+import { projectRoutes } from '@/http/projects'
+import { opencodeRoutes } from '@/http/opencode'
+import { secretRoutes } from '@/http/secrets'
+import { sessionRoutes } from '@/http/sessions'
 
 /**
  * The control plane's HTTP surface.

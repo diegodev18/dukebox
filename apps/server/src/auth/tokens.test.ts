@@ -6,7 +6,7 @@ import {
   hashSecret,
   normalizePairingCode,
   secretsMatch,
-} from './tokens.js'
+} from '@/auth/tokens'
 
 describe('generatePairingCode', () => {
   it('produces the format the pairing link expects', () => {

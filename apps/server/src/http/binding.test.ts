@@ -1,8 +1,8 @@
 import { serve } from '@hono/node-server'
 import { networkInterfaces } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
-import { db, prepareDatabase } from '../testing/database.js'
-import { createApp } from './app.js'
+import { db, prepareDatabase } from '@/testing/database'
+import { createApp } from '@/http/app'
 
 /**
  * Network exposure.

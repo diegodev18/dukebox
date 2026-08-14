@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_LCS_LINES, countLineChanges } from './lineChanges.js'
+import { MAX_LCS_LINES, countLineChanges } from '@/lineChanges'
 
 describe('countLineChanges', () => {
   it('counts a created file by its line count', () => {

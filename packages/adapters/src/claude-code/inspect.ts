@@ -9,8 +9,8 @@
  */
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { JsonlReader } from '../jsonl.js'
-import { ClaudeCodeMapper } from './mapper.js'
+import { JsonlReader } from '@/jsonl'
+import { ClaudeCodeMapper } from '@/claude-code/mapper'
 
 function truncate(value: string, length: number): string {
   const collapsed = value.replace(/\n/g, '\\n')

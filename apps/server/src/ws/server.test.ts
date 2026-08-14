@@ -14,13 +14,13 @@ import {
   type Mock,
 } from 'vitest'
 import { WebSocket } from 'ws'
-import { TerminalRegistry } from '../sessions/terminals.js'
-import { issuePairingCode, redeemPairingCode } from '../auth/pairing.js'
-import { EventBus } from '../events/bus.js'
-import { createApp } from '../http/app.js'
-import { close, db, prepareDatabase, resetDatabase } from '../testing/database.js'
-import { closeRedis, redis } from '../testing/redis.js'
-import { attachWebSocketServer, tokenFromRequest } from './server.js'
+import { TerminalRegistry } from '@/sessions/terminals'
+import { issuePairingCode, redeemPairingCode } from '@/auth/pairing'
+import { EventBus } from '@/events/bus'
+import { createApp } from '@/http/app'
+import { close, db, prepareDatabase, resetDatabase } from '@/testing/database'
+import { closeRedis, redis } from '@/testing/redis'
+import { attachWebSocketServer, tokenFromRequest } from '@/ws/server'
 
 const bus = new EventBus(db, redis)
 

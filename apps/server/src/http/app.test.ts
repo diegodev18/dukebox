@@ -1,10 +1,10 @@
 import { pairingCodes } from '@dukebox/db'
 import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { close, db, prepareDatabase, resetDatabase } from '../testing/database.js'
-import { issuePairingCode } from '../auth/pairing.js'
-import { createApp } from './app.js'
-import { resetRateLimit, tooManyAttempts } from './rateLimit.js'
+import { close, db, prepareDatabase, resetDatabase } from '@/testing/database'
+import { issuePairingCode } from '@/auth/pairing'
+import { createApp } from '@/http/app'
+import { resetRateLimit, tooManyAttempts } from '@/http/rateLimit'
 
 const ENDPOINT = { host: 'dukebox-vps.tail1234.ts.net', port: 7777 }
 const app = createApp({ db, serverName: 'dukebox-test', pairingEndpoint: ENDPOINT })

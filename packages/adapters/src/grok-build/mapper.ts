@@ -15,7 +15,7 @@ import {
   type ToolCallMessage,
   type ToolCallUpdateMessage,
   type UsageMessage,
-} from './messages.js'
+} from '@/grok-build/messages'
 
 /**
  * Translate Grok Build's streaming-json NDJSON into AgentEvents.

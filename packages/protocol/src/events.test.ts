@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agentEvent, envelopedEvent, isEventOfType, type AgentEvent } from './events.js'
+import { agentEvent, envelopedEvent, isEventOfType, type AgentEvent } from '@/events'
 
 describe('agentEvent', () => {
   it('accepts every variant', () => {

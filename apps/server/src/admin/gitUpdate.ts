@@ -1,9 +1,9 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { archName, REPO_NAME, REPO_OWNER } from './update.js'
-import { installStaging, runCommand, type UpdateResult } from './updater.js'
-import { installedVersion } from './version.js'
+import { archName, REPO_NAME, REPO_OWNER } from '@/admin/update'
+import { installStaging, runCommand, type UpdateResult } from '@/admin/updater'
+import { installedVersion } from '@/admin/version'
 
 /** Default branch tracked when an operator opts out of waiting for releases. */
 export const DEFAULT_GIT_REF = 'main'

@@ -6,8 +6,8 @@ import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { promisify } from 'node:util'
-import { createLiveLog } from './liveLog.js'
-import { checksumFor, sha256OfFile, type ReleaseAsset, type ReleaseInfo } from './update.js'
+import { createLiveLog } from '@/admin/liveLog'
+import { checksumFor, sha256OfFile, type ReleaseAsset, type ReleaseInfo } from '@/admin/update'
 
 const execFileAsync = promisify(execFile)
 

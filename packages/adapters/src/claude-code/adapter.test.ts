@@ -1,14 +1,14 @@
 import type { AgentEvent } from '@dukebox/protocol'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
-import type { SessionContext } from '../types.js'
+import type { SessionContext } from '@/types'
 import {
   buildArgs,
   ClaudeCodeAdapter,
   encodePermissionResponse,
   encodeSetPermissionMode,
   encodeUserMessage,
-} from './adapter.js'
+} from '@/claude-code/adapter'
 
 function flagValue(args: string[], flag: string): string | undefined {
   const index = args.indexOf(flag)

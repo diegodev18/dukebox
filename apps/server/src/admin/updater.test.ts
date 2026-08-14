@@ -8,7 +8,7 @@ import {
   runCommand,
   type CommandResult,
   type RunCommandOptions,
-} from './updater.js'
+} from '@/admin/updater'
 
 describe('buildAgentImage', () => {
   it('runs docker build against the install Dockerfile context', async () => {

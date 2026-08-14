@@ -1,6 +1,6 @@
 import type { StoredOpencodeProvider } from '@dukebox/protocol'
-import { loadOpencodeProviders } from '../opencode/providers.js'
-import type { SecretStore } from '../secrets/store.js'
+import { loadOpencodeProviders } from '@/opencode/providers'
+import type { SecretStore } from '@/secrets/store'
 
 /**
  * A short model call against credentials already on the server.

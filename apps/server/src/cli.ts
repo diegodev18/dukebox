@@ -32,17 +32,17 @@ import { Sandbox } from '@dukebox/sandbox'
 import { TailscaleTransport } from '@dukebox/transport'
 import Redis from 'ioredis'
 import { access, readFile, rename, rm } from 'node:fs/promises'
-import { DEFAULT_CONFIG_PATH, ConfigError, loadConfig } from './config.js'
-import { runMigrations } from './db/migrate.js'
-import { EventBus } from './events/bus.js'
+import { DEFAULT_CONFIG_PATH, ConfigError, loadConfig } from '@/config'
+import { runMigrations } from '@/db/migrate'
+import { EventBus } from '@/events/bus'
 import {
   issuePairingCode,
   listDevices,
   replaceOwnerPairing,
   revokeDevice,
   RevokeError,
-} from './auth/pairing.js'
-import { findInstallRoot, installedVersion } from './admin/version.js'
+} from '@/auth/pairing'
+import { findInstallRoot, installedVersion } from '@/admin/version'
 import {
   dockerLogsArgs,
   formatEvent,
@@ -55,16 +55,16 @@ import {
   takeLast,
   untilInterrupted,
   type LogsArgs,
-} from './admin/logs.js'
+} from '@/admin/logs'
 import {
   archName,
   compareVersions,
   fetchLatestServerRelease,
   RELEASE_TAG_PREFIX,
   selectServerAsset,
-} from './admin/update.js'
-import { buildAgentImage, performUpdate, runCommand } from './admin/updater.js'
-import { defaultRepoUrl, parseUpdateArgs, performGitUpdate } from './admin/gitUpdate.js'
+} from '@/admin/update'
+import { buildAgentImage, performUpdate, runCommand } from '@/admin/updater'
+import { defaultRepoUrl, parseUpdateArgs, performGitUpdate } from '@/admin/gitUpdate'
 import {
   effectiveValues,
   fieldFor,
@@ -72,7 +72,7 @@ import {
   readConfigValue,
   redactDatabaseUrl,
   setConfigValue,
-} from './admin/config.js'
+} from '@/admin/config'
 
 const SERVICE = 'dukebox'
 const SERVICE_USER = 'dukebox'
