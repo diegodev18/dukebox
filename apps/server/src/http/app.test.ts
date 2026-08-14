@@ -1,6 +1,6 @@
 import { pairingCodes } from '@dukebox/db'
 import { sql } from 'drizzle-orm'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { close, db, prepareDatabase, resetDatabase } from '../testing/database.js'
 import { issuePairingCode } from '../auth/pairing.js'
 import { createApp } from './app.js'
@@ -235,6 +235,26 @@ describe('device management', () => {
     expect((await authed('/api/me', second.deviceToken)).status).toBe(401)
   })
 
+  it('tells the control plane which device was revoked', async () => {
+    const onDeviceRevoked = vi.fn()
+    const wired = createApp({
+      db,
+      serverName: 'dukebox-test',
+      pairingEndpoint: ENDPOINT,
+      onDeviceRevoked,
+    })
+    const owner = await pair('Owner')
+    const member = await pair('Member')
+
+    const response = await wired.request(`/api/devices/${member.deviceId}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${owner.deviceToken}` },
+    })
+
+    expect(response.status).toBe(200)
+    expect(onDeviceRevoked).toHaveBeenCalledWith(member.deviceId)
+  })
+
   it('lets a member revoke itself, which is how signing out works', async () => {
     await pair('Owner')
     const member = await pair('Member')
@@ -328,5 +348,54 @@ describe('POST /pair/redeem rate limit', () => {
 
     expect(response.status).toBe(429)
     expect(await response.json()).toMatchObject({ error: 'rate_limited' })
+  })
+
+  it('counts through the HTTP surface, not only a pre-filled bucket', async () => {
+    const body = { code: 'AAAA-BBBB', deviceName: 'Flood', platform: 'macos' }
+    for (let i = 0; i < 30; i++) {
+      expect((await post('/pair/redeem', body)).status).toBe(403)
+    }
+
+    const response = await post('/pair/redeem', body)
+    expect(response.status).toBe(429)
+    expect(await response.json()).toMatchObject({ error: 'rate_limited' })
+  })
+
+  it('keeps distinct forwarded-for hops in separate buckets', async () => {
+    const body = { code: 'AAAA-BBBB', deviceName: 'Flood', platform: 'macos' }
+    const first = { 'x-forwarded-for': '10.0.0.1' }
+    const second = { 'x-forwarded-for': '10.0.0.2' }
+
+    for (let i = 0; i < 30; i++) {
+      expect(
+        (
+          await app.request('/pair/redeem', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', ...first },
+            body: JSON.stringify(body),
+          })
+        ).status,
+      ).toBe(403)
+    }
+
+    expect(
+      (
+        await app.request('/pair/redeem', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...first },
+          body: JSON.stringify(body),
+        })
+      ).status,
+    ).toBe(429)
+
+    expect(
+      (
+        await app.request('/pair/redeem', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...second },
+          body: JSON.stringify(body),
+        })
+      ).status,
+    ).toBe(403)
   })
 })

@@ -102,6 +102,14 @@ describe('sessionSummary', () => {
     expect(sessionSummary.parse(summary).pullRequest).toBeNull()
   })
 
+  it('defaults an omitted base commit to null', () => {
+    expect(sessionSummary.parse(summary).baseCommit).toBeNull()
+  })
+
+  it('keeps a provided base commit', () => {
+    expect(sessionSummary.parse({ ...summary, baseCommit: 'abc123' }).baseCommit).toBe('abc123')
+  })
+
   it('carries an opened pull request', () => {
     const parsed = sessionSummary.parse({
       ...summary,

@@ -5,6 +5,7 @@ import type { SessionContext } from '../types.js'
 import {
   buildArgs,
   ClaudeCodeAdapter,
+  encodeInterrupt,
   encodePermissionResponse,
   encodeSetPermissionMode,
   encodeUserMessage,
@@ -459,6 +460,26 @@ describe('ClaudeCodeAdapter', () => {
       request_id: 'pm-1',
       request: { subtype: 'set_permission_mode', mode: 'auto' },
     })
+  })
+
+  it('encodes interrupt as a string request, not a subtype object', () => {
+    expect(JSON.parse(encodeInterrupt())).toEqual({
+      type: 'control_request',
+      request: 'interrupt',
+    })
+  })
+
+  it('writes the interrupt control request on a live stream', async () => {
+    const { adapter, stream } = adapterWithStream()
+    const written: string[] = []
+    stream.write = ((chunk: string) => {
+      written.push(String(chunk))
+      return true
+    }) as typeof stream.write
+
+    await adapter.interrupt()
+
+    expect(written).toEqual([encodeInterrupt()])
   })
 
   it('ends the event stream on stop', async () => {

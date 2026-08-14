@@ -124,6 +124,25 @@ describe('OpenCodeMapper', () => {
       expect(mapper.map({ type: 'text', part: { text: '' } })).toEqual([])
     })
 
+    it('marks a tool that finished in error', () => {
+      const mapper = new OpenCodeMapper()
+      const events = mapper.map({
+        type: 'tool_use',
+        part: {
+          callID: 'call_err',
+          tool: 'bash',
+          state: { status: 'error', input: { command: 'false' }, error: 'exit 1' },
+        },
+      })
+
+      expect(events).toContainEqual({
+        type: 'tool_result',
+        id: 'call_err',
+        output: 'exit 1',
+        isError: true,
+      })
+    })
+
     it('does not emit a result for a still-running tool', () => {
       const mapper = new OpenCodeMapper()
       const events = mapper.map({

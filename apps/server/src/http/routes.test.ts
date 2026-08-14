@@ -89,6 +89,7 @@ const app = createApp({
 })
 
 let token = ''
+let deviceId = ''
 
 afterAll(async () => {
   await close()
@@ -109,6 +110,7 @@ beforeEach(async () => {
     'dukebox-test',
   )
   token = redeemed.deviceToken
+  deviceId = redeemed.deviceId
 })
 
 /** An authenticated request, as the desktop app would make it. */
@@ -536,6 +538,45 @@ describe('POST /api/sessions', () => {
     expect(options && 'commitIdentity' in options).toBe(false)
   })
 
+  it('attributes the session to the calling device', async () => {
+    const project = await createProject()
+    vi.mocked(sessionManager.start).mockResolvedValueOnce(await createSession(project.id))
+
+    await post('/api/sessions', { projectId: project.id, agentId: 'claude-code', prompt: 'x' })
+
+    expect(sessionManager.start).toHaveBeenCalledWith(
+      expect.objectContaining({ createdByDeviceId: deviceId }),
+    )
+  })
+
+  it('passes git preferences through when given', async () => {
+    const project = await createProject()
+    vi.mocked(sessionManager.start).mockResolvedValueOnce(await createSession(project.id))
+
+    await post('/api/sessions', {
+      projectId: project.id,
+      agentId: 'claude-code',
+      prompt: 'x',
+      gitPreferences: { createAsDraft: false, mergeMethod: 'rebase' },
+    })
+
+    expect(sessionManager.start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gitPreferences: expect.objectContaining({ createAsDraft: false, mergeMethod: 'rebase' }),
+      }),
+    )
+  })
+
+  it('omits git preferences entirely when not given', async () => {
+    const project = await createProject()
+    vi.mocked(sessionManager.start).mockResolvedValueOnce(await createSession(project.id))
+
+    await post('/api/sessions', { projectId: project.id, agentId: 'claude-code', prompt: 'x' })
+
+    const options = vi.mocked(sessionManager.start).mock.calls[0]?.[0]
+    expect(options && 'gitPreferences' in options).toBe(false)
+  })
+
   it('reports an unknown project as a bad request', async () => {
     vi.mocked(sessionManager.start).mockRejectedValueOnce(new SessionError('no such project'))
 
@@ -644,6 +685,17 @@ describe('GET /api/sessions', () => {
     }
 
     expect(body.lastSeq).toBe(1)
+  })
+
+  it('reports the stored base commit', async () => {
+    const project = await createProject()
+    const session = await createSession(project.id, { baseCommit: 'abc123def' })
+
+    const body = (await (await request(`/api/sessions/${session.id}`)).json()) as {
+      baseCommit: string | null
+    }
+
+    expect(body.baseCommit).toBe('abc123def')
   })
 
   it('returns 404 for an unknown session', async () => {
@@ -853,6 +905,63 @@ describe('POST /api/sessions/:id/pr', () => {
     const response = await post(`/api/sessions/${session.id}/pr`, {})
     expect(response.status).toBe(409)
   })
+
+  it('returns 404 when the session has no pull request', async () => {
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await request(`/api/sessions/${session.id}/pr`)
+    expect(response.status).toBe(404)
+    expect(await response.json()).toMatchObject({ error: 'not_found' })
+  })
+
+  it('reports a ready failure as a conflict', async () => {
+    vi.mocked(sessionManager.markPullRequestReady).mockRejectedValueOnce(
+      new SessionError('this session has no pull request'),
+    )
+
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await post(`/api/sessions/${session.id}/pr/ready`, {})
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({ error: 'conflict' })
+  })
+
+  it('reports a merge SessionError as a conflict', async () => {
+    vi.mocked(sessionManager.mergePullRequest).mockRejectedValueOnce(
+      new SessionError('this session has no pull request'),
+    )
+
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await post(`/api/sessions/${session.id}/pr/merge`, {})
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({ error: 'conflict' })
+  })
+
+  it('rejects an unknown merge method', async () => {
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await post(`/api/sessions/${session.id}/pr/merge`, { method: 'fast-forward' })
+    expect(response.status).toBe(400)
+    expect(sessionManager.mergePullRequest).not.toHaveBeenCalled()
+  })
+
+  it('reports a resolve-conflicts failure as a conflict', async () => {
+    vi.mocked(sessionManager.resolvePullRequestConflicts).mockRejectedValueOnce(
+      new SessionError('this session has no pull request'),
+    )
+
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await post(`/api/sessions/${session.id}/pr/resolve-conflicts`, {})
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({ error: 'conflict' })
+  })
 })
 
 describe('DELETE /api/sessions/:id', () => {
@@ -1029,6 +1138,12 @@ describe('agent credentials', () => {
       body: JSON.stringify({ token: 'sk-ant-member' }),
     })
     expect(put.status).toBe(403)
+
+    const removed = await app.request('/api/agent-credentials', {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${member.deviceToken}` },
+    })
+    expect(removed.status).toBe(403)
   })
 })
 
@@ -1339,6 +1454,77 @@ describe('POST /api/sessions purpose', () => {
       purpose: 'coding',
     })
     expect(response.status).toBe(400)
+  })
+})
+
+describe('member mutations', () => {
+  async function asMember(path: string, init: RequestInit = {}) {
+    const issued = await issuePairingCode(db, { host: 'localhost', port: 7777 })
+    const member = await redeemPairingCode(
+      db,
+      { code: issued.code, deviceName: 'Member', platform: 'linux' },
+      'dukebox-test',
+    )
+
+    return app.request(path, {
+      ...init,
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${member.deviceToken}`,
+        ...init.headers,
+      },
+    })
+  }
+
+  it('lets a member write a project secret', async () => {
+    const project = await createProject()
+    const response = await asMember(`/api/projects/${project.id}/secrets`, {
+      method: 'PUT',
+      body: JSON.stringify({ name: 'API_KEY', value: 'from-member' }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(await secretStore.get('API_KEY', project.id)).toBe('from-member')
+  })
+
+  it('lets a member start a session', async () => {
+    const project = await createProject()
+    const session = await createSession(project.id, { status: 'provisioning' })
+    vi.mocked(sessionManager.start).mockResolvedValueOnce(session)
+
+    const response = await asMember('/api/sessions', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: project.id,
+        agentId: 'claude-code',
+        prompt: 'x',
+      }),
+    })
+
+    expect(response.status).toBe(202)
+  })
+
+  it('lets a member archive a session', async () => {
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await asMember(`/api/sessions/${session.id}/archive`, {
+      method: 'POST',
+      body: '{}',
+    })
+
+    expect(response.status).toBe(200)
+    expect(sessionManager.archive).toHaveBeenCalledWith(session.id)
+  })
+
+  it('lets a member create an environment', async () => {
+    const project = await createProject()
+    const response = await asMember(`/api/projects/${project.id}/environments`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Staging', branchPattern: '**' }),
+    })
+
+    expect(response.status).toBe(201)
   })
 })
 

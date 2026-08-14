@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, describe, expect, it } from 'vitest'
-import { cpuQuota, DEFAULT_LIMITS, parseMemory, Sandbox, SESSION_LABEL } from './container.js'
+import {
+  clampTerminalSize,
+  cpuQuota,
+  DEFAULT_LIMITS,
+  parseMemory,
+  Sandbox,
+  SESSION_LABEL,
+  toBind,
+} from './container.js'
 
 describe('parseMemory', () => {
   it.each([
@@ -30,6 +38,41 @@ describe('cpuQuota', () => {
 
   it.each(['0', '-1', 'many', ''])('rejects %s', (input) => {
     expect(() => cpuQuota(input)).toThrow()
+  })
+})
+
+describe('toBind', () => {
+  it('formats a writable bind', () => {
+    expect(toBind({ source: '/var/run/git-cred.sock', target: '/run/git-cred.sock' })).toBe(
+      '/var/run/git-cred.sock:/run/git-cred.sock',
+    )
+  })
+
+  it('marks a read-only bind', () => {
+    expect(
+      toBind({ source: '/var/run/git-cred.sock', target: '/run/git-cred.sock', readOnly: true }),
+    ).toBe('/var/run/git-cred.sock:/run/git-cred.sock:ro')
+  })
+
+  it.each(['/var/run/docker.sock', '/proc', '/proc/1', '/sys', '/'])(
+    'refuses to mount %s',
+    (source) => {
+      expect(() => toBind({ source, target: '/mnt' })).toThrow(/refusing to mount/)
+    },
+  )
+})
+
+describe('clampTerminalSize', () => {
+  it('floors a measured 0×0 PTY to the xterm default', () => {
+    expect(clampTerminalSize(0, 0)).toEqual({ cols: 80, rows: 24 })
+  })
+
+  it('rejects a non-finite column count', () => {
+    expect(clampTerminalSize(Number.NaN, 12)).toEqual({ cols: 80, rows: 12 })
+  })
+
+  it('drops a fractional layout measurement', () => {
+    expect(clampTerminalSize(80.9, 24.2)).toEqual({ cols: 80, rows: 24 })
   })
 })
 

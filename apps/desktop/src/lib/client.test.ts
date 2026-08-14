@@ -5,6 +5,7 @@ import {
   DukeboxClient,
   isAuthFailure,
   reachable,
+  redeemPairingCode,
   socketUrl,
 } from '@/lib/client'
 
@@ -409,6 +410,37 @@ describe('reachable', () => {
       reason: 'http',
       detail: 'answered 503',
     })
+  })
+})
+
+describe('redeemPairingCode', () => {
+  it('posts the code and device identity', async () => {
+    const fetchMock = respondWith({
+      deviceId: 'device-1',
+      deviceToken: 'token-1',
+      serverName: 'debian-01',
+      role: 'owner',
+    })
+
+    await expect(
+      redeemPairingCode(address, 'A1B2-C3D4', { name: 'Dukebox on Mac', platform: 'macos' }),
+    ).resolves.toMatchObject({ deviceId: 'device-1', deviceToken: 'token-1' })
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('http://dukebox-vps.tail1234.ts.net:7777/pair/redeem')
+    expect(JSON.parse(init.body as string)).toEqual({
+      code: 'A1B2-C3D4',
+      deviceName: 'Dukebox on Mac',
+      platform: 'macos',
+    })
+  })
+
+  it('throws ApiFailure with the server code when redeem is refused', async () => {
+    respondWith({ error: 'already_used', message: 'that code was already used' }, { status: 403 })
+
+    await expect(
+      redeemPairingCode(address, 'A1B2-C3D4', { name: 'Dukebox on Mac', platform: 'macos' }),
+    ).rejects.toMatchObject({ code: 'already_used', status: 403 })
   })
 })
 

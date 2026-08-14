@@ -322,6 +322,51 @@ describe('Settings', () => {
     expect(onDisconnected).not.toHaveBeenCalled()
   })
 
+  it('disconnects when the last remaining server is forgotten', async () => {
+    vi.mocked(listConnections).mockResolvedValue([server] as never)
+    vi.mocked(removeConnection).mockResolvedValue(undefined)
+    const { onDisconnected, onSwitchServer } = renderSettings()
+
+    await openCategory('Servers')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Forget' })).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: 'Forget' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Forget server' }))
+
+    await waitFor(() => expect(removeConnection).toHaveBeenCalledWith('device-1'))
+    expect(onDisconnected).toHaveBeenCalled()
+    expect(onSwitchServer).not.toHaveBeenCalled()
+  })
+
+  it('switches to the remaining server when the active one is forgotten', async () => {
+    const second = { ...server, deviceId: 'device-2', serverName: 'debian-02' }
+    vi.mocked(listConnections).mockResolvedValue([server, second] as never)
+    vi.mocked(removeConnection).mockResolvedValue(undefined)
+    vi.mocked(setActiveConnection).mockResolvedValue(undefined)
+    const { onDisconnected, onSwitchServer } = renderSettings()
+
+    await openCategory('Servers')
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Forget' })).toHaveLength(2))
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Forget' })[0])
+    await userEvent.click(screen.getByRole('button', { name: 'Forget server' }))
+
+    await waitFor(() => expect(removeConnection).toHaveBeenCalledWith('device-1'))
+    expect(setActiveConnection).toHaveBeenCalledWith('device-2')
+    expect(onSwitchServer).toHaveBeenCalledWith(expect.objectContaining({ deviceId: 'device-2' }))
+    expect(onDisconnected).not.toHaveBeenCalled()
+  })
+
+  it('opens the pairing form from Servers', async () => {
+    vi.mocked(listConnections).mockResolvedValue([server] as never)
+    renderSettings()
+
+    await openCategory('Servers')
+    await userEvent.click(screen.getByRole('button', { name: 'Pair a new server…' }))
+
+    expect(screen.getByLabelText('Pairing link')).toBeInTheDocument()
+  })
+
   it('reports an available update and can check again', async () => {
     const update = updateMock()
     update.state = { status: 'available', update: { version: '0.2.0', body: '' } as never }
