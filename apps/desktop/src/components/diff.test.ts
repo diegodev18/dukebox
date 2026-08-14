@@ -127,8 +127,8 @@ describe('collapsing context', () => {
 
 describe('large files', () => {
   it('falls back to a replacement rather than freezing the window', () => {
-    // The LCS table is quadratic. A diff nobody can read is not worth a
-    // dropped frame.
+    // Two unrelated 1600-line files have nothing unique in common, so the
+    // table never runs. A rewrite is the honest picture.
     const before = Array.from({ length: 1600 }, (_, i) => `a ${i}`).join('\n')
     const after = Array.from({ length: 1600 }, (_, i) => `b ${i}`).join('\n')
     const result = diffLines(before, after)
@@ -141,6 +141,24 @@ describe('large files', () => {
 
   it('does not flag a small file as simplified', () => {
     expect(isSimplifiedDiff('a\nb', 'a\nB')).toBe(false)
+  })
+
+  it('keeps a large similar file as a real hunk, not a rewrite', () => {
+    const before = Array.from({ length: 1882 }, (_, i) => `line ${i}`).join('\n')
+    const after = [
+      ...Array.from({ length: 900 }, (_, i) => `line ${i}`),
+      ...Array.from({ length: 20 }, (_, i) => `added ${i}`),
+      ...Array.from({ length: 982 }, (_, i) => `line ${900 + i}`),
+    ].join('\n')
+
+    const result = diffLines(before, after)
+    const kinds = result.map((line) => line.kind)
+
+    expect(isSimplifiedDiff(before, after)).toBe(false)
+    expect(kinds).toContain('skip')
+    expect(kinds.filter((kind) => kind === 'added')).toHaveLength(20)
+    expect(kinds.filter((kind) => kind === 'removed')).toHaveLength(0)
+    expect(texts(before, after)).toContain('added 0')
   })
 })
 

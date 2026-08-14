@@ -35,6 +35,23 @@ describe('Diff', () => {
     })
   })
 
+  it('does not simplify a large file that only gained a few lines', async () => {
+    const before = Array.from({ length: 1882 }, (_, i) => `line ${i}`).join('\n')
+    const after = [
+      ...Array.from({ length: 900 }, (_, i) => `line ${i}`),
+      'inserted',
+      ...Array.from({ length: 982 }, (_, i) => `line ${900 + i}`),
+    ].join('\n')
+
+    render(<Diff file={{ path: 'manager.test.ts', before, after }} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('inserted').closest('[aria-busy="false"]')).not.toBeNull()
+    })
+    expect(screen.queryByText(/diff simplified/i)).not.toBeInTheDocument()
+    expect(screen.getAllByText(/unchanged line/).length).toBeGreaterThan(0)
+  })
+
   it('shows line numbers and no plus or minus prefixes', async () => {
     render(<Diff file={{ path: 'a.txt', before: 'a\nb\nc', after: 'a\nB\nc' }} />)
 

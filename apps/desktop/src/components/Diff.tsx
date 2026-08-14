@@ -1,4 +1,4 @@
-import { MAX_LCS_LINES, countLineChanges, type FileChange } from '@dukebox/protocol'
+import { MAX_LCS_LINES, alignLines, countLineChanges, type FileChange } from '@dukebox/protocol'
 import {
   useEffect,
   useLayoutEffect,
@@ -25,8 +25,10 @@ export { MAX_LCS_LINES }
 export function Diff({ file }: { file: FileChange }) {
   const before = file.before ?? ''
   const after = file.after ?? ''
-  const simplified = isSimplifiedDiff(before, after)
-  const lines = useMemo(() => diffLines(before, after), [before, after])
+  const { lines, simplified } = useMemo(() => {
+    const aligned = alignLines(before, after)
+    return { lines: collapse(aligned.lines), simplified: aligned.simplified }
+  }, [before, after])
   const digits = useMemo(() => gutterDigits(lines), [lines])
   const root = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLElement | null>(null)
@@ -283,17 +285,14 @@ export type SkipLine = { kind: 'skip'; count: number; hidden: SameLine[] }
 export type Line = SameLine | SkipLine
 
 /**
- * A longest-common-subsequence diff, trimmed to the parts that changed.
+ * Whether the alignment gave up on a gap and drew a straight replacement.
  *
- * LCS is quadratic, so files past a size render as a straight replacement
- * rather than freezing the window. A diff nobody can read is not worth a
- * dropped frame.
+ * Size alone is not enough: a 1900-line file with twenty new cases is still
+ * a real diff. The banner is only for a remaining hunk too large to LCS
+ * and with nothing unique to split on.
  */
 export function isSimplifiedDiff(before: string, after: string): boolean {
-  if (before === '' || after === '') return false
-  const a = before.split('\n').length
-  const b = after.split('\n').length
-  return a > MAX_LCS_LINES || b > MAX_LCS_LINES
+  return alignLines(before, after).simplified
 }
 
 export function skipLabel(count: number, range?: { start: number; end: number }): string {
@@ -334,86 +333,7 @@ export function fileChangeCounts(file: FileChange): { added: number; removed: nu
 }
 
 export function diffLines(before: string, after: string): Line[] {
-  const a = before === '' ? [] : before.split('\n')
-  const b = after === '' ? [] : after.split('\n')
-
-  if (a.length === 0) {
-    return b.map((text, index) => ({
-      kind: 'added',
-      text,
-      oldLine: null,
-      newLine: index + 1,
-    }))
-  }
-  if (b.length === 0) {
-    return a.map((text, index) => ({
-      kind: 'removed',
-      text,
-      oldLine: index + 1,
-      newLine: null,
-    }))
-  }
-
-  if (a.length > MAX_LCS_LINES || b.length > MAX_LCS_LINES) {
-    return [
-      ...a.map((text, index): Line => ({
-        kind: 'removed',
-        text,
-        oldLine: index + 1,
-        newLine: null,
-      })),
-      ...b.map((text, index): Line => ({
-        kind: 'added',
-        text,
-        oldLine: null,
-        newLine: index + 1,
-      })),
-    ]
-  }
-
-  // lengths[i][j] is the LCS length of a[i:] and b[j:]. Built backwards so the
-  // walk below can emit lines in order.
-  const lengths: number[][] = Array.from({ length: a.length + 1 }, () =>
-    new Array<number>(b.length + 1).fill(0),
-  )
-
-  for (let i = a.length - 1; i >= 0; i -= 1) {
-    for (let j = b.length - 1; j >= 0; j -= 1) {
-      lengths[i]![j] =
-        a[i] === b[j]
-          ? lengths[i + 1]![j + 1]! + 1
-          : Math.max(lengths[i + 1]![j]!, lengths[i]![j + 1]!)
-    }
-  }
-
-  const lines: SameLine[] = []
-  let i = 0
-  let j = 0
-
-  while (i < a.length && j < b.length) {
-    if (a[i] === b[j]) {
-      lines.push({ kind: 'same', text: a[i]!, oldLine: i + 1, newLine: j + 1 })
-      i += 1
-      j += 1
-    } else if (lengths[i + 1]![j]! >= lengths[i]![j + 1]!) {
-      lines.push({ kind: 'removed', text: a[i]!, oldLine: i + 1, newLine: null })
-      i += 1
-    } else {
-      lines.push({ kind: 'added', text: b[j]!, oldLine: null, newLine: j + 1 })
-      j += 1
-    }
-  }
-
-  while (i < a.length) {
-    lines.push({ kind: 'removed', text: a[i]!, oldLine: i + 1, newLine: null })
-    i += 1
-  }
-  while (j < b.length) {
-    lines.push({ kind: 'added', text: b[j]!, oldLine: null, newLine: j + 1 })
-    j += 1
-  }
-
-  return collapse(lines)
+  return collapse(alignLines(before, after).lines)
 }
 
 /**
