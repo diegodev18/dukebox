@@ -112,16 +112,22 @@ const mergeStateStatus = z.enum([
   'UNSTABLE',
 ])
 
+/** `gh --json` emits `""` for unset GraphQL enums instead of null. */
+const emptyAsNull = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((value) => (value === '' ? null : value), schema)
+
 const pullRequestView = z.object({
   url: z.string(),
   title: z.string(),
   body: z.string().nullish().default(''),
   isDraft: z.boolean(),
   state: z.enum(['OPEN', 'MERGED', 'CLOSED', 'open', 'merged', 'closed']),
-  mergeable: z.enum(['MERGEABLE', 'CONFLICTING', 'UNKNOWN']).nullish(),
+  mergeable: emptyAsNull(z.enum(['MERGEABLE', 'CONFLICTING', 'UNKNOWN']).nullish()),
   statusCheckRollup: z.array(checkRollupEntry).nullish(),
-  reviewDecision: z.enum(['APPROVED', 'CHANGES_REQUESTED', 'REVIEW_REQUIRED']).nullish(),
-  mergeStateStatus: mergeStateStatus.nullish(),
+  reviewDecision: emptyAsNull(
+    z.enum(['APPROVED', 'CHANGES_REQUESTED', 'REVIEW_REQUIRED']).nullish(),
+  ),
+  mergeStateStatus: emptyAsNull(mergeStateStatus.nullish()),
   commits: z.array(pullRequestCommitEntry).nullish(),
   reviews: z.array(pullRequestReviewEntry).nullish(),
 })
