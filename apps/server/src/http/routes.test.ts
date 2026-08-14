@@ -16,6 +16,7 @@ import { SessionError, MergeConflictError, SessionManager } from '@/sessions/man
 import { close, db, prepareDatabase, resetDatabase } from '@/testing/database'
 import { closeRedis, redis } from '@/testing/redis'
 import { createApp } from '@/http/app'
+import type { GrokDeviceLogin } from '@/grok/login'
 
 /**
  * The REST surface the desktop app talks to.
@@ -86,11 +87,22 @@ const sessionManager = {
 
 const secretStore = new SecretStore(db, randomBytes(32))
 
+const grokLogin = {
+  snapshot: vi.fn(() => ({ status: 'idle' as const })),
+  start: vi.fn(async () => ({
+    status: 'waiting' as const,
+    url: 'https://accounts.x.ai/activate',
+    userCode: 'ABCD-EFGH',
+    expiresAt: Date.now() + 300_000,
+  })),
+  cancel: vi.fn(() => ({ status: 'idle' as const })),
+} as unknown as GrokDeviceLogin
+
 const app = createApp({
   db,
   serverName: 'dukebox-test',
   pairingEndpoint: { host: 'localhost', port: 7777 },
-  features: { github, bus, sessions: sessionManager, secrets: secretStore },
+  features: { github, bus, sessions: sessionManager, secrets: secretStore, grokLogin },
 })
 
 let token = ''
@@ -168,6 +180,7 @@ describe('authentication', () => {
       '/api/opencode/providers',
       '/api/opencode/catalog',
       '/api/grok-credentials',
+      '/api/grok-login',
     ]
 
     for (const path of paths) {
@@ -1189,6 +1202,45 @@ describe('Grok Build credentials', () => {
       body: JSON.stringify({ token: 'xai-member' }),
     })
     expect(put.status).toBe(403)
+  })
+})
+
+describe('Grok device login', () => {
+  it('starts idle', async () => {
+    expect(await (await request('/api/grok-login')).json()).toEqual({ status: 'idle' })
+  })
+
+  it('starts a login and returns the device code', async () => {
+    const response = await request('/api/grok-login', { method: 'POST' })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      status: 'waiting',
+      url: 'https://accounts.x.ai/activate',
+      userCode: 'ABCD-EFGH',
+    })
+    expect(grokLogin.start).toHaveBeenCalled()
+  })
+
+  it('cancels an in-flight login', async () => {
+    expect(await (await request('/api/grok-login', { method: 'DELETE' })).json()).toEqual({
+      status: 'idle',
+    })
+    expect(grokLogin.cancel).toHaveBeenCalled()
+  })
+
+  it('forbids a member from starting a login', async () => {
+    const issued = await issuePairingCode(db, { host: 'localhost', port: 7777 })
+    const member = await redeemPairingCode(
+      db,
+      { code: issued.code, deviceName: 'Member', platform: 'linux' },
+      'dukebox-test',
+    )
+
+    const post = await app.request('/api/grok-login', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${member.deviceToken}` },
+    })
+    expect(post.status).toBe(403)
   })
 })
 
