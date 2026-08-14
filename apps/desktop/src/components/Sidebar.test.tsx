@@ -151,6 +151,11 @@ function renderRepoSessions(
 }
 
 describe('Sidebar', () => {
+  it('shows the app name at the top', () => {
+    renderSidebar()
+    expect(screen.getAllByText('Dukebox').length).toBeGreaterThanOrEqual(1)
+  })
+
   it('archives from the row actions menu after confirming', async () => {
     const { onArchive } = renderSidebar()
 
