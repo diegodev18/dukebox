@@ -347,7 +347,7 @@ function MessageActions({
 
   return (
     <div
-      className={`absolute top-full left-0 z-10 mt-0.5 flex gap-0.5 ${
+      className={`absolute top-1/2 left-full z-10 ml-1 -translate-y-1/2 flex gap-0.5 ${
         copied ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
       }`}
     >

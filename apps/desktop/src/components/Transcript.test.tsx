@@ -678,4 +678,27 @@ describe('Transcript message actions', () => {
     const actions = screen.getByRole('button', { name: 'Copy' }).parentElement
     expect(actions).toHaveClass('absolute')
   })
+
+  it('anchors actions beside the bubble so they do not cover the next message', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [
+            { kind: 'prompt', id: 'p', text: 'Si' },
+            {
+              kind: 'prompt',
+              id: 'restart',
+              text: 'The server restarted. Continue the previous task from where you left off. The workspace is unchanged.',
+            },
+          ],
+        })}
+        onRespond={vi.fn()}
+        onEdit={vi.fn()}
+      />,
+    )
+
+    const actions = screen.getAllByRole('button', { name: 'Copy' })[0]?.parentElement
+    expect(actions).toHaveClass('left-full')
+    expect(actions).not.toHaveClass('top-full')
+  })
 })
