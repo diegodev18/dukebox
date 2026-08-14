@@ -170,16 +170,24 @@ export class GitHubClient {
     return user.login
   }
 
-  /** Repositories the user can push to, most recently updated first. */
+  /**
+   * Repositories the user can push to — owned, a collaborator, or through an
+   * organization — most recently updated first.
+   *
+   * `gh repo list` only returns repositories the user owns, which hides
+   * organization repositories and repositories where they are a collaborator.
+   * `GET /user/repos` returns every repository the user has access to; the
+   * `affiliation` query picks the owned, collaborator, and organization-member
+   * sets, and the jq filter keeps only those the user can actually write to
+   * (a session's agent must push branches and open pull requests).
+   */
   async listRepositories(limit = 100): Promise<Repository[]> {
     return this.json(
       [
-        'repo',
-        'list',
-        '--limit',
-        String(limit),
-        '--json',
-        'nameWithOwner,defaultBranchRef,isPrivate,updatedAt',
+        'api',
+        `user/repos?per_page=${limit}&sort=updated&direction=desc&affiliation=owner,collaborator,organization_member`,
+        '--jq',
+        '[.[] | select((.permissions.push // false) or (.permissions.admin // false)) | {nameWithOwner: .full_name, defaultBranchRef: (if .default_branch then {name: .default_branch} else null end), isPrivate: .private, updatedAt: .updated_at}]',
       ],
       z.array(repository),
     )
