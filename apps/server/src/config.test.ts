@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { applyEnvOverrides, ConfigError, fromToml, loadConfig, parseToml } from './config.js'
+import { applyEnvOverrides, ConfigError, fromToml, loadConfig, parseToml } from '@/config'
 
 /** A config file shaped like the one the installer writes. */
 const INSTALLER_CONFIG = `

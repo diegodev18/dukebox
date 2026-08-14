@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createLiveLog, LIVE_LOG_LINES, stripAnsi } from './liveLog.js'
+import { createLiveLog, LIVE_LOG_LINES, stripAnsi } from '@/admin/liveLog'
 
 class FakeTty {
   isTTY = true

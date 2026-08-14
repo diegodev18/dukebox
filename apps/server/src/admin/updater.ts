@@ -6,8 +6,8 @@ import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { promisify } from 'node:util'
-import { createLiveLog } from './liveLog.js'
-import { checksumFor, sha256OfFile, type ReleaseAsset, type ReleaseInfo } from './update.js'
+import { createLiveLog } from '@/admin/liveLog'
+import { checksumFor, sha256OfFile, type ReleaseAsset, type ReleaseInfo } from '@/admin/update'
 
 const execFileAsync = promisify(execFile)
 
@@ -187,9 +187,9 @@ export async function downloadFile(
 /**
  * Rebuild the session agent image from the Dockerfile shipped in the install.
  *
- * Agents (`claude`, `opencode`, …) are baked into this image. Updating the
- * control plane alone leaves an old tag in place — OpenCode sessions then fail
- * with `exec: "opencode": executable file not found in $PATH`. Rebuild on every
+ * Agents (`claude`, `opencode`, `grok`, …) are baked into this image. Updating
+ * the control plane alone leaves an old tag in place — OpenCode sessions then
+ * fail with `exec: "opencode": executable file not found in $PATH`. Rebuild on every
  * update so the running image matches the Dockerfile the release just installed.
  *
  * Failure is reported rather than fatal: the control plane itself still works,

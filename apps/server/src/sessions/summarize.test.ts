@@ -1,6 +1,6 @@
 import type { Session } from '@dukebox/db'
 import { describe, expect, it } from 'vitest'
-import { toSummary } from './summarize.js'
+import { toSummary } from '@/sessions/summarize'
 
 function row(overrides: Partial<Session> = {}): Session {
   return {
@@ -35,11 +35,14 @@ function row(overrides: Partial<Session> = {}): Session {
 }
 
 describe('toSummary', () => {
-  it('defaults Claude Code and OpenCode without a stored mode to bypass', () => {
+  it('defaults Claude Code, OpenCode, and Grok Build without a stored mode to bypass', () => {
     expect(toSummary(row({ agentId: 'claude-code', permissionMode: null })).permissionMode).toBe(
       'bypass',
     )
     expect(toSummary(row({ agentId: 'opencode', permissionMode: null })).permissionMode).toBe(
+      'bypass',
+    )
+    expect(toSummary(row({ agentId: 'grok-build', permissionMode: null })).permissionMode).toBe(
       'bypass',
     )
   })

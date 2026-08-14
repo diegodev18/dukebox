@@ -8,7 +8,7 @@ import {
   permissionMode,
   resolvePermissionMode,
   sessionSummary,
-} from './session.js'
+} from '@/session'
 
 const summary = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -48,13 +48,16 @@ describe('permissionMode', () => {
   it('starts environment setup in bypass even when the caller asked for plan', () => {
     expect(resolvePermissionMode('claude-code', 'environment_setup', 'plan')).toBe('bypass')
     expect(resolvePermissionMode('opencode', 'environment_setup', 'plan')).toBe('bypass')
+    expect(resolvePermissionMode('grok-build', 'environment_setup', 'plan')).toBe('bypass')
     expect(resolvePermissionMode('claude-code', 'environment_setup')).toBe('bypass')
   })
 
   it('honours the requested mode for coding sessions', () => {
     expect(resolvePermissionMode('claude-code', 'coding', 'plan')).toBe('plan')
     expect(resolvePermissionMode('opencode', 'coding', 'auto')).toBe('auto')
+    expect(resolvePermissionMode('grok-build', 'coding', 'plan')).toBe('plan')
     expect(resolvePermissionMode('claude-code', 'coding')).toBe('bypass')
+    expect(resolvePermissionMode('grok-build', 'coding')).toBe('bypass')
   })
 
   it('stores no mode for agents that have none', () => {

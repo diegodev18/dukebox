@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pullRequestContent } from './summary.js'
+import { pullRequestContent } from '@/sessions/summary'
 
 const SESSION = '00000000-0000-4000-8000-000000000000'
 

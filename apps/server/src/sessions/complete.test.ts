@@ -5,7 +5,7 @@ import {
   matchProvider,
   resolveSessionModel,
   type WriterModel,
-} from './complete.js'
+} from '@/sessions/complete'
 
 const ANTHROPIC = {
   id: 'anthropic',

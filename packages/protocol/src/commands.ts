@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { envelopedEvent } from './events.js'
-import { permissionMode, sessionStatus, sessionSummary } from './session.js'
+import { envelopedEvent } from '@/events'
+import { permissionMode, sessionStatus, sessionSummary } from '@/session'
 
 /**
  * WebSocket messages between the desktop app and the control plane.

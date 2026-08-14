@@ -15,7 +15,7 @@ import {
   generatePairingCode,
   hashSecret,
   normalizePairingCode,
-} from './tokens.js'
+} from '@/auth/tokens'
 
 /**
  * Device pairing.

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { GitHubClient, GitHubError } from './client.js'
+import { GitHubClient, GitHubError } from '@/github/client'
 
 /**
  * The CLI is injected rather than executed. These assert the arguments the

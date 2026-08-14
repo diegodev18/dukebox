@@ -3,14 +3,14 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { Sandbox, type SessionContainer } from './container.js'
+import { Sandbox, type SessionContainer } from '@/container'
 import {
   CONTAINER_SOCKET_DIR,
   CONTAINER_SOCKET_PATH,
   createSessionCredentialProxy,
   type CredentialProxy,
-} from './credentials.js'
-import { Workspace } from './workspace.js'
+} from '@/credentials'
+import { Workspace } from '@/workspace'
 
 /**
  * The credential proxy driven by real git inside a real container.

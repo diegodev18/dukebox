@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createAgentAdapter, SessionError } from './manager.js'
+import { createAgentAdapter, SessionError } from '@/sessions/manager'
 
 describe('createAgentAdapter', () => {
   it('returns Claude Code for claude-code', () => {
@@ -8,6 +8,10 @@ describe('createAgentAdapter', () => {
 
   it('returns OpenCode for opencode', () => {
     expect(createAgentAdapter('opencode').id).toBe('opencode')
+  })
+
+  it('returns Grok Build for grok-build', () => {
+    expect(createAgentAdapter('grok-build').id).toBe('grok-build')
   })
 
   it('rejects an agent that has no adapter', () => {

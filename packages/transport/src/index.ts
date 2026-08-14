@@ -1,2 +1,2 @@
-export * from './types.js'
-export * from './tailscale.js'
+export * from '@/types'
+export * from '@/tailscale'

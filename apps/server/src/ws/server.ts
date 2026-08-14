@@ -8,9 +8,9 @@ import {
 } from '@dukebox/protocol'
 import type { IncomingMessage, Server } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
-import { authenticateDevice } from '../auth/pairing.js'
-import type { EventBus } from '../events/bus.js'
-import type { TerminalRegistry } from '../sessions/terminals.js'
+import { authenticateDevice } from '@/auth/pairing'
+import type { EventBus } from '@/events/bus'
+import type { TerminalRegistry } from '@/sessions/terminals'
 
 /**
  * Live session traffic.

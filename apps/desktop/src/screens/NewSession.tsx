@@ -15,8 +15,10 @@ import {
   AVAILABLE_AGENTS,
   AVAILABLE_MODELS,
   AVAILABLE_PERMISSION_MODES,
+  DEFAULT_GROK_BUILD_MODEL,
   DEFAULT_MODEL,
   DEFAULT_PERMISSION_MODE,
+  GROK_BUILD_MODELS,
   agentHasPermissionModes,
   availablePermissionModes,
   cyclePermissionMode,
@@ -134,16 +136,12 @@ export function NewSession({
   const [opencodeProvidersStatus, setOpencodeProvidersStatus] = useState<
     'loading' | 'loaded' | 'failed'
   >('loading')
+  const [claudeConfigured, setClaudeConfigured] = useState(false)
+  const [grokConfigured, setGrokConfigured] = useState(false)
+  const [agentsStatus, setAgentsStatus] = useState<'loading' | 'loaded'>('loading')
   const [providerId, setProviderId] = useState(initialProviderId(lastNewSession, initialAgent))
   const [prompt, setPrompt] = useState('')
   const [files, setFiles] = useState<ComposerFile[]>([])
-  // Coming back from provider settings with OpenCode already selected must
-  // not bounce straight into settings again if the list is still empty. The
-  // same applies when the last session was OpenCode: restoring that agent
-  // is not a fresh pick that should yank the form away.
-  const skipEmptyRedirect = useRef(initialAgent === 'opencode')
-  const onConfigureProvidersRef = useRef(onConfigureProviders)
-  onConfigureProvidersRef.current = onConfigureProviders
   const [forceSetup, setForceSetup] = useState(Boolean(preferSetupProjectId))
   const [newEnvironmentName, setNewEnvironmentName] = useState('Default')
   const [newEnvironmentPattern, setNewEnvironmentPattern] = useState('**')
@@ -327,20 +325,28 @@ export function NewSession({
   useEffect(() => {
     let cancelled = false
 
-    client
-      .listOpencodeProviders()
-      .then((found) => {
-        if (cancelled) return
-        setOpencodeProviders(found)
+    Promise.all([
+      client.agentCredentialsConfigured().catch(() => false),
+      client.grokCredentialsConfigured().catch(() => false),
+      client.listOpencodeProviders().then(
+        (found) => ({ ok: true as const, found }),
+        () => ({ ok: false as const }),
+      ),
+    ]).then(([claude, grok, providers]) => {
+      if (cancelled) return
+      setClaudeConfigured(claude)
+      setGrokConfigured(grok)
+      if (providers.ok) {
+        setOpencodeProviders(providers.found)
         setOpencodeProvidersStatus('loaded')
-      })
-      .catch(() => {
-        // A failed list must not bounce into settings: the form stays put and
-        // Start stays blocked until a model can be chosen.
-        if (cancelled) return
+      } else {
+        // A failed list must not look like "no providers": Start stays
+        // blocked until a model can be chosen.
         setOpencodeProviders([])
         setOpencodeProvidersStatus('failed')
-      })
+      }
+      setAgentsStatus('loaded')
+    })
 
     return () => {
       cancelled = true
@@ -348,16 +354,27 @@ export function NewSession({
   }, [client])
 
   const usingOpenCode = agentId === 'opencode'
+  const usingGrokBuild = agentId === 'grok-build'
   const selectedProvider = opencodeProviders.find((provider) => provider.id === providerId)
-  const models = useMemo(
-    () =>
-      usingOpenCode
-        ? selectedProvider
-          ? modelsForProvider(selectedProvider)
-          : []
-        : AVAILABLE_MODELS,
-    [usingOpenCode, selectedProvider],
-  )
+  const models = useMemo(() => {
+    if (usingOpenCode) {
+      return selectedProvider ? modelsForProvider(selectedProvider) : []
+    }
+    if (usingGrokBuild) return GROK_BUILD_MODELS
+    return AVAILABLE_MODELS
+  }, [usingOpenCode, usingGrokBuild, selectedProvider])
+
+  const configuredAgents = useMemo(() => {
+    if (agentsStatus !== 'loaded') return []
+    return AVAILABLE_AGENTS.filter((agent) => {
+      if (agent.id === 'claude-code') return claudeConfigured
+      if (agent.id === 'grok-build') return grokConfigured
+      if (agent.id === 'opencode') return opencodeProviders.length > 0
+      return false
+    })
+  }, [agentsStatus, claudeConfigured, grokConfigured, opencodeProviders.length])
+
+  const hasNoAgents = agentsStatus === 'loaded' && configuredAgents.length === 0
 
   useEffect(() => {
     if (!usingOpenCode) return
@@ -372,31 +389,41 @@ export function NewSession({
     if (fallback) setModel(fallback)
   }, [models, model])
 
-  useEffect(() => {
-    if (!usingOpenCode || opencodeProvidersStatus !== 'loaded') return
-    if (opencodeProviders.length > 0) return
-    if (skipEmptyRedirect.current) return
-    onConfigureProvidersRef.current()
-  }, [usingOpenCode, opencodeProvidersStatus, opencodeProviders.length])
-
   const selectAgent = (next: string) => {
     setAgentId(next)
     if (next === 'opencode') {
-      if (opencodeProvidersStatus === 'loaded' && opencodeProviders.length === 0) {
-        onConfigureProviders()
-        return
-      }
       const firstProvider = opencodeProviders[0]
       if (firstProvider) {
         setProviderId(firstProvider.id)
         const firstModel = modelsForProvider(firstProvider)[0]?.id
         if (firstModel) setModel(firstModel)
       }
+    } else if (next === 'grok-build') {
+      setProviderId('')
+      setModel(DEFAULT_GROK_BUILD_MODEL)
     } else {
       setProviderId('')
       setModel(DEFAULT_MODEL)
     }
   }
+
+  useEffect(() => {
+    if (agentsStatus !== 'loaded') return
+    if (configuredAgents.some((agent) => agent.id === agentId)) return
+
+    const preferred =
+      preferAgentId && configuredAgents.some((agent) => agent.id === preferAgentId)
+        ? preferAgentId
+        : undefined
+    const last =
+      lastNewSession?.agentId &&
+      configuredAgents.some((agent) => agent.id === lastNewSession.agentId)
+        ? lastNewSession.agentId
+        : undefined
+    const next = preferred ?? last ?? configuredAgents[0]?.id
+    if (next) selectAgent(next)
+    else setAgentId('')
+  }, [agentsStatus, configuredAgents, agentId, preferAgentId, lastNewSession])
 
   const selectProvider = (next: string) => {
     setProviderId(next)
@@ -531,7 +558,11 @@ export function NewSession({
     }
   }
 
-  const busy = status.kind === 'starting' || status.kind === 'loading' || Boolean(disabled)
+  const busy =
+    status.kind === 'starting' ||
+    status.kind === 'loading' ||
+    agentsStatus === 'loading' ||
+    Boolean(disabled)
   const { dragging, onDragEnter, onDragOver, onDragLeave, onDrop } = useFileDrop({
     disabled: busy,
     onFiles: attachFiles,
@@ -545,14 +576,37 @@ export function NewSession({
     { id: connection.deviceId, name: connection.serverName, host: connection.address.host },
   ]
 
+  const agentReady = configuredAgents.some((agent) => agent.id === agentId)
+
   const canSend = needsEnvironment
-    ? !busy && Boolean(target) && Boolean(baseBranch) && Boolean(agentId) && hasModel
+    ? !busy && Boolean(target) && Boolean(baseBranch) && agentReady && hasModel
     : !busy &&
       Boolean(target) &&
       Boolean(baseBranch) &&
-      Boolean(agentId) &&
+      agentReady &&
       hasModel &&
       prompt.trim() !== ''
+
+  if (hasNoAgents) {
+    return (
+      <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
+        <div className="w-full max-w-xl rounded-[calc(var(--radius)*1.1)] border border-border bg-surface px-3.5 py-3.5">
+          <h2 className="text-[14px] font-medium">Configure an agent</h2>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            Add a Claude Code token, a Grok Build API key, or an OpenCode provider in Settings
+            before starting a session.
+          </p>
+          <button
+            type="button"
+            onClick={onConfigureProviders}
+            className="mt-3 rounded-full bg-foreground px-3.5 py-1.5 text-[13px] font-medium text-background"
+          >
+            Configure agents
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
@@ -581,7 +635,12 @@ export function NewSession({
               disabled={busy || !target}
             />
           )}
-          <AgentPicker value={agentId} onChange={selectAgent} disabled={busy} />
+          <AgentPicker
+            value={agentId}
+            onChange={selectAgent}
+            disabled={busy || configuredAgents.length === 0}
+            agents={configuredAgents}
+          />
           <InstancePicker instances={instances} value={connection.deviceId} disabled={busy} />
         </div>
 
@@ -905,9 +964,16 @@ function initialAgentId(
 }
 
 function initialModel(last: LastNewSession | null, agentId: string): string {
-  if (!last?.model) return agentId === 'opencode' ? '' : DEFAULT_MODEL
-  if (agentId === 'opencode') return last.model
-  if (AVAILABLE_MODELS.some((candidate) => candidate.id === last.model)) return last.model
+  if (agentId === 'opencode') return last?.model ?? ''
+  if (agentId === 'grok-build') {
+    if (last?.model && GROK_BUILD_MODELS.some((candidate) => candidate.id === last.model)) {
+      return last.model
+    }
+    return DEFAULT_GROK_BUILD_MODEL
+  }
+  if (last?.model && AVAILABLE_MODELS.some((candidate) => candidate.id === last.model)) {
+    return last.model
+  }
   return DEFAULT_MODEL
 }
 

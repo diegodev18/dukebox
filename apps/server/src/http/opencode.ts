@@ -1,13 +1,13 @@
 import { OPENCODE_CATALOG, upsertOpencodeProviderRequest } from '@dukebox/protocol'
 import { Hono } from 'hono'
-import type { SecretStore } from '../secrets/store.js'
-import { requireOwner, type AuthedVariables } from './auth.js'
+import type { SecretStore } from '@/secrets/store'
+import { requireOwner, type AuthedVariables } from '@/http/auth'
 import {
   loadOpencodeProviders,
   publicProvider,
   resolveStoredProvider,
   saveOpencodeProviders,
-} from '../opencode/providers.js'
+} from '@/opencode/providers'
 
 /**
  * OpenCode provider credentials.

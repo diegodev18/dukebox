@@ -12,9 +12,9 @@ import {
 } from '@dukebox/protocol'
 import { count, desc, eq, and, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
-import type { GitHubClient } from '../github/client.js'
-import { requireOwner, routeParam, type AuthedVariables } from './auth.js'
-import type { SecretStore } from '../secrets/store.js'
+import type { GitHubClient } from '@/github/client'
+import { requireOwner, routeParam, type AuthedVariables } from '@/http/auth'
+import type { SecretStore } from '@/secrets/store'
 
 /**
  * Projects: the repositories a user has connected.

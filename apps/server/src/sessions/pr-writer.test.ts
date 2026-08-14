@@ -1,6 +1,6 @@
 import { DEFAULT_GIT_PREFERENCES } from '@dukebox/protocol'
 import { describe, expect, it, vi } from 'vitest'
-import { writePullRequestContent } from './pr-writer.js'
+import { writePullRequestContent } from '@/sessions/pr-writer'
 
 const BASE = {
   prompt: 'Add a health check',

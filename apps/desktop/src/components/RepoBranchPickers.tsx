@@ -295,10 +295,13 @@ export function AgentPicker({
   value,
   onChange,
   disabled,
+  agents = AVAILABLE_AGENTS,
 }: {
   value: string
   onChange: (agentId: string) => void
   disabled?: boolean
+  /** Agents that have credentials on this server. Defaults to every known agent. */
+  agents?: readonly { id: string; label: string }[]
 }) {
   const [open, setOpen] = useState(false)
   const label = agentLabel(value) ?? value
@@ -317,7 +320,7 @@ export function AgentPicker({
       ariaLabel="Agent"
     >
       <div className="max-h-64 overflow-y-auto py-1">
-        {AVAILABLE_AGENTS.map((agent) => (
+        {agents.map((agent) => (
           <PickerRow
             key={agent.id}
             selected={agent.id === value}

@@ -2,7 +2,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { ConfigError, loadConfig } from '../config.js'
+import { ConfigError, loadConfig } from '@/config'
 import {
   configFields,
   effectiveValues,
@@ -11,7 +11,7 @@ import {
   redactDatabaseUrl,
   setConfigValue,
   setTomlKey,
-} from './config.js'
+} from '@/admin/config'
 
 const INSTALLER_CONFIG = `# Written by install.sh. Safe to edit; restart with:
 #   systemctl restart dukebox

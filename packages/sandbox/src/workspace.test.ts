@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { Sandbox, type SessionContainer } from './container.js'
+import { Sandbox, type SessionContainer } from '@/container'
 import {
   sessionBranch,
   Workspace,
@@ -8,7 +8,7 @@ import {
   WORKSPACE_DIR,
   SETUP_VERIFY_DIR,
   resolveWorkspacePath,
-} from './workspace.js'
+} from '@/workspace'
 
 describe('sessionBranch', () => {
   it('namespaces the branch so its origin is obvious in GitHub', () => {

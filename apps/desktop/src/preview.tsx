@@ -301,6 +301,8 @@ const fakeClient = {
       hasDraft: false,
     },
   ],
+  agentCredentialsConfigured: async () => true,
+  grokCredentialsConfigured: async () => false,
   listOpencodeProviders: async () => [
     {
       id: 'anthropic',
@@ -689,7 +691,7 @@ function Preview() {
                       : 'bg-done opacity-50'
                   }`}
                 />
-                <AgentIcon agentId="claude-code" />
+                <AgentIcon agentId="grok-build" />
               </span>
             </header>
 

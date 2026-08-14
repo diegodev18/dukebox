@@ -17,8 +17,8 @@
     "migrations"
   ],
   "scripts": {
-    "build": "tsc -b",
-    "typecheck": "tsc -b --pretty",
+    "build": "tsc -b && node ../../scripts/rewrite-dist-aliases.mjs",
+    "typecheck": "tsc -b --pretty && node ../../scripts/rewrite-dist-aliases.mjs",
     "test": "vitest run",
     "generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate"

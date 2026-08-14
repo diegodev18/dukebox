@@ -4,7 +4,7 @@ import {
   customProviderEnvVar,
   resolveStoredProvider,
   withLiveCatalogModels,
-} from './providers.js'
+} from '@/opencode/providers'
 
 describe('resolveStoredProvider', () => {
   it('keys a catalog provider by kind and fills in catalog defaults', () => {

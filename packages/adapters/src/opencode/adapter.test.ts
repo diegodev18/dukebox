@@ -1,8 +1,8 @@
 import type { AgentEvent } from '@dukebox/protocol'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
-import type { SessionContext } from '../types.js'
-import { buildRunArgs, OpenCodeAdapter } from './adapter.js'
+import type { SessionContext } from '@/types'
+import { buildRunArgs, OpenCodeAdapter } from '@/opencode/adapter'
 
 /**
  * These cover the parts that do not need a running agent: how the process is

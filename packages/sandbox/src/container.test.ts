@@ -8,7 +8,7 @@ import {
   Sandbox,
   SESSION_LABEL,
   toBind,
-} from './container.js'
+} from '@/container'
 
 describe('parseMemory', () => {
   it.each([

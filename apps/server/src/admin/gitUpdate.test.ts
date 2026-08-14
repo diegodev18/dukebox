@@ -9,8 +9,8 @@ import {
   gitVersionLabel,
   parseUpdateArgs,
   performGitUpdate,
-} from './gitUpdate.js'
-import type { CommandResult, RunCommandOptions } from './updater.js'
+} from '@/admin/gitUpdate'
+import type { CommandResult, RunCommandOptions } from '@/admin/updater'
 
 describe('gitVersionLabel', () => {
   it('builds a semver prerelease from the ref and short sha', () => {

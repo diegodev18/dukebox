@@ -5,7 +5,7 @@ import {
   type StoredOpencodeProvider,
   type UpsertOpencodeProviderRequest,
 } from '@dukebox/protocol'
-import type { SecretStore } from '../secrets/store.js'
+import type { SecretStore } from '@/secrets/store'
 
 /**
  * OpenCode's credentials, as Dukebox stores and injects them.

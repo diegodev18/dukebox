@@ -1,6 +1,10 @@
 import { PassThrough } from 'node:stream'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { MAX_TERMINALS_PER_SESSION, TerminalRegistry, randomTerminalTitle } from './terminals.js'
+import {
+  MAX_TERMINALS_PER_SESSION,
+  TerminalRegistry,
+  randomTerminalTitle,
+} from '@/sessions/terminals'
 
 const sessionId = 'session-1'
 

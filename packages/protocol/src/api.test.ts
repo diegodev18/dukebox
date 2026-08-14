@@ -8,7 +8,7 @@ import {
   workspaceFileResponse,
   resolvePullRequestConflictsResponse,
   pullRequestResponse,
-} from './api.js'
+} from '@/api'
 
 describe('createSessionRequest', () => {
   it('requires a prompt for coding sessions', () => {

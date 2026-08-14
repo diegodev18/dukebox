@@ -5,10 +5,10 @@ import {
   type PermissionMode,
 } from '@dukebox/protocol'
 import type { Duplex } from 'node:stream'
-import { JsonlReader } from '../jsonl.js'
-import type { AgentAdapter, SessionContext, UserMessage } from '../types.js'
-import { extensionFor, parseDataUri, stageUpload } from '../uploads.js'
-import { OpenCodeMapper } from './mapper.js'
+import { JsonlReader } from '@/jsonl'
+import type { AgentAdapter, SessionContext, UserMessage } from '@/types'
+import { extensionFor, parseDataUri, stageUpload } from '@/uploads'
+import { OpenCodeMapper } from '@/opencode/mapper'
 
 /**
  * OpenCode, driven headless inside a session container.

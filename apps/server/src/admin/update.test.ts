@@ -7,7 +7,7 @@ import {
   selectServerAsset,
   versionFromTag,
   type ReleaseInfo,
-} from './update.js'
+} from '@/admin/update'
 
 describe('compareVersions', () => {
   it('compares numeric segments', () => {

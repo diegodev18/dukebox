@@ -4,16 +4,16 @@ import type { AgentEvent, PermissionMode } from '@dukebox/protocol'
 import { Sandbox } from '@dukebox/sandbox'
 import { and, eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { EventBus } from '../events/bus.js'
-import type { GitHubClient } from '../github/client.js'
-import { close, db, prepareDatabase, resetDatabase } from '../testing/database.js'
-import { closeRedis, redis } from '../testing/redis.js'
+import { EventBus } from '@/events/bus'
+import type { GitHubClient } from '@/github/client'
+import { close, db, prepareDatabase, resetDatabase } from '@/testing/database'
+import { closeRedis, redis } from '@/testing/redis'
 import {
   SessionManager,
   SessionError,
   MergeConflictError,
   RESTART_CONTINUATION_PROMPT,
-} from './manager.js'
+} from '@/sessions/manager'
 
 /**
  * Sessions are tested against a real Docker daemon and a real database, with a

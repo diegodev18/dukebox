@@ -119,7 +119,7 @@ sudo duke rollback          # restore the previous release if something is wrong
 ```
 
 `duke update` restarts the service, rebuilds the session agent image
-(`dukebox/base-node:latest`, which ships Claude Code and OpenCode), and rolls
+(`dukebox/base-node:latest`, which ships Claude Code, OpenCode, and Grok Build), and rolls
 back automatically if the new release fails to start. Re-running `install.sh`
 does the same thing and also applies any unit-file changes.
 

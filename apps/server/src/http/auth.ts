@@ -1,6 +1,6 @@
 import type { Device } from '@dukebox/db'
 import type { Context, Next } from 'hono'
-import { deviceIsOwner } from '../auth/pairing.js'
+import { deviceIsOwner } from '@/auth/pairing'
 
 /**
  * Auth helpers shared by the HTTP routes.
