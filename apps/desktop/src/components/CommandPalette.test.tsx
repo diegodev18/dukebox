@@ -21,6 +21,19 @@ describe('CommandPalette', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Commands' })
     expect(within(dialog).getByRole('option', { name: 'Reload Webview' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('option', { name: /Theme: System/ })).toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('option', { name: /Create pull requests as drafts/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows the current value beside a preference', () => {
+    renderPalette()
+
+    expect(screen.getByRole('option', { name: /Theme: System/ })).toHaveTextContent('Current')
+    expect(
+      screen.getByRole('option', { name: /Create pull requests as drafts/ }),
+    ).toHaveTextContent('On')
   })
 
   it('filters by typed query', async () => {
