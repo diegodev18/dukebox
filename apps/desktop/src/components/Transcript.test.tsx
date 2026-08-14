@@ -575,4 +575,84 @@ describe('Transcript tool groups', () => {
 
     expect(screen.getByText('Ran 2 commands')).toBeInTheDocument()
   })
+
+  it('does not let thinking split a tool group', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [
+            {
+              kind: 'tool',
+              id: 'g1',
+              name: 'Grep',
+              input: { pattern: 'rename' },
+              result: done(),
+            },
+            { kind: 'thinking', id: 'th1', text: 'checking the protocol next' },
+            {
+              kind: 'tool',
+              id: 'g2',
+              name: 'Glob',
+              input: { pattern: '**/api.ts' },
+              result: done(),
+            },
+          ],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Explored 2 files')).toBeInTheDocument()
+    expect(screen.queryByText('Thought for a moment')).not.toBeInTheDocument()
+  })
+
+  it('shows thinking inside an expanded tool group', async () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [
+            {
+              kind: 'tool',
+              id: 'g1',
+              name: 'Grep',
+              input: { pattern: 'rename' },
+              result: done(),
+            },
+            { kind: 'thinking', id: 'th1', text: 'checking the protocol next' },
+            {
+              kind: 'tool',
+              id: 'g2',
+              name: 'Glob',
+              input: { pattern: '**/api.ts' },
+              result: done(),
+            },
+          ],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Show Explored 2 files' }))
+
+    expect(screen.getByText('Thought for a moment')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show Grep' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show Glob' })).toBeInTheDocument()
+  })
+})
+
+describe('Transcript message actions', () => {
+  it('keeps copy actions out of the message layout', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [{ kind: 'prompt', id: 'p', text: 'Si' }],
+        })}
+        onRespond={vi.fn()}
+        onEdit={vi.fn()}
+      />,
+    )
+
+    const actions = screen.getByRole('button', { name: 'Copy' }).parentElement
+    expect(actions).toHaveClass('absolute')
+  })
 })

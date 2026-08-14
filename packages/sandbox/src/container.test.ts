@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto'
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
   clampTerminalSize,
   cpuQuota,
   DEFAULT_LIMITS,
+  endWhenExecCloses,
   parseMemory,
   Sandbox,
   SESSION_LABEL,
@@ -60,6 +63,29 @@ describe('toBind', () => {
       expect(() => toBind({ source, target: '/mnt' })).toThrow(/refusing to mount/)
     },
   )
+})
+
+describe('endWhenExecCloses', () => {
+  it('ends stdout when the hijack stream closes without an end event', () => {
+    const raw = new EventEmitter()
+    const stdout = new PassThrough()
+
+    endWhenExecCloses(raw, stdout)
+    raw.emit('close')
+
+    expect(stdout.writableEnded).toBe(true)
+  })
+
+  it('does not end stdout twice when both end and close fire', () => {
+    const raw = new EventEmitter()
+    const stdout = new PassThrough()
+
+    endWhenExecCloses(raw, stdout)
+    raw.emit('end')
+    raw.emit('close')
+
+    expect(stdout.writableEnded).toBe(true)
+  })
 })
 
 describe('clampTerminalSize', () => {

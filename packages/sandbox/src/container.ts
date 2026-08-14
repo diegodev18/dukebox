@@ -198,10 +198,42 @@ export class SessionContainer {
     // backpressure that eventually stalls the process writing to it.
     stderr.resume()
 
-    raw.on('end', () => stdout.end())
+    endWhenExecCloses(raw, stdout)
     raw.on('error', (error: Error) => stdout.emit('error', error))
 
-    return Duplex.from({ readable: stdout, writable: raw })
+    // Hand-wired rather than Duplex.from: that helper pipelines both sides
+    // and treats a closed hijack socket as ERR_STREAM_PREMATURE_CLOSE, which
+    // the agent adapter would take as a fatal turn end.
+    const stream = new Duplex({
+      read() {
+        stdout.resume()
+      },
+      write(chunk, encoding, callback) {
+        if (!attachStdin) {
+          callback()
+          return
+        }
+        if (!raw.write(chunk, encoding)) {
+          raw.once('drain', callback)
+          return
+        }
+        callback()
+      },
+      destroy(error, callback) {
+        raw.destroy()
+        callback(error)
+      },
+    })
+
+    stdout.on('data', (chunk: Buffer) => {
+      if (!stream.push(chunk)) stdout.pause()
+    })
+    stdout.on('end', () => {
+      if (!stream.readableEnded) stream.push(null)
+    })
+    stdout.on('error', (error: Error) => stream.destroy(error))
+
+    return stream
   }
 
   /**
@@ -437,6 +469,24 @@ export function clampTerminalSize(cols: number, rows: number): { cols: number; r
     cols: Number.isFinite(cols) && cols >= 2 ? Math.floor(cols) : 80,
     rows: Number.isFinite(rows) && rows >= 1 ? Math.floor(rows) : 24,
   }
+}
+
+/**
+ * Docker sometimes emits `close` on a hijacked exec without `end`.
+ *
+ * The agent adapter finishes a turn when this stdout ends. Missing that
+ * event leaves the session "Running" with a Stop button after the process
+ * has already gone idle — it looks like the agent stopped itself.
+ */
+export function endWhenExecCloses(
+  raw: { on(event: string, listener: () => void): unknown },
+  stdout: PassThrough,
+): void {
+  const end = () => {
+    if (!stdout.writableEnded) stdout.end()
+  }
+  raw.on('end', end)
+  raw.on('close', end)
 }
 
 /**

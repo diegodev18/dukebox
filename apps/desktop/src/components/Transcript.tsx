@@ -155,15 +155,21 @@ export function Transcript({
                   : 'Ask for a change to start.'}
             </p>
           ) : (
-            <VirtualRows count={itemCount} scrollRef={scroller} estimateSize={72} after={32}>
+            <VirtualRows
+              count={itemCount}
+              scrollRef={scroller}
+              estimateSize={72}
+              after={32}
+              gap={16}
+            >
               {(index) => {
                 if (index >= items.length) {
                   return <Working key="working" blocks={transcript.blocks} />
                 }
 
                 const item = items[index]!
-                if (item.kind === 'tools') {
-                  return <ToolRun key={item.id} tools={item.tools} settled={settled} />
+                if (item.kind === 'run') {
+                  return <ToolRun key={item.id} entries={item.entries} settled={settled} />
                 }
 
                 const block = item.block
@@ -292,7 +298,7 @@ function MessageBlock({
   children: ReactNode
 }) {
   return (
-    <div className="group flex flex-col items-start gap-1">
+    <div className="group relative flex flex-col items-start">
       {children}
       {copyable || onEdit ? (
         <MessageActions
@@ -336,7 +342,7 @@ function MessageActions({
 
   return (
     <div
-      className={`flex gap-0.5 ${
+      className={`absolute top-full left-0 z-10 mt-0.5 flex gap-0.5 ${
         copied ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
       }`}
     >
@@ -428,7 +434,7 @@ function Thinking({ text, streaming = false }: { text: string; streaming?: boole
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="text-[13px] text-muted-foreground">
+    <div className="py-0.5 text-[13px] text-muted-foreground">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -462,21 +468,26 @@ function Thinking({ text, streaming = false }: { text: string; streaming?: boole
 /**
  * Consecutive tool calls, folded into one row of the transcript.
  *
- * A single call stays a compact line. A run of them collapses to a summary
- * so an exploration does not become a tower of identical cards.
+ * Thinking that sits between those calls stays inside the same run so an
+ * exploration does not become a tower of one-line cards. A single call with
+ * no thinking stays a compact line.
  */
 const ToolRun = memo(function ToolRun({
-  tools,
+  entries,
   settled = false,
 }: {
-  tools: ToolBlock[]
+  entries: RunEntry[]
   settled?: boolean
 }) {
-  if (tools.length === 1) return <Tool block={tools[0]!} settled={settled} />
-  return <ToolGroup tools={tools} settled={settled} />
+  const tools = entries.filter((entry): entry is ToolBlock => entry.kind === 'tool')
+  if (tools.length === 1 && entries.length === 1) {
+    return <Tool block={tools[0]!} settled={settled} />
+  }
+  return <ToolGroup entries={entries} settled={settled} />
 })
 
-function ToolGroup({ tools, settled = false }: { tools: ToolBlock[]; settled?: boolean }) {
+function ToolGroup({ entries, settled = false }: { entries: RunEntry[]; settled?: boolean }) {
+  const tools = entries.filter((entry): entry is ToolBlock => entry.kind === 'tool')
   const live = !settled && tools.some((tool) => tool.result === undefined)
   const failed = tools.some((tool) => tool.result?.isError === true)
   const [userOpen, setUserOpen] = useState<boolean | null>(null)
@@ -491,7 +502,7 @@ function ToolGroup({ tools, settled = false }: { tools: ToolBlock[]; settled?: b
         onClick={() => setUserOpen((value) => !(value ?? live))}
         aria-expanded={open}
         aria-label={open ? `Hide ${label}` : `Show ${label}`}
-        className="flex w-full min-w-0 items-center gap-1.5 text-left hover:text-foreground"
+        className="flex w-full min-w-0 items-center gap-1.5 py-0.5 text-left hover:text-foreground"
       >
         {open ? (
           <ChevronDownIcon size={13} className="flex-none text-muted-foreground" />
@@ -513,9 +524,17 @@ function ToolGroup({ tools, settled = false }: { tools: ToolBlock[]; settled?: b
 
       {open && (
         <div className="mt-1 flex flex-col">
-          {tools.map((tool) => (
-            <Tool key={tool.id} block={tool} settled={settled} />
-          ))}
+          {entries.map((entry) =>
+            entry.kind === 'tool' ? (
+              <Tool key={entry.id} block={entry} settled={settled} />
+            ) : (
+              <Thinking
+                key={entry.id}
+                text={entry.text}
+                streaming={!settled && entry === entries.at(-1)}
+              />
+            ),
+          )}
         </div>
       )}
     </div>
@@ -693,27 +712,46 @@ function Working({ blocks }: { blocks: Block[] }) {
 }
 
 /**
- * Consecutive tools become one transcript row; everything else stays itself.
+ * Consecutive tools become one transcript row. Thinking between those tools
+ * stays inside the same run — otherwise every "thought for a moment" splits
+ * an exploration into a stack of one-line cards.
  *
  * Presentation only — the protocol reducer still stores one block per call.
  */
 function groupTranscriptItems(blocks: Block[]): TranscriptItem[] {
   const items: TranscriptItem[] = []
+  let run: Extract<TranscriptItem, { kind: 'run' }> | undefined
+
+  const flushRun = () => {
+    if (!run) return
+    const hasTool = run.entries.some((entry) => entry.kind === 'tool')
+    if (hasTool) items.push(run)
+    else {
+      for (const entry of run.entries) {
+        if (entry.kind === 'thinking') items.push({ kind: 'block', block: entry })
+      }
+    }
+    run = undefined
+  }
+
   for (const block of blocks) {
-    if (block.kind !== 'tool') {
-      items.push({ kind: 'block', block })
+    if (block.kind === 'tool' || block.kind === 'thinking') {
+      if (!run) run = { kind: 'run', id: block.id, entries: [] }
+      run.entries.push(block)
       continue
     }
-    const last = items.at(-1)
-    if (last?.kind === 'tools') last.tools.push(block)
-    else items.push({ kind: 'tools', id: block.id, tools: [block] })
+    flushRun()
+    items.push({ kind: 'block', block })
   }
+  flushRun()
   return items
 }
 
+type RunEntry = ToolBlock | Extract<Block, { kind: 'thinking' }>
+
 type TranscriptItem =
   | { kind: 'block'; block: Exclude<Block, ToolBlock> }
-  | { kind: 'tools'; id: string; tools: ToolBlock[] }
+  | { kind: 'run'; id: string; entries: RunEntry[] }
 
 /** Short verb for a tool row. The original name stays on the aria-label. */
 function toolVerb(name: string): string {
@@ -731,6 +769,13 @@ function groupLabel(tools: ToolBlock[], settled: boolean): string {
   if (running) {
     const verb = toolVerb(running.name)
     const target = summarize(running.input)
+    return target ? `${verb} ${target}` : verb
+  }
+
+  if (tools.length === 1) {
+    const tool = tools[0]!
+    const verb = toolVerb(tool.name)
+    const target = summarize(tool.input)
     return target ? `${verb} ${target}` : verb
   }
 
