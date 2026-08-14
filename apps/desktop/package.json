@@ -6,7 +6,7 @@
   "description": "Dukebox desktop app",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && node ../../scripts/rewrite-dist-aliases.mjs ../../packages/protocol/dist && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty",
     "test": "vitest run",
