@@ -15,8 +15,10 @@ import {
   AVAILABLE_AGENTS,
   AVAILABLE_MODELS,
   AVAILABLE_PERMISSION_MODES,
+  DEFAULT_GROK_BUILD_MODEL,
   DEFAULT_MODEL,
   DEFAULT_PERMISSION_MODE,
+  GROK_BUILD_MODELS,
   agentHasPermissionModes,
   availablePermissionModes,
   cyclePermissionMode,
@@ -348,16 +350,15 @@ export function NewSession({
   }, [client])
 
   const usingOpenCode = agentId === 'opencode'
+  const usingGrokBuild = agentId === 'grok-build'
   const selectedProvider = opencodeProviders.find((provider) => provider.id === providerId)
-  const models = useMemo(
-    () =>
-      usingOpenCode
-        ? selectedProvider
-          ? modelsForProvider(selectedProvider)
-          : []
-        : AVAILABLE_MODELS,
-    [usingOpenCode, selectedProvider],
-  )
+  const models = useMemo(() => {
+    if (usingOpenCode) {
+      return selectedProvider ? modelsForProvider(selectedProvider) : []
+    }
+    if (usingGrokBuild) return GROK_BUILD_MODELS
+    return AVAILABLE_MODELS
+  }, [usingOpenCode, usingGrokBuild, selectedProvider])
 
   useEffect(() => {
     if (!usingOpenCode) return
@@ -392,6 +393,9 @@ export function NewSession({
         const firstModel = modelsForProvider(firstProvider)[0]?.id
         if (firstModel) setModel(firstModel)
       }
+    } else if (next === 'grok-build') {
+      setProviderId('')
+      setModel(DEFAULT_GROK_BUILD_MODEL)
     } else {
       setProviderId('')
       setModel(DEFAULT_MODEL)
@@ -905,9 +909,16 @@ function initialAgentId(
 }
 
 function initialModel(last: LastNewSession | null, agentId: string): string {
-  if (!last?.model) return agentId === 'opencode' ? '' : DEFAULT_MODEL
-  if (agentId === 'opencode') return last.model
-  if (AVAILABLE_MODELS.some((candidate) => candidate.id === last.model)) return last.model
+  if (agentId === 'opencode') return last?.model ?? ''
+  if (agentId === 'grok-build') {
+    if (last?.model && GROK_BUILD_MODELS.some((candidate) => candidate.id === last.model)) {
+      return last.model
+    }
+    return DEFAULT_GROK_BUILD_MODEL
+  }
+  if (last?.model && AVAILABLE_MODELS.some((candidate) => candidate.id === last.model)) {
+    return last.model
+  }
   return DEFAULT_MODEL
 }
 

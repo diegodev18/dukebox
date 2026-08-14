@@ -9,6 +9,7 @@ const LABELS: Record<string, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex',
   opencode: 'OpenCode',
+  'grok-build': 'Grok Build',
   cursor: 'Cursor CLI',
   'cursor-cli': 'Cursor CLI',
 }
@@ -17,6 +18,7 @@ const LABELS: Record<string, string> = {
 export const AVAILABLE_AGENTS = [
   { id: 'claude-code', label: 'Claude Code' },
   { id: 'opencode', label: 'OpenCode' },
+  { id: 'grok-build', label: 'Grok Build' },
 ] as const
 
 export type AvailableAgentId = (typeof AVAILABLE_AGENTS)[number]['id']
@@ -38,6 +40,21 @@ export type AvailableModelId = (typeof AVAILABLE_MODELS)[number]['id']
 
 export const DEFAULT_MODEL: AvailableModelId = 'claude-sonnet-5'
 
+/**
+ * Grok Build models for the New Session picker.
+ *
+ * These map to `grok -m <id>` and are pinned so the session runs on exactly
+ * the model the caller picked.
+ */
+export const GROK_BUILD_MODELS = [
+  { id: 'grok-build', label: 'Grok Build' },
+  { id: 'grok-4.6', label: 'Grok 4.6' },
+] as const
+
+export type GrokBuildModelId = (typeof GROK_BUILD_MODELS)[number]['id']
+
+export const DEFAULT_GROK_BUILD_MODEL: GrokBuildModelId = 'grok-build'
+
 export const AVAILABLE_PERMISSION_MODES = [
   { id: 'plan', label: 'Plan' },
   { id: 'auto', label: 'Auto' },
@@ -58,6 +75,7 @@ export type AvailablePermissionModeId = (typeof AVAILABLE_PERMISSION_MODES)[numb
 export const PERMISSION_MODES_BY_AGENT: Record<string, readonly AvailablePermissionModeId[]> = {
   'claude-code': ['plan', 'auto', 'acceptEdits', 'bypass'],
   opencode: ['plan', 'bypass'],
+  'grok-build': ['plan', 'bypass'],
 }
 
 export const DEFAULT_PERMISSION_MODE: AvailablePermissionModeId = 'bypass'
@@ -82,12 +100,15 @@ export function cyclePermissionMode(mode: string, agentId?: string): AvailablePe
 }
 
 export function agentHasPermissionModes(agentId: string): boolean {
-  return agentId === 'claude-code' || agentId === 'opencode'
+  return agentId === 'claude-code' || agentId === 'opencode' || agentId === 'grok-build'
 }
 
 /** Human name for a model id, when one is known. */
 export function modelLabel(modelId: string): string | undefined {
-  return AVAILABLE_MODELS.find((model) => model.id === modelId)?.label
+  return (
+    AVAILABLE_MODELS.find((model) => model.id === modelId)?.label ??
+    GROK_BUILD_MODELS.find((model) => model.id === modelId)?.label
+  )
 }
 
 interface Props {
@@ -125,6 +146,8 @@ function iconFor(agentId: string) {
       return <CodexLogo />
     case 'opencode':
       return <OpenCodeLogo />
+    case 'grok-build':
+      return <GrokBuildLogo />
     case 'cursor':
     case 'cursor-cli':
       return <CursorLogo />
@@ -177,6 +200,14 @@ function OpenCodeLogo() {
         d="M384 416H128V96H384V416ZM320 160H192V352H320V160Z"
         fill="white"
       />
+    </svg>
+  )
+}
+
+function GrokBuildLogo() {
+  return (
+    <svg className="size-full" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M3.2 3.2 10.4 12 3.2 20.8h4.3L12 14.9l4.5 5.9h4.3L13.6 12l7.2-8.8h-4.3L12 9.1 7.5 3.2H3.2z" />
     </svg>
   )
 }

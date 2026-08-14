@@ -2,7 +2,7 @@ import { environments, projects, sessions } from '@dukebox/db'
 import { randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { AGENT_CREDENTIAL_SECRET, SecretStore } from '../secrets/store.js'
+import { AGENT_CREDENTIAL_SECRET, GROK_CREDENTIAL_SECRET, SecretStore } from '../secrets/store.js'
 import { OPENCODE_PROVIDERS_SECRET } from '../opencode/providers.js'
 import { issuePairingCode, redeemPairingCode } from '../auth/pairing.js'
 import { EventBus } from '../events/bus.js'
@@ -162,6 +162,7 @@ describe('authentication', () => {
       '/api/sessions/00000000-0000-4000-8000-000000000000',
       '/api/opencode/providers',
       '/api/opencode/catalog',
+      '/api/grok-credentials',
     ]
 
     for (const path of paths) {
@@ -1027,6 +1028,100 @@ describe('agent credentials', () => {
         authorization: `Bearer ${member.deviceToken}`,
       },
       body: JSON.stringify({ token: 'sk-ant-member' }),
+    })
+    expect(put.status).toBe(403)
+  })
+})
+
+describe('Grok Build credentials', () => {
+  const TOKEN = 'xai-a-real-looking-key'
+
+  it('reports none configured on a fresh server', async () => {
+    expect(await (await request('/api/grok-credentials')).json()).toEqual({ configured: false })
+  })
+
+  it('stores a token', async () => {
+    const response = await request('/api/grok-credentials', {
+      method: 'PUT',
+      body: JSON.stringify({ token: TOKEN }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(await secretStore.get(GROK_CREDENTIAL_SECRET)).toBe(TOKEN)
+  })
+
+  it('never returns the token it stored', async () => {
+    await request('/api/grok-credentials', {
+      method: 'PUT',
+      body: JSON.stringify({ token: TOKEN }),
+    })
+
+    const body = await (await request('/api/grok-credentials')).text()
+
+    expect(body).not.toContain(TOKEN)
+    expect(JSON.parse(body)).toEqual({ configured: true })
+  })
+
+  it('replaces an existing token', async () => {
+    const put = (token: string) =>
+      request('/api/grok-credentials', { method: 'PUT', body: JSON.stringify({ token }) })
+
+    await put('first')
+    await put('second')
+
+    expect(await secretStore.get(GROK_CREDENTIAL_SECRET)).toBe('second')
+  })
+
+  it('removes a token', async () => {
+    await request('/api/grok-credentials', {
+      method: 'PUT',
+      body: JSON.stringify({ token: TOKEN }),
+    })
+
+    expect((await request('/api/grok-credentials', { method: 'DELETE' })).status).toBe(200)
+    expect(await secretStore.has(GROK_CREDENTIAL_SECRET)).toBe(false)
+  })
+
+  it('returns 404 when removing one that was never set', async () => {
+    expect((await request('/api/grok-credentials', { method: 'DELETE' })).status).toBe(404)
+  })
+
+  it.each([
+    ['an empty token', { token: '' }],
+    ['a missing token', {}],
+  ])('rejects %s', async (_label, body) => {
+    const response = await request('/api/grok-credentials', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+
+    expect(response.status).toBe(400)
+  })
+
+  it('requires a device token like every other route', async () => {
+    expect((await app.request('/api/grok-credentials')).status).toBe(401)
+  })
+
+  it('lets a member see whether credentials are set, but not change them', async () => {
+    const issued = await issuePairingCode(db, { host: 'localhost', port: 7777 })
+    const member = await redeemPairingCode(
+      db,
+      { code: issued.code, deviceName: 'Member', platform: 'linux' },
+      'dukebox-test',
+    )
+
+    const get = await app.request('/api/grok-credentials', {
+      headers: { authorization: `Bearer ${member.deviceToken}` },
+    })
+    expect(get.status).toBe(200)
+
+    const put = await app.request('/api/grok-credentials', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${member.deviceToken}`,
+      },
+      body: JSON.stringify({ token: 'xai-member' }),
     })
     expect(put.status).toBe(403)
   })

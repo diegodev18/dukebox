@@ -493,6 +493,7 @@ function AgentsSection({ client }: { client: DukeboxClient }) {
       </p>
 
       <AgentCredentials client={client} />
+      <GrokBuildCredentials client={client} />
       <OpenCodeProviders client={client} />
     </section>
   )
@@ -573,6 +574,115 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
           autoComplete="off"
           disabled={working}
           aria-label="Agent API token"
+          className="min-w-0 flex-1 rounded-[calc(var(--radius)*0.6)] border border-border-strong bg-background px-2.5 py-1.5 font-mono text-[13px] outline-none placeholder:text-muted-foreground disabled:opacity-60"
+        />
+        <button
+          type="button"
+          disabled={working || token.trim() === ''}
+          onClick={() => void saveToken()}
+          className="flex-none rounded-[calc(var(--radius)*0.6)] bg-foreground px-3.5 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
+        >
+          Save
+        </button>
+        {configured && (
+          <button
+            type="button"
+            disabled={working}
+            onClick={() => void clearToken()}
+            className="flex-none rounded-[calc(var(--radius)*0.6)] border border-border px-3.5 py-1.5 text-[12.5px] font-medium hover:bg-muted disabled:opacity-40"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      <div className="mt-2 flex items-center gap-2 text-[12px]">
+        <StatusChip configured={configured} />
+        {message && (
+          <span className={message.tone === 'ok' ? 'text-muted-foreground' : 'text-destructive'}>
+            {message.text}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
+  const [configured, setConfigured] = useState<boolean | null>(null)
+  const [token, setToken] = useState('')
+  const [working, setWorking] = useState(false)
+  const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    client
+      .grokCredentialsConfigured()
+      .then((found) => {
+        if (!cancelled) setConfigured(found)
+      })
+      .catch(() => {
+        if (!cancelled) setConfigured(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [client])
+
+  const saveToken = async () => {
+    setWorking(true)
+    setMessage(null)
+    try {
+      await client.setGrokCredentials(token.trim())
+      setToken('')
+      setConfigured(true)
+      setMessage({ tone: 'ok', text: 'Key saved.' })
+    } catch (error) {
+      setMessage({
+        tone: 'error',
+        text: error instanceof Error ? error.message : 'Could not save the key.',
+      })
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const clearToken = async () => {
+    setWorking(true)
+    setMessage(null)
+    try {
+      await client.clearGrokCredentials()
+      setConfigured(false)
+      setMessage({ tone: 'ok', text: 'Key removed.' })
+    } catch (error) {
+      setMessage({
+        tone: 'error',
+        text: error instanceof Error ? error.message : 'Could not remove the key.',
+      })
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  return (
+    <div className="mt-5">
+      <h3 className="text-[12px] font-semibold tracking-wide text-muted-foreground uppercase">
+        Grok Build
+      </h3>
+      <p className="mt-1 text-[12.5px] text-muted-foreground">
+        API key from console.x.ai. Injected as <code>XAI_API_KEY</code> into Grok Build sessions.
+      </p>
+
+      <div className="mt-3 flex items-center gap-2">
+        <input
+          type="password"
+          value={token}
+          onChange={(event) => setToken(event.target.value)}
+          placeholder={configured ? 'Replace xAI key…' : 'xai-…'}
+          spellCheck={false}
+          autoComplete="off"
+          disabled={working}
+          aria-label="Grok Build API key"
           className="min-w-0 flex-1 rounded-[calc(var(--radius)*0.6)] border border-border-strong bg-background px-2.5 py-1.5 font-mono text-[13px] outline-none placeholder:text-muted-foreground disabled:opacity-60"
         />
         <button

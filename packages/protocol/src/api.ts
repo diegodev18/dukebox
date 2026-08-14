@@ -228,8 +228,8 @@ export const createSessionRequest = z
      * How the agent is allowed to act.
      *
      * Passed through to adapters that expose permission modes (Claude Code,
-     * OpenCode). Ignored by the rest. Absent means the agent's default —
-     * bypass for Claude Code and OpenCode. `environment_setup` always starts
+     * OpenCode, Grok Build). Ignored by the rest. Absent means the agent's
+     * default — bypass for those three. `environment_setup` always starts
      * in bypass, even when this field is set.
      */
     permissionMode: permissionMode.optional(),
