@@ -204,6 +204,8 @@ export const sessionSummary = z.object({
   /** Branch the agent works on, e.g. `duke/3f9a2b`. */
   branch: z.string(),
   baseBranch: z.string(),
+  /** The commit the session's work starts from, or null before the sandbox is provisioned. */
+  baseCommit: z.string().nullable().default(null),
   changedFileCount: z.number().int().nonnegative(),
   createdAt: z.number().int().positive(),
   updatedAt: z.number().int().positive(),

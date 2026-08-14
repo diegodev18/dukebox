@@ -158,6 +158,11 @@ function SessionInfoDialog({
           <Row label="Base">
             <span className="font-mono text-[11.5px] break-all">{session.baseBranch}</span>
           </Row>
+          {session.baseCommit && (
+            <Row label="Base commit">
+              <span className="font-mono text-[11.5px] break-all">{session.baseCommit}</span>
+            </Row>
+          )}
           <Row label="Agent">{session.agentId}</Row>
           <Row label="Started">{startedAt(session.createdAt)}</Row>
         </dl>
