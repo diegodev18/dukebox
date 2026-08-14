@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defaultSettings, type Settings } from '@/lib/settings'
 import type { UseUpdate } from '@/lib/useUpdate'
 import { Settings as SettingsScreen, SettingsNav, type SettingsCategory } from '@/screens/Settings'
@@ -181,6 +181,10 @@ function renderSettings(
 async function openCategory(label: string) {
   await userEvent.click(screen.getByRole('button', { name: label }))
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('Settings', () => {
   it('shows every category and lands on Account first', () => {
@@ -373,6 +377,12 @@ describe('Settings', () => {
   })
 
   it('asks before forgetting a server and does not disconnect inactive ones', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('network error')
+      }),
+    )
     vi.mocked(listConnections).mockResolvedValue([
       server,
       { ...server, deviceId: 'device-2', serverName: 'debian-02' },
@@ -395,6 +405,12 @@ describe('Settings', () => {
   })
 
   it('disconnects when the last remaining server is forgotten', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('network error')
+      }),
+    )
     vi.mocked(listConnections).mockResolvedValue([server] as never)
     vi.mocked(removeConnection).mockResolvedValue(undefined)
     const { onDisconnected, onSwitchServer } = renderSettings()
@@ -405,12 +421,18 @@ describe('Settings', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Forget' }))
     await userEvent.click(screen.getByRole('button', { name: 'Forget server' }))
 
-    await waitFor(() => expect(removeConnection).toHaveBeenCalledWith('device-1'))
-    expect(onDisconnected).toHaveBeenCalled()
+    await waitFor(() => expect(onDisconnected).toHaveBeenCalled())
+    expect(removeConnection).toHaveBeenCalledWith('device-1')
     expect(onSwitchServer).not.toHaveBeenCalled()
   })
 
   it('switches to the remaining server when the active one is forgotten', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('network error')
+      }),
+    )
     const second = { ...server, deviceId: 'device-2', serverName: 'debian-02' }
     vi.mocked(listConnections).mockResolvedValue([server, second] as never)
     vi.mocked(removeConnection).mockResolvedValue(undefined)
@@ -423,9 +445,15 @@ describe('Settings', () => {
     await userEvent.click(screen.getAllByRole('button', { name: 'Forget' })[0])
     await userEvent.click(screen.getByRole('button', { name: 'Forget server' }))
 
-    await waitFor(() => expect(removeConnection).toHaveBeenCalledWith('device-1'))
+    // Switch happens after removeConnection and setActiveConnection; wait for
+    // the last step or CI can observe the first await and miss the rest.
+    await waitFor(() =>
+      expect(onSwitchServer).toHaveBeenCalledWith(
+        expect.objectContaining({ deviceId: 'device-2' }),
+      ),
+    )
+    expect(removeConnection).toHaveBeenCalledWith('device-1')
     expect(setActiveConnection).toHaveBeenCalledWith('device-2')
-    expect(onSwitchServer).toHaveBeenCalledWith(expect.objectContaining({ deviceId: 'device-2' }))
     expect(onDisconnected).not.toHaveBeenCalled()
   })
 
