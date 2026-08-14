@@ -786,6 +786,41 @@ describe('NewSession file attachments', () => {
     await waitFor(() => expect(client.startSession).toHaveBeenCalled())
     expect(client.startSession.mock.calls[0][0]).not.toHaveProperty('files')
   })
+
+  it('attaches files dropped on the prompt and sends them with the session', async () => {
+    const client = makeClient()
+    renderScreen(client)
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Environment' })).toHaveTextContent('Default'),
+    )
+
+    fireEvent.drop(promptComposer(), {
+      dataTransfer: {
+        types: ['Files'],
+        files: [new File(['hello'], 'notes.txt', { type: 'text/plain' })],
+      },
+    })
+
+    expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText(/what should it do/i), 'read this')
+    await userEvent.click(screen.getByRole('button', { name: /start session/i }))
+
+    await waitFor(() =>
+      expect(client.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: 'read this',
+          files: [
+            expect.objectContaining({
+              name: 'notes.txt',
+              data: expect.stringMatching(/^data:text\/plain;base64,/),
+            }),
+          ],
+        }),
+      ),
+    )
+  })
 })
 
 function promptComposer() {
