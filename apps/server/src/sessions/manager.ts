@@ -35,6 +35,7 @@ import {
   type EnvironmentProposal,
   type EnvironmentSetupVerification,
   type EnvelopedEvent,
+  partitionAttachments,
 } from '@dukebox/protocol'
 import {
   CONTAINER_SOCKET_DIR,
@@ -605,7 +606,7 @@ export class SessionManager {
     // so a crash mid-provision still has the text needed to retry.
     await adapter.send({
       text: prompt,
-      ...(files ? { files } : {}),
+      ...partitionAttachments(files),
     })
   }
 
@@ -1522,8 +1523,7 @@ export class SessionManager {
 
     await running.adapter.send({
       text: agentText,
-      ...(images ? { images } : {}),
-      ...(files ? { files } : {}),
+      ...partitionAttachments(files, images),
     })
   }
 

@@ -283,7 +283,15 @@ export class SessionStream {
    */
   private send(command: ClientCommand): void {
     if (!this.isOpen()) return
-    this.socket?.send(JSON.stringify(command))
+    try {
+      this.socket?.send(JSON.stringify(command))
+    } catch (error) {
+      // A prompt with several screenshots can exceed what the webview will
+      // queue. Surface it rather than dropping the socket with no explanation.
+      this.handlers.onFailure?.(
+        error instanceof Error ? error.message : 'could not send that message',
+      )
+    }
   }
 
   private parse(data: unknown): ServerMessage | null {

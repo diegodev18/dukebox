@@ -33,8 +33,10 @@ export function parseDataUri(data: string): { mime: string; payload: string } | 
  * Write one uploaded file into the sandbox at `/tmp/imgs/<name>`.
  *
  * Returns the container path, for the agent-facing flags (`--file`, prompt
- * references) to point at. The payload travels as exec env so it never has to
- * be shell-quoted.
+ * references) to point at. The payload travels on exec stdin rather than as
+ * an environment variable: Linux caps a single env string at ~128 KiB
+ * (`MAX_ARG_STRLEN`), which a real screenshot exceeds, and that used to fail
+ * the session during staging.
  *
  * `options.extension` appends a media-type-derived suffix, so an unnamed image
  * can keep its file type (`/tmp/imgs/image-0.png`) for agents that sniff.
@@ -47,10 +49,14 @@ export async function stageUpload(
 ): Promise<string> {
   const base = sanitizeUploadName(name)
   const path = `${UPLOADS_DIR}/${base}${options.extension ? `.${options.extension}` : ''}`
-  await container.exec(
-    ['sh', '-c', `mkdir -p ${UPLOADS_DIR} && printf '%s' "$DUKEBOX_FILE" | base64 -d > ${path}`],
-    { env: { DUKEBOX_FILE: data } },
+  const result = await container.exec(
+    ['sh', '-c', `mkdir -p ${UPLOADS_DIR} && base64 -d > ${path}`],
+    { stdin: data },
   )
+  if (result.exitCode !== 0) {
+    const detail = result.stderr.trim() || `exit ${result.exitCode}`
+    throw new Error(`failed to stage ${base}: ${detail}`)
+  }
   return path
 }
 
