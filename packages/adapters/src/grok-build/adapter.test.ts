@@ -2,7 +2,13 @@ import type { AgentEvent } from '@dukebox/protocol'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionContext } from '@/types'
-import { buildGrokRunArgs, GrokBuildAdapter } from '@/grok-build/adapter'
+import {
+  buildGrokRunArgs,
+  grokBuildContainerEnv,
+  GrokBuildAdapter,
+  GROK_AUTH_ENV,
+  GROK_HOME_DIR,
+} from '@/grok-build/adapter'
 
 /**
  * These cover the parts that do not need a running agent: how the process is
@@ -64,6 +70,33 @@ describe('buildGrokRunArgs', () => {
   it('passes --rules when the session has instructions', () => {
     const args = buildGrokRunArgs({ text: 'hello', instructions: 'Always typecheck.' })
     expect(args[args.indexOf('--rules') + 1]).toBe('Always typecheck.')
+  })
+})
+
+describe('grokBuildContainerEnv', () => {
+  it('sets HOME and GROK_HOME so grok can find auth.json without a login shell', () => {
+    const env = grokBuildContainerEnv({})
+
+    expect(env.HOME).toBe('/home/node')
+    expect(env.GROK_HOME).toBe(GROK_HOME_DIR)
+    expect(env.GROK_DISABLE_AUTOUPDATER).toBe('1')
+  })
+
+  it('injects a subscription session and an API key when both exist', () => {
+    const env = grokBuildContainerEnv({
+      apiKey: 'xai-test',
+      authJson: '{"https://auth.x.ai":{"key":"sess"}}',
+    })
+
+    expect(env.XAI_API_KEY).toBe('xai-test')
+    expect(env[GROK_AUTH_ENV]).toBe('{"https://auth.x.ai":{"key":"sess"}}')
+  })
+
+  it('omits credentials that were never set', () => {
+    const env = grokBuildContainerEnv({ apiKey: null, authJson: null })
+
+    expect(env.XAI_API_KEY).toBeUndefined()
+    expect(env[GROK_AUTH_ENV]).toBeUndefined()
   })
 })
 
@@ -230,7 +263,8 @@ describe('GrokBuildAdapter', () => {
     expect(exec).toHaveBeenCalled()
     const first = exec.mock.calls[0]?.[0] as string[]
     expect(first.join(' ')).toContain('DUKEBOX_GROK_AUTH_JSON')
-    expect(first.join(' ')).toContain('/home/node/.grok/auth.json')
+    expect(first.join(' ')).toContain('GROK_HOME')
+    expect(first.join(' ')).toContain(GROK_HOME_DIR)
   })
 
   it('does not attach stdin', async () => {
