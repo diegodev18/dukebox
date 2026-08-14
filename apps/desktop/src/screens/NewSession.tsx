@@ -25,6 +25,7 @@ import {
 import { readFile, type ComposerFile } from '@/components/Composer'
 import { modelsForProvider } from '@/components/OpenCodeProviders'
 import { AttachIcon, CloseIcon, FileIcon, SendIcon } from '@/components/icons'
+import { useFileDrop } from '@/lib/useFileDrop'
 import {
   AgentPicker,
   BASE_IMAGE_VALUE,
@@ -415,18 +416,21 @@ export function NewSession({
   // Selected files are read once, immediately, and held as base64 data URIs so
   // the start request is a single message. Re-selecting the same file works
   // because the input's value is reset after every pick.
-  const handleFiles = async (event: ChangeEvent<HTMLInputElement>) => {
-    const picked = Array.from(event.target.files ?? [])
-    event.target.value = ''
+  const attachFiles = (picked: File[]) => {
     if (picked.length === 0 || busy) return
 
-    try {
-      const read = await Promise.all(picked.map(readFile))
-      setFiles((current) => [...current, ...read])
-    } catch {
-      // A file that could not be read is dropped rather than blocking the
-      // ones that could.
-    }
+    void Promise.all(picked.map(readFile))
+      .then((read) => setFiles((current) => [...current, ...read]))
+      .catch(() => {
+        // A file that could not be read is dropped rather than blocking the
+        // ones that could.
+      })
+  }
+
+  const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    attachFiles(picked)
   }
 
   const removeFile = (index: number) => {
@@ -528,6 +532,10 @@ export function NewSession({
   }
 
   const busy = status.kind === 'starting' || status.kind === 'loading' || Boolean(disabled)
+  const { dragging, onDragEnter, onDragOver, onDragLeave, onDrop } = useFileDrop({
+    disabled: busy,
+    onFiles: attachFiles,
+  })
   const options = mergeOptions(projects, repositories)
   const hasModel = models.length > 0 && models.some((candidate) => candidate.id === model)
 
@@ -647,7 +655,13 @@ export function NewSession({
             </div>
           </div>
         ) : (
-          <div className="rounded-[calc(var(--radius)*1.1)] border border-border bg-surface focus-within:border-muted-foreground/40">
+          <div
+            className={`relative rounded-[calc(var(--radius)*1.1)] border bg-surface transition-[border-color,box-shadow] ${dragging ? 'border-primary ring-2 ring-primary/20' : 'border-border focus-within:border-muted-foreground/40'}`}
+            onDragEnter={onDragEnter}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+          >
             <textarea
               ref={field}
               value={prompt}
@@ -740,6 +754,14 @@ export function NewSession({
                 )}
               </button>
             </div>
+            {dragging && (
+              <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-[calc(var(--radius)*1.1)] border-2 border-dashed border-primary/60 bg-background/85">
+                <p className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+                  <AttachIcon size={16} />
+                  Drop to attach
+                </p>
+              </div>
+            )}
             <input ref={picker} type="file" multiple className="hidden" onChange={handleFiles} />
           </div>
         )}

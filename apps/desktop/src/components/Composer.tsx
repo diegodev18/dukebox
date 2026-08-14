@@ -3,6 +3,7 @@ import type { PermissionMode } from '@dukebox/protocol'
 import { availablePermissionModes, cyclePermissionMode } from '@/components/AgentIcon'
 import { PermissionModePicker } from '@/components/RepoBranchPickers'
 import { AttachIcon, CloseIcon, FileIcon } from '@/components/icons'
+import { useFileDrop } from '@/lib/useFileDrop'
 
 /**
  * Where a person talks to the agent.
@@ -12,10 +13,11 @@ import { AttachIcon, CloseIcon, FileIcon } from '@/components/icons'
  * control stops it, because a button that changes meaning in place is easier to
  * find than a second one that is disabled most of the time.
  *
- * Files are attached with the paperclip and travel with the prompt as base64
- * data URIs, which the server stages into the sandbox before the agent sees
- * them. The chips above the field are the draft's attachments: they clear on
- * send and come back with the text when a send is rejected.
+ * Files are attached with the paperclip or by dropping them on the box, and
+ * travel with the prompt as base64 data URIs, which the server stages into the
+ * sandbox before the agent sees them. The chips above the field are the
+ * draft's attachments: they clear on send and come back with the text when a
+ * send is rejected.
  */
 
 /** A file attached to a prompt, as the protocol wants it: base64 data URI. */
@@ -107,19 +109,27 @@ export const Composer = memo(function Composer({
   // Selected files are read once, immediately, and held as base64 data URIs so
   // the send is a single message. Re-selecting the same file works because the
   // input's value is reset after every pick.
-  const handleFiles = async (event: ChangeEvent<HTMLInputElement>) => {
-    const picked = Array.from(event.target.files ?? [])
-    event.target.value = ''
+  const attachFiles = (picked: File[]) => {
     if (picked.length === 0 || disabled) return
 
-    try {
-      const read = await Promise.all(picked.map(readFile))
-      setFiles((current) => [...current, ...read])
-    } catch {
-      // A file that could not be read is dropped rather than blocking the
-      // ones that could.
-    }
+    void Promise.all(picked.map(readFile))
+      .then((read) => setFiles((current) => [...current, ...read]))
+      .catch(() => {
+        // A file that could not be read is dropped rather than blocking the
+        // ones that could.
+      })
   }
+
+  const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    attachFiles(picked)
+  }
+
+  const { dragging, onDragEnter, onDragOver, onDragLeave, onDrop } = useFileDrop({
+    disabled,
+    onFiles: attachFiles,
+  })
 
   const removeFile = (index: number) => {
     setFiles((current) => current.filter((_, i) => i !== index))
@@ -127,7 +137,13 @@ export const Composer = memo(function Composer({
 
   return (
     <div className="shrink-0 px-6 pb-5">
-      <div className="measure rounded-[var(--radius)] border border-border bg-surface focus-within:border-muted-foreground/40">
+      <div
+        className={`measure relative rounded-[var(--radius)] border bg-surface transition-[border-color,box-shadow] ${dragging ? 'border-primary ring-2 ring-primary/20' : 'border-border focus-within:border-muted-foreground/40'}`}
+        onDragEnter={onDragEnter}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
         <textarea
           ref={field}
           value={text}
@@ -232,6 +248,15 @@ export const Composer = memo(function Composer({
             </button>
           )}
         </div>
+
+        {dragging && (
+          <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-[var(--radius)] border-2 border-dashed border-primary/60 bg-background/85">
+            <p className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+              <AttachIcon size={16} />
+              Drop to attach
+            </p>
+          </div>
+        )}
       </div>
       <input ref={picker} type="file" multiple className="hidden" onChange={handleFiles} />
       {error && (
