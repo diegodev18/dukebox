@@ -2,13 +2,16 @@ import type { Block } from '@dukebox/protocol'
 import type { OrbState } from 'thinking-orbs'
 
 /**
- * Map a tool name onto an orb verb.
+ * How a tool call should be labelled and iconed.
  *
- * Agent tool names vary by adapter (Claude Code, Codex, …), so this matches
- * substrings rather than an exact catalogue. The fallback is `weaving` —
- * something is happening, but we do not know which verb fits.
+ * Same buckets as the orb verbs for tools. Agent names vary by adapter
+ * (Claude Code, Codex, …), so this matches substrings rather than an exact
+ * catalogue. The fallback is `weaving` — something is happening, but we do
+ * not know which verb fits.
  */
-export function orbStateForTool(name: string): OrbState {
+export type ToolCategory = 'searching' | 'shaping' | 'working' | 'connecting' | 'weaving'
+
+export function toolCategory(name: string): ToolCategory {
   const key = name.toLowerCase()
 
   if (/search|grep|glob|read|find|list|ls|look/.test(key)) return 'searching'
@@ -17,6 +20,11 @@ export function orbStateForTool(name: string): OrbState {
   if (/fetch|http|web|url|browser|download/.test(key)) return 'connecting'
 
   return 'weaving'
+}
+
+/** Map a tool name onto an orb verb. */
+export function orbStateForTool(name: string): OrbState {
+  return toolCategory(name)
 }
 
 /**

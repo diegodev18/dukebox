@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { Block } from '@dukebox/protocol'
-import { activityBlock, mapOrbState, orbStateForTool } from '@/lib/orbState'
+import { activityBlock, mapOrbState, orbStateForTool, toolCategory } from '@/lib/orbState'
+
+describe('toolCategory', () => {
+  it('matches the orb verb for each tool name', () => {
+    expect(toolCategory('Grep')).toBe(orbStateForTool('Grep'))
+    expect(toolCategory('Edit')).toBe(orbStateForTool('Edit'))
+    expect(toolCategory('Bash')).toBe(orbStateForTool('Bash'))
+    expect(toolCategory('WebFetch')).toBe(orbStateForTool('WebFetch'))
+    expect(toolCategory('Todo')).toBe(orbStateForTool('Todo'))
+  })
+})
 
 describe('orbStateForTool', () => {
   it('maps search-like tools to searching', () => {

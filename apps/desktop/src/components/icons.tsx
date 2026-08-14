@@ -15,12 +15,14 @@ import {
   GitBranchIcon,
   GitCommitIcon,
   GitPullRequestIcon,
+  GlobeIcon as GlobeGlyph,
   PencilEdit01Icon,
   PlusSignIcon,
   Refresh01Icon,
   Search01Icon,
   ServerStack01Icon,
   Settings01Icon,
+  TerminalIcon as TerminalGlyph,
   Wrench01Icon,
 } from '@hugeicons/core-free-icons'
 
@@ -81,3 +83,7 @@ export const BookOpenIcon = icon(BookOpen01Icon)
 export const CopyIcon = icon(Copy01Icon)
 /** Load a user prompt into the composer to edit and resend. */
 export const EditIcon = icon(PencilEdit01Icon)
+/** Shell / command tools in the transcript. */
+export const TerminalIcon = icon(TerminalGlyph)
+/** Network / fetch tools in the transcript. */
+export const GlobeIcon = icon(GlobeGlyph)
