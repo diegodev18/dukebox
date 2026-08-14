@@ -1,5 +1,6 @@
 import {
   ClaudeCodeAdapter,
+  grokBuildContainerEnv,
   GrokBuildAdapter,
   OpenCodeAdapter,
   type AgentAdapter,
@@ -1491,14 +1492,12 @@ export class SessionManager {
         const providers = await loadOpencodeProviders(store)
         Object.assign(environment, buildOpencodeSessionEnv(providers, instructions))
       }
+    }
 
-      if (agentId === 'grok-build') {
-        const key = await store.get(GROK_CREDENTIAL_SECRET)
-        if (key) environment.XAI_API_KEY = key
-        const authJson = await store.get(GROK_AUTH_SECRET)
-        if (authJson) environment.DUKEBOX_GROK_AUTH_JSON = authJson
-        environment.GROK_DISABLE_AUTOUPDATER = '1'
-      }
+    if (agentId === 'grok-build') {
+      const key = store ? await store.get(GROK_CREDENTIAL_SECRET) : null
+      const authJson = store ? await store.get(GROK_AUTH_SECRET) : null
+      Object.assign(environment, grokBuildContainerEnv({ apiKey: key, authJson }))
     }
 
     Object.assign(environment, projectSecrets)

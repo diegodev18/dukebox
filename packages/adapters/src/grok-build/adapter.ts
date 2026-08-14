@@ -20,8 +20,33 @@ import { GrokBuildMapper } from '@/grok-build/mapper'
  * hijacked stream is unused.
  */
 
-export const GROK_AUTH_PATH = '/home/node/.grok/auth.json'
+export const GROK_HOME_DIR = '/home/node/.grok'
+export const GROK_AUTH_PATH = `${GROK_HOME_DIR}/auth.json`
 export const GROK_AUTH_ENV = 'DUKEBOX_GROK_AUTH_JSON'
+
+/**
+ * Environment Grok Build needs inside a session container.
+ *
+ * `grok` resolves its config dir from `$GROK_HOME` or `$HOME/.grok`. Docker
+ * exec is not a login shell and the node image does not set `HOME`, so
+ * without these the CLI prints "Not signed in" even when auth.json was
+ * written to `/home/node/.grok`.
+ */
+export function grokBuildContainerEnv(options: {
+  apiKey?: string | null
+  authJson?: string | null
+}): Record<string, string> {
+  const env: Record<string, string> = {
+    HOME: '/home/node',
+    GROK_HOME: GROK_HOME_DIR,
+    GROK_DISABLE_AUTOUPDATER: '1',
+  }
+
+  if (options.apiKey) env.XAI_API_KEY = options.apiKey
+  if (options.authJson) env[GROK_AUTH_ENV] = options.authJson
+
+  return env
+}
 
 /**
  * Write the subscription session into the container, if one was injected.
@@ -35,8 +60,9 @@ export async function materializeGrokHome(context: SessionContext): Promise<void
     'sh',
     '-c',
     [
-      'mkdir -p /home/node/.grok',
-      `if [ -n "$${GROK_AUTH_ENV}" ]; then printf '%s' "$${GROK_AUTH_ENV}" > ${GROK_AUTH_PATH}; chmod 600 ${GROK_AUTH_PATH}; fi`,
+      `home="\${GROK_HOME:-${GROK_HOME_DIR}}"`,
+      'mkdir -p "$home"',
+      `if [ -n "$${GROK_AUTH_ENV}" ]; then printf '%s' "$${GROK_AUTH_ENV}" > "$home/auth.json"; chmod 600 "$home/auth.json"; fi`,
     ].join('\n'),
   ])
 }
