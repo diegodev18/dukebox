@@ -199,7 +199,9 @@ export class GrokDeviceLogin {
 }
 
 function spawnGrokLogin(binary: string, home: string): LoginProcess {
-  return spawn(binary, ['login', '--device-auth', '--no-auto-update'], {
+  // 1.0.3's login subcommand only accepts --device-auth. --no-auto-update
+  // is a `grok -p` flag and makes login exit with "unexpected argument".
+  return spawn(binary, ['login', '--device-auth'], {
     env: { ...process.env, GROK_HOME: home, HOME: home },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
