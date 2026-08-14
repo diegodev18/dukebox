@@ -392,6 +392,48 @@ describe('NewSession permission mode', () => {
     )
   })
 
+  it('offers Grok Build and sends its model id', async () => {
+    const client = makeClient()
+    renderScreen(client)
+
+    const agents = await openPicker('Agent')
+    expect(within(agents).getByRole('option', { name: /Grok Build/ })).toBeInTheDocument()
+    await userEvent.click(within(agents).getByRole('option', { name: /Grok Build/ }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Model' })).toHaveTextContent('Grok Build'),
+    )
+
+    const models = await openPicker('Model')
+    expect(within(models).getByRole('option', { name: /Grok 4.6/ })).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText(/what should it do/i), 'do a thing')
+    await userEvent.click(screen.getByRole('button', { name: /start session/i }))
+
+    await waitFor(() =>
+      expect(client.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: 'grok-build',
+          model: 'grok-build',
+          permissionMode: 'bypass',
+        }),
+      ),
+    )
+  })
+
+  it('offers only Plan and Bypass for Grok Build', async () => {
+    renderScreen(makeClient())
+
+    const agents = await openPicker('Agent')
+    await userEvent.click(within(agents).getByRole('option', { name: /Grok Build/ }))
+
+    const modes = await openPicker('Permission mode')
+    expect(within(modes).getByRole('option', { name: 'Plan' })).toBeInTheDocument()
+    expect(within(modes).getByRole('option', { name: 'Bypass' })).toBeInTheDocument()
+    expect(within(modes).queryByRole('option', { name: 'Auto' })).not.toBeInTheDocument()
+    expect(within(modes).queryByRole('option', { name: 'Accept edits' })).not.toBeInTheDocument()
+  })
+
   it('offers only Plan and Bypass for OpenCode', async () => {
     const client = makeClient({
       listOpencodeProviders: vi.fn().mockResolvedValue([

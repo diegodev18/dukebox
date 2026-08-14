@@ -11,6 +11,7 @@ FROM node:22-bookworm-slim
 # Bumping this is a deliberate change with a fixture update alongside it.
 ARG CLAUDE_CODE_VERSION=2.1.220
 ARG OPENCODE_VERSION=1.18.16
+ARG GROK_BUILD_VERSION=1.0.3
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -39,6 +40,20 @@ RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
   && claude --version \
   && opencode --version
 
+# Direct binary, not install.sh: the installer writes to ~/.grok/bin and
+# does not put grok on PATH for a non-login exec.
+RUN arch="$(uname -m)" \
+  && case "$arch" in \
+    x86_64|amd64) grok_arch=x86_64 ;; \
+    aarch64|arm64) grok_arch=aarch64 ;; \
+    *) echo "unsupported arch: $arch" && exit 1 ;; \
+  esac \
+  && (curl -fsSL "https://x.ai/cli/grok-${GROK_BUILD_VERSION}-linux-${grok_arch}" -o /usr/local/bin/grok \
+    || curl -fsSL "https://storage.googleapis.com/grok-build-public-artifacts/cli/grok-${GROK_BUILD_VERSION}-linux-${grok_arch}" -o /usr/local/bin/grok) \
+  && chmod +x /usr/local/bin/grok \
+  && command -v grok \
+  && grok --version
+
 # The `node` user ships with the base image. Running as root would mean any
 # agent command could modify the image's own toolchain.
 USER node
@@ -58,6 +73,7 @@ LABEL org.opencontainers.image.title="Dukebox base (Node)"
 LABEL org.opencontainers.image.source="https://github.com/diegosanchezdev/dukebox"
 LABEL dev.dukebox.claude-code-version="${CLAUDE_CODE_VERSION}"
 LABEL dev.dukebox.opencode-version="${OPENCODE_VERSION}"
+LABEL dev.dukebox.grok-build-version="${GROK_BUILD_VERSION}"
 
 # Sessions exec into a running container. Without a foreground process the
 # container would exit immediately and there would be nothing to exec into.
