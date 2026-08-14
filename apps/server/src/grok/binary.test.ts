@@ -1,4 +1,4 @@
-import { chmod, mkdir, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -67,9 +67,14 @@ describe('ensureGrokBinary', () => {
   })
 
   it('falls back to tmp when the preferred directory cannot be created', async () => {
+    // A file as the parent makes mkdir fail immediately with ENOTDIR on every
+    // platform. `/proc/...` hangs under some Linux / Docker mounts.
+    const blocker = join(tmpdir(), `dukebox-not-a-dir-${Date.now()}`)
+    await writeFile(blocker, '')
+    await unlink(join(tmpdir(), 'dukebox-grok', 'grok-1.0.3')).catch(() => undefined)
     const download = vi.fn(async () => Buffer.from('#!/bin/sh\n'))
-    const path = await ensureGrokBinary({ dir: '/proc/dukebox-cannot-mkdir', download })
-    expect(path.startsWith(tmpdir())).toBe(true)
+    const path = await ensureGrokBinary({ dir: join(blocker, 'grok'), download })
+    expect(path.startsWith(join(tmpdir(), 'dukebox-grok'))).toBe(true)
     expect(download).toHaveBeenCalled()
   })
 })
