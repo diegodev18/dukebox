@@ -92,6 +92,15 @@ export interface Transcript {
   model?: string
   /** How the agent is allowed to act, once it has said so. */
   permissionMode?: PermissionMode
+  /**
+   * The plan the agent wrote while in plan mode.
+   *
+   * The assistant prose emitted while `permissionMode` is `plan`. Reset when
+   * plan mode starts, frozen once the mode leaves plan, so the Plan tab keeps
+   * showing what the user is about to build rather than the build's own
+   * commentary.
+   */
+  plan?: string
   /** True between the first event of a turn and its `done`. */
   running: boolean
   /** Highest seq folded in. What a reconnect resumes from. */
@@ -174,6 +183,9 @@ function fold(draft: Transcript, event: AgentEvent, seq: number): void {
     case 'assistant_text': {
       draft.running = true
       extend(draft, 'text', event.delta, seq)
+      if (draft.permissionMode === 'plan') {
+        draft.plan = (draft.plan ?? '') + event.delta
+      }
       return
     }
 
@@ -234,6 +246,9 @@ function fold(draft: Transcript, event: AgentEvent, seq: number): void {
 
     case 'permission_mode': {
       draft.permissionMode = event.mode
+      // A new plan starts from nothing; the previous one is already frozen in
+      // whatever the user read before switching back to plan mode.
+      if (event.mode === 'plan') draft.plan = ''
       return
     }
 

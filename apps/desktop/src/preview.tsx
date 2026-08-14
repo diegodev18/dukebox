@@ -725,6 +725,10 @@ function Preview() {
             onWidthChange={setWorkspaceWidth}
             widthMin={WORKSPACE_MIN}
             widthMax={workspaceMax}
+            plan={activeTranscript.plan ?? ''}
+            onBuildPlan={() => console.log('build')}
+            planRunning={view === 'coding'}
+            planReady={Boolean(activeTranscript.plan)}
             {...terminals}
             environmentReview={
               view === 'setup'

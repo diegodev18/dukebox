@@ -315,6 +315,48 @@ describe('local additions', () => {
   })
 })
 
+describe('plan capture', () => {
+  it('folds assistant text written in plan mode', () => {
+    const transcript = fold(
+      at(1, { type: 'permission_mode', mode: 'plan' }),
+      at(2, { type: 'assistant_text', delta: '# Plan\n\n1. Read ' }),
+      at(3, { type: 'assistant_text', delta: 'the file' }),
+    )
+
+    expect(transcript.plan).toBe('# Plan\n\n1. Read the file')
+  })
+
+  it('keeps prose written outside plan mode out of the plan', () => {
+    const transcript = fold(at(1, { type: 'assistant_text', delta: 'no plan here' }))
+
+    expect(transcript.plan).toBeUndefined()
+  })
+
+  it('freezes the plan once the mode leaves plan', () => {
+    const transcript = fold(
+      at(1, { type: 'permission_mode', mode: 'plan' }),
+      at(2, { type: 'assistant_text', delta: 'the plan' }),
+      at(3, { type: 'permission_mode', mode: 'auto' }),
+      at(4, { type: 'assistant_text', delta: 'implementing…' }),
+    )
+
+    expect(transcript.plan).toBe('the plan')
+  })
+
+  it('starts a fresh plan when plan mode begins again', () => {
+    const transcript = fold(
+      at(1, { type: 'permission_mode', mode: 'plan' }),
+      at(2, { type: 'assistant_text', delta: 'first plan' }),
+      at(3, { type: 'permission_mode', mode: 'auto' }),
+      at(4, { type: 'assistant_text', delta: 'built' }),
+      at(5, { type: 'permission_mode', mode: 'plan' }),
+      at(6, { type: 'assistant_text', delta: 'second plan' }),
+    )
+
+    expect(transcript.plan).toBe('second plan')
+  })
+})
+
 describe('session metadata', () => {
   it('records the agent and model', () => {
     const transcript = fold(

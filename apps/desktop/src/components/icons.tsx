@@ -71,6 +71,8 @@ export const FileIcon = icon(File01Icon)
 export const AttachIcon = icon(Attachment01Icon)
 /** Environment-setup work, shown in the transcript. */
 export const SetupIcon = icon(Wrench01Icon)
+/** Building an approved plan, in the workspace Plan tab. */
+export const BuildIcon = icon(Wrench01Icon)
 /** Dismiss or remove, e.g. closing the session header popover. */
 export const CloseIcon = icon(Cancel01Icon)
 /** Downloading an update. */

@@ -281,6 +281,79 @@ describe('Workspace Changes and Files tabs', () => {
   })
 })
 
+describe('Workspace Plan tab', () => {
+  it('appears for a session in plan mode even before a plan exists', () => {
+    render(
+      <Workspace
+        session={{ ...session, permissionMode: 'plan' }}
+        files={[]}
+        terminals={terminals}
+        {...terminalHandlers}
+      />,
+    )
+
+    expect(screen.getByRole('tab', { name: 'Plan' })).toBeInTheDocument()
+  })
+
+  it('renders the plan markdown with a Build button', () => {
+    render(
+      <Workspace
+        session={{ ...session, permissionMode: 'plan' }}
+        files={[]}
+        terminals={terminals}
+        plan={'# Plan\n\n1. Read the parser'}
+        planReady
+        onBuildPlan={vi.fn()}
+        {...terminalHandlers}
+      />,
+    )
+
+    expect(screen.getByRole('tab', { name: 'Plan' })).toBeInTheDocument()
+    expect(screen.getByText('Read the parser')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled()
+  })
+
+  it('selects the Plan tab when a plan becomes ready', () => {
+    render(
+      <Workspace
+        session={{ ...session, permissionMode: 'plan' }}
+        files={[]}
+        terminals={terminals}
+        plan={'Do the thing'}
+        planReady
+        onBuildPlan={vi.fn()}
+        {...terminalHandlers}
+      />,
+    )
+
+    expect(screen.getByRole('tab', { name: 'Plan' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('calls onBuildPlan from the Build button', async () => {
+    const onBuildPlan = vi.fn()
+    render(
+      <Workspace
+        session={{ ...session, permissionMode: 'plan' }}
+        files={[]}
+        terminals={terminals}
+        plan={'Do the thing'}
+        planReady
+        onBuildPlan={onBuildPlan}
+        {...terminalHandlers}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Build' }))
+    expect(onBuildPlan).toHaveBeenCalledTimes(1)
+  })
+
+  it('hides the tab for a session that never planned', () => {
+    render(<Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />)
+
+    expect(screen.queryByRole('tab', { name: 'Plan' })).not.toBeInTheDocument()
+  })
+})
+
 describe('Workspace resize', () => {
   beforeEach(() => {
     localStorage.clear()

@@ -4,6 +4,7 @@ import type { DukeboxClient } from '@/lib/client'
 import type { TerminalState } from '@/lib/useTerminals'
 import { EnvironmentReview } from '@/components/EnvironmentReview'
 import { FileChangeList } from '@/components/FileChangeList'
+import { PlanPanel } from '@/components/PlanPanel'
 import { PullRequestPanel, type PullRequestTab } from '@/components/PullRequest'
 import { CommitIcon, ChevronLeftIcon, ChevronRightIcon, FileIcon } from '@/components/icons'
 import { SandboxFiles } from '@/components/SandboxFiles'
@@ -36,9 +37,10 @@ const COLLAPSED_KEY = 'dukebox:workspace-collapsed'
 /** How many terminals a session may have. Matches the server's own cap. */
 const MAX_TERMINALS = 4
 
-type WorkspaceTab = 'changes' | 'files' | 'terminal' | 'environment' | 'pr'
+type WorkspaceTab = 'plan' | 'changes' | 'files' | 'terminal' | 'environment' | 'pr'
 
 const TAB_LABELS: Record<WorkspaceTab, string> = {
+  plan: 'Plan',
   changes: 'Changes',
   files: 'Files',
   terminal: 'Terminal',
@@ -85,6 +87,17 @@ interface Props extends TerminalProps {
   environmentReview?: EnvironmentReviewTab | null
   /** When set, the Pull request tab can open, mark ready, and merge. */
   pullRequest?: PullRequestTab | null
+  /**
+   * The plan the agent wrote in plan mode, when it has one. Its presence makes
+   * the Plan tab appear; the session being in plan mode shows the tab too.
+   */
+  plan?: string | null
+  /** Build the plan. Wired by the session screen; omitted in previews. */
+  onBuildPlan?: () => void
+  /** Whether the agent is mid-turn (writing the plan, or building it). */
+  planRunning?: boolean
+  /** Whether Build can fire right now (plan complete, or awaiting approval). */
+  planReady?: boolean
   /** Expanded column width. When omitted, the panel is not resizable. */
   width?: number
   widthMin?: number
@@ -98,6 +111,10 @@ export function Workspace({
   client,
   environmentReview,
   pullRequest,
+  plan,
+  onBuildPlan,
+  planRunning = false,
+  planReady = false,
   width,
   widthMin = WORKSPACE_MIN,
   widthMax,
@@ -137,6 +154,24 @@ export function Workspace({
     setCollapsed(false)
   }, [prUrl, showPr])
 
+  // A ready plan is worth pulling the eye to: the whole point of plan mode is
+  // the review that ends in Build. While the plan is still being written the
+  // tab exists but stays in the background, so the transcript is not yanked
+  // away mid-sentence.
+  const planVisible = Boolean(plan) || session?.permissionMode === 'plan'
+  const planCanBuild = Boolean(plan && planReady)
+  useEffect(() => {
+    if (!planCanBuild) return
+    setTab('plan')
+    setCollapsed(false)
+  }, [planCanBuild])
+
+  // Drop back to Changes if the Plan tab disappears (e.g. switching to a
+  // session that was never in plan mode) while it was selected.
+  useEffect(() => {
+    if (!planVisible && tab === 'plan') setTab('changes')
+  }, [planVisible, tab])
+
   // Drop back to Changes if the Environment tab disappears (e.g. switching to a
   // coding session) while it was selected.
   useEffect(() => {
@@ -148,6 +183,7 @@ export function Workspace({
   }, [showPr, tab])
 
   const tabs: WorkspaceTab[] = [
+    ...(planVisible ? (['plan'] as const) : []),
     'changes',
     'files',
     'terminal',
@@ -215,6 +251,21 @@ export function Workspace({
               className="flex min-h-0 flex-1 flex-col overflow-hidden"
             >
               <Panels session={session} files={files} />
+            </div>
+          ) : tab === 'plan' ? (
+            <div
+              role="tabpanel"
+              id="workspace-panel-plan"
+              aria-labelledby="workspace-tab-plan"
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            >
+              <PlanPanel
+                plan={plan ?? ''}
+                running={planRunning}
+                ready={planReady}
+                disabled={Boolean(terminalProps.disabled)}
+                onBuild={onBuildPlan ?? (() => undefined)}
+              />
             </div>
           ) : tab === 'files' ? (
             <div

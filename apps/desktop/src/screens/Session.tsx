@@ -1,5 +1,6 @@
 import {
   DEFAULT_COMMIT_IDENTITY,
+  EXIT_PLAN_MODE_ACTION,
   isTerminal,
   type DeviceRole,
   type ProjectSummary,
@@ -520,6 +521,7 @@ export function Session({
             <SessionColumn key={current.id} session={current} live={live} connection={connection} />
             <ConnectedWorkspace
               session={current}
+              live={live}
               width={workspaceWidth}
               onWidthChange={setWorkspaceWidth}
               widthMin={WORKSPACE_MIN}
@@ -680,12 +682,58 @@ function SessionColumn({
 }
 
 function ConnectedWorkspace(
-  props: Omit<ComponentProps<typeof Workspace>, 'files' | 'terminals' | 'error'>,
+  props: Omit<ComponentProps<typeof Workspace>, 'files' | 'terminals' | 'error'> & {
+    live: LiveSession
+  },
 ) {
   const files = useLiveSession((state) => state.transcript.files)
   const terminals = useLiveSession((state) => state.terminals)
   const error = useLiveSession((state) => state.error)
-  return <Workspace files={files} terminals={terminals} error={error} {...props} />
+  const plan = useLiveSession((state) => state.transcript.plan)
+  const running = useLiveSession((state) => state.transcript.running)
+  // A stable id rather than the block: subscribed selectors re-render only when
+  // their value changes, and the blocks array changes on every event.
+  const pendingExitId = useLiveSession((state) => {
+    const block = state.transcript.blocks.find(
+      (candidate) =>
+        candidate.kind === 'permission' &&
+        candidate.action === EXIT_PLAN_MODE_ACTION &&
+        !candidate.answered,
+    )
+    return block ? block.id : null
+  })
+
+  // Build is ready once a plan exists and the agent is not mid-turn — unless
+  // Claude Code is parked on an `exit_plan_mode` approval, which is the plan
+  // being done, not working.
+  const working = running && props.session ? !isTerminal(props.session.status) : running
+  const planReady = Boolean(plan) && (!working || pendingExitId !== null)
+
+  const onBuildPlan = () => {
+    if (pendingExitId) {
+      // Claude Code asks to leave plan mode; answering allows it to implement.
+      props.live.respond(pendingExitId, true)
+      return
+    }
+    // OpenCode runs each turn with the mode's agent. Build switches back to
+    // the default agent and asks it to carry the plan out; the plan is still
+    // in the conversation it resumes.
+    props.live.setPermissionMode('auto')
+    props.live.send('Implement the plan above. Work through it step by step.')
+  }
+
+  return (
+    <Workspace
+      files={files}
+      terminals={terminals}
+      error={error}
+      plan={plan ?? ''}
+      planRunning={working}
+      planReady={planReady}
+      onBuildPlan={onBuildPlan}
+      {...props}
+    />
+  )
 }
 
 function PaneFallback() {
