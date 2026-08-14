@@ -52,9 +52,12 @@ ProtectControlGroups=true
 RestrictSUIDSGID=true
 
 # Per-session credential sockets live here. Cleaned up automatically when the
-# service stops, so a crash cannot leave one listening.
+# service stops, so a crash cannot leave one listening. Do not put binaries
+# here: Debian/Ubuntu mount /run noexec.
 RuntimeDirectory=dukebox
 RuntimeDirectoryMode=0755
+# $HOME must be writable so the Grok login CLI can be cached and executed.
+# ProtectSystem=strict would otherwise make /var/lib/dukebox read-only.
 ReadWritePaths=/run/dukebox /var/lib/dukebox
 
 StandardOutput=journal
