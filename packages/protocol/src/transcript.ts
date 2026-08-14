@@ -1,6 +1,6 @@
-import type { AgentEvent, EnvelopedEvent } from './events.js'
-import { countLineChanges } from './lineChanges.js'
-import type { PermissionMode } from './session.js'
+import type { AgentEvent, EnvelopedEvent } from '@/events'
+import { countLineChanges } from '@/lineChanges'
+import type { PermissionMode } from '@/session'
 
 /**
  * The event stream, folded into what a person reads.

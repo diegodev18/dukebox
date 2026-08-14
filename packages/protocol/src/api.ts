@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { environmentProposal } from './config.js'
+import { environmentProposal } from '@/config'
 import {
   gitPreferences,
   mergeMethod,
@@ -8,8 +8,8 @@ import {
   pullRequestSummary,
   sessionPurpose,
   sessionSummary,
-} from './session.js'
-import { MAX_BRANCH_PATTERN_LENGTH } from './branchPattern.js'
+} from '@/session'
+import { MAX_BRANCH_PATTERN_LENGTH } from '@/branchPattern'
 
 /**
  * The REST surface between the desktop app and the control plane.

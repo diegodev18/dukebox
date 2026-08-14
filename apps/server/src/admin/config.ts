@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { serverConfig, type ServerConfig } from '@dukebox/protocol'
 import { z } from 'zod'
-import { ConfigError, fromToml, parseToml } from '../config.js'
+import { ConfigError, fromToml, parseToml } from '@/config'
 
 /**
  * Read and edit `/etc/dukebox/config.toml` from the CLI.

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { JsonlReader, readJsonl } from './jsonl.js'
+import { JsonlReader, readJsonl } from '@/jsonl'
 
 describe('JsonlReader', () => {
   it('parses one object per line', () => {

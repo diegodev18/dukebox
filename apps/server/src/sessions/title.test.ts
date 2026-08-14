@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { titleFromPrompt, writeSessionTitle } from './title.js'
+import { titleFromPrompt, writeSessionTitle } from '@/sessions/title'
 
 const LONG =
   'Can you please look at the login form and fix the bug where the submit button does not work on mobile devices when the keyboard is open?'

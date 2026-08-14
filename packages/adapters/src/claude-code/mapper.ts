@@ -12,8 +12,8 @@ import {
   type InitMessage,
   type ResultMessage,
   type UserRoleMessage,
-} from './messages.js'
-import { fromClaudePermissionMode } from './modes.js'
+} from '@/claude-code/messages'
+import { fromClaudePermissionMode } from '@/claude-code/modes'
 
 /**
  * Translate Claude Code's stream into AgentEvents.

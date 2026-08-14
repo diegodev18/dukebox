@@ -1,6 +1,6 @@
 import type { TerminalHandle } from '@dukebox/sandbox'
 import { randomInt, randomUUID } from 'node:crypto'
-import { RingBuffer } from './ringBuffer.js'
+import { RingBuffer } from '@/sessions/ringBuffer'
 
 /**
  * The interactive shells running inside session containers.

@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import postgres from 'postgres'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { createDatabase } from './client.js'
+import { createDatabase } from '@/client'
 import {
   devices,
   environments,
@@ -14,7 +14,7 @@ import {
   projects,
   secrets,
   sessions,
-} from './schema.js'
+} from '@/schema'
 
 /**
  * Integration tests against a real Postgres.

@@ -1,3 +1,3 @@
-export * from './container.js'
-export * from './workspace.js'
-export * from './credentials.js'
+export * from '@/container'
+export * from '@/workspace'
+export * from '@/credentials'

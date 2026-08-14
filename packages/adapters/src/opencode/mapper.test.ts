@@ -2,8 +2,8 @@ import type { AgentEvent } from '@dukebox/protocol'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { JsonlReader } from '../jsonl.js'
-import { OpenCodeMapper } from './mapper.js'
+import { JsonlReader } from '@/jsonl'
+import { OpenCodeMapper } from '@/opencode/mapper'
 
 /**
  * Tests against recorded-shape fixtures of `opencode run --format json`.

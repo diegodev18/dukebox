@@ -2,7 +2,7 @@ import { devices, pairingCodes, type Database } from '@dukebox/db'
 import { parsePairingUrl } from '@dukebox/protocol'
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { close, db, prepareDatabase, resetDatabase } from '../testing/database.js'
+import { close, db, prepareDatabase, resetDatabase } from '@/testing/database'
 import {
   authenticateDevice,
   defaultPairingRole,
@@ -17,8 +17,8 @@ import {
   revokeDevice,
   revokeInvite,
   RevokeError,
-} from './pairing.js'
-import { hashSecret } from './tokens.js'
+} from '@/auth/pairing'
+import { hashSecret } from '@/auth/tokens'
 
 const ENDPOINT = { host: 'dukebox-vps.tail1234.ts.net', port: 7777 }
 

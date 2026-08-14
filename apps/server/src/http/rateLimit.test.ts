@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resetRateLimit, tooManyAttempts } from './rateLimit.js'
+import { resetRateLimit, tooManyAttempts } from '@/http/rateLimit'
 
 describe('tooManyAttempts', () => {
   it('allows a burst and then refuses', () => {

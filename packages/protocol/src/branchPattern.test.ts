@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchesBranch, resolveEnvironment, validateBranchPattern } from './branchPattern.js'
+import { matchesBranch, resolveEnvironment, validateBranchPattern } from '@/branchPattern'
 
 describe('matchesBranch — glob', () => {
   it('matches a literal branch name', () => {

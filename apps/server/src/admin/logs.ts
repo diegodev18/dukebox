@@ -2,7 +2,7 @@ import { sessions, type Database } from '@dukebox/db'
 import type { AgentEvent, EnvelopedEvent } from '@dukebox/protocol'
 import { desc, eq, isNull, or, sql } from 'drizzle-orm'
 import { spawn } from 'node:child_process'
-import { ConfigError } from '../config.js'
+import { ConfigError } from '@/config'
 
 /** Lines journalctl / docker logs show when the operator does not pass `-n`. */
 export const DEFAULT_LOG_LINES = 50

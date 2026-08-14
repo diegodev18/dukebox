@@ -2,8 +2,8 @@ import { projects, type Database } from '@dukebox/db'
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { AGENT_CREDENTIAL_SECRET, type SecretStore } from '../secrets/store.js'
-import { requireOwner, type AuthedVariables } from './auth.js'
+import { AGENT_CREDENTIAL_SECRET, type SecretStore } from '@/secrets/store'
+import { requireOwner, type AuthedVariables } from '@/http/auth'
 
 /**
  * Secrets: values a session needs but that must not live in a repository.

@@ -1,5 +1,5 @@
-import type { SecretStore } from '../secrets/store.js'
-import { completeChat, resolveSessionModel, type WriterModel } from './complete.js'
+import type { SecretStore } from '@/secrets/store'
+import { completeChat, resolveSessionModel, type WriterModel } from '@/sessions/complete'
 
 /**
  * A session name taken from the task, not the first chat message.

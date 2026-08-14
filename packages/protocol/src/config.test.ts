@@ -7,7 +7,7 @@ import {
   projectConfig,
   proposalToConfigOverride,
   serverConfig,
-} from './config.js'
+} from '@/config'
 
 describe('projectConfig', () => {
   it('fills in every field for a repo with no .duke/config.yaml', () => {

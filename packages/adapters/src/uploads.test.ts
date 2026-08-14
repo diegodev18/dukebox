@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionContainer } from '@dukebox/sandbox'
-import { extensionFor, sanitizeUploadName, stageUpload, UPLOADS_DIR } from './uploads.js'
+import { extensionFor, sanitizeUploadName, stageUpload, UPLOADS_DIR } from '@/uploads'
 
 describe('sanitizeUploadName', () => {
   it('keeps an ordinary filename as-is', () => {

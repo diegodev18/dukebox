@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentEvent, EnvelopedEvent } from './events.js'
+import type { AgentEvent, EnvelopedEvent } from '@/events'
 import {
   answerPermission,
   applyEvent,
   applyEvents,
   emptyTranscript,
   type ToolBlock,
-} from './transcript.js'
+} from '@/transcript'
 
 const SESSION = '00000000-0000-4000-8000-000000000000'
 

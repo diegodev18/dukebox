@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildPairingUrl,
-  capabilitiesFor,
-  parsePairingUrl,
-  type PairingPayload,
-} from './pairing.js'
+import { buildPairingUrl, capabilitiesFor, parsePairingUrl, type PairingPayload } from '@/pairing'
 
 const validPayload: PairingPayload = {
   host: 'dukebox-vps',

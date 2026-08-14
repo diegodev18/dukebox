@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildFileTree } from './fileTree'
+import { buildFileTree } from '@/lib/fileTree'
 
 describe('buildFileTree', () => {
   it('nests files under their directories', () => {

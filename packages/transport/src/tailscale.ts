@@ -7,7 +7,7 @@ import {
   type BindAddress,
   type PreflightResult,
   type Transport,
-} from './types.js'
+} from '@/types'
 
 const exec = promisify(execFile)
 

@@ -16,8 +16,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -b",
-    "typecheck": "tsc -b --pretty",
+    "build": "tsc -b && node ../../scripts/rewrite-dist-aliases.mjs",
+    "typecheck": "tsc -b --pretty && node ../../scripts/rewrite-dist-aliases.mjs",
     "test": "vitest run",
     "inspect": "tsx src/claude-code/inspect.ts"
   },

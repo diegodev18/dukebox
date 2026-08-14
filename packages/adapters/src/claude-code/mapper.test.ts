@@ -2,8 +2,8 @@ import type { AgentEvent } from '@dukebox/protocol'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { JsonlReader } from '../jsonl.js'
-import { ClaudeCodeMapper } from './mapper.js'
+import { JsonlReader } from '@/jsonl'
+import { ClaudeCodeMapper } from '@/claude-code/mapper'
 
 /**
  * Tests against real recordings of `claude --output-format stream-json`.

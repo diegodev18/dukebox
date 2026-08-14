@@ -1,8 +1,8 @@
 import { parseGitPreferences, type GitPreferences } from '@dukebox/protocol'
-import { loadOpencodeProviders } from '../opencode/providers.js'
-import type { SecretStore } from '../secrets/store.js'
-import { completeChat, firstProvider, matchProvider, type WriterModel } from './complete.js'
-import { pullRequestContent, type PullRequestContent } from './summary.js'
+import { loadOpencodeProviders } from '@/opencode/providers'
+import type { SecretStore } from '@/secrets/store'
+import { completeChat, firstProvider, matchProvider, type WriterModel } from '@/sessions/complete'
+import { pullRequestContent, type PullRequestContent } from '@/sessions/summary'
 
 /**
  * Write a pull request title and body from the diff, not the chat.

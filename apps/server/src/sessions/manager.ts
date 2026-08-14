@@ -43,19 +43,19 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { rm } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { join } from 'node:path'
-import type { EventBus } from '../events/bus.js'
-import { GitHubError, type GitHubClient } from '../github/client.js'
-import { AGENT_CREDENTIAL_SECRET, type SecretStore } from '../secrets/store.js'
-import { buildOpencodeSessionEnv, loadOpencodeProviders } from '../opencode/providers.js'
+import type { EventBus } from '@/events/bus'
+import { GitHubError, type GitHubClient } from '@/github/client'
+import { AGENT_CREDENTIAL_SECRET, type SecretStore } from '@/secrets/store'
+import { buildOpencodeSessionEnv, loadOpencodeProviders } from '@/opencode/providers'
 import {
   ENVIRONMENT_SETUP_PROMPT,
   MAX_ENVIRONMENT_SETUP_VERIFY_RETRIES,
   environmentSetupVerifyRetryPrompt,
   parseEnvironmentProposalJson,
-} from './environmentSetup.js'
-import { writePullRequestContent } from './pr-writer.js'
-import { toSummary } from './summarize.js'
-import { titleFromPrompt, writeSessionTitle } from './title.js'
+} from '@/sessions/environmentSetup'
+import { writePullRequestContent } from '@/sessions/pr-writer'
+import { toSummary } from '@/sessions/summarize'
+import { titleFromPrompt, writeSessionTitle } from '@/sessions/title'
 
 /**
  * Session lifecycle.

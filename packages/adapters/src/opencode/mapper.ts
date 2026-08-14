@@ -13,7 +13,7 @@ import {
   type StepStartMessage,
   type TextMessage,
   type ToolUseMessage,
-} from './messages.js'
+} from '@/opencode/messages'
 
 /**
  * Translate OpenCode's JSONL stream into AgentEvents.

@@ -9,8 +9,8 @@
  *   pnpm --filter @dukebox/sandbox exec tsx src/cli.ts <repo-url> [branch]
  */
 import { randomUUID } from 'node:crypto'
-import { Sandbox } from './container.js'
-import { Workspace } from './workspace.js'
+import { Sandbox } from '@/container'
+import { Workspace } from '@/workspace'
 
 const IMAGE = process.env.DUKEBOX_TEST_IMAGE ?? 'dukebox/base-node:latest'
 

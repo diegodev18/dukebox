@@ -7,10 +7,10 @@ import {
 } from '@dukebox/protocol'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { Hono, type Context } from 'hono'
-import type { EventBus } from '../events/bus.js'
-import { routeParam, type AuthedVariables } from './auth.js'
-import { SessionError, MergeConflictError, type SessionManager } from '../sessions/manager.js'
-import { toSummary } from '../sessions/summarize.js'
+import type { EventBus } from '@/events/bus'
+import { routeParam, type AuthedVariables } from '@/http/auth'
+import { SessionError, MergeConflictError, type SessionManager } from '@/sessions/manager'
+import { toSummary } from '@/sessions/summarize'
 
 /**
  * Sessions: an agent working in a container on one repository.

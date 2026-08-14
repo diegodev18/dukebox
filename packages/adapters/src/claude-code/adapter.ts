@@ -7,11 +7,11 @@ import {
 } from '@dukebox/protocol'
 import { randomUUID } from 'node:crypto'
 import type { Duplex } from 'node:stream'
-import { JsonlReader } from '../jsonl.js'
-import type { AgentAdapter, SessionContext, UserMessage } from '../types.js'
-import { parseDataUri, stageUpload } from '../uploads.js'
-import { ClaudeCodeMapper } from './mapper.js'
-import { toClaudePermissionMode } from './modes.js'
+import { JsonlReader } from '@/jsonl'
+import type { AgentAdapter, SessionContext, UserMessage } from '@/types'
+import { parseDataUri, stageUpload } from '@/uploads'
+import { ClaudeCodeMapper } from '@/claude-code/mapper'
+import { toClaudePermissionMode } from '@/claude-code/modes'
 
 /**
  * Claude Code, driven headless inside a session container.
