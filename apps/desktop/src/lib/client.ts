@@ -415,6 +415,22 @@ export class DukeboxClient {
     await this.request('/api/agent-credentials', { method: 'DELETE' })
   }
 
+  async grokCredentialsConfigured(): Promise<boolean> {
+    const body = await this.request<{ configured: boolean }>('/api/grok-credentials')
+    return body.configured
+  }
+
+  async setGrokCredentials(token: string): Promise<void> {
+    await this.request('/api/grok-credentials', {
+      method: 'PUT',
+      body: JSON.stringify({ token }),
+    })
+  }
+
+  async clearGrokCredentials(): Promise<void> {
+    await this.request('/api/grok-credentials', { method: 'DELETE' })
+  }
+
   async listOpencodeCatalog(): Promise<ListOpencodeCatalogResponse['providers']> {
     const body = await this.request<ListOpencodeCatalogResponse>('/api/opencode/catalog')
     return body.providers

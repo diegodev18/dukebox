@@ -2,7 +2,11 @@ import { projects, type Database } from '@dukebox/db'
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { AGENT_CREDENTIAL_SECRET, type SecretStore } from '../secrets/store.js'
+import {
+  AGENT_CREDENTIAL_SECRET,
+  GROK_CREDENTIAL_SECRET,
+  type SecretStore,
+} from '../secrets/store.js'
 import { requireOwner, type AuthedVariables } from './auth.js'
 
 /**
@@ -65,6 +69,38 @@ export function secretRoutes(deps: SecretRoutesDeps) {
 
     if (!deleted) {
       return c.json({ error: 'not_found', message: 'no agent credentials are set' }, 404)
+    }
+
+    return c.json({ deleted: true })
+  })
+
+  /**
+   * Grok Build's API key.
+   *
+   * Server-wide, separate from Claude's token and from OpenCode's xAI
+   * provider: only Grok Build sessions receive it.
+   */
+  app.put('/grok-credentials', requireOwner, async (c) => {
+    const body = await c.req.json().catch(() => null)
+    const parsed = setAgentCredentialRequest.safeParse(body)
+
+    if (!parsed.success) {
+      return c.json({ error: 'invalid_request', message: parsed.error.message }, 400)
+    }
+
+    await deps.secrets.set(GROK_CREDENTIAL_SECRET, parsed.data.token)
+    return c.json({ configured: true })
+  })
+
+  app.get('/grok-credentials', async (c) => {
+    return c.json({ configured: await deps.secrets.has(GROK_CREDENTIAL_SECRET) })
+  })
+
+  app.delete('/grok-credentials', requireOwner, async (c) => {
+    const deleted = await deps.secrets.delete(GROK_CREDENTIAL_SECRET)
+
+    if (!deleted) {
+      return c.json({ error: 'not_found', message: 'no Grok Build credentials are set' }, 404)
     }
 
     return c.json({ deleted: true })

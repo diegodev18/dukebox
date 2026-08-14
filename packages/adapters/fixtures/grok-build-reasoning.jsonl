@@ -1,0 +1,4 @@
+{"type":"thought","data":"considering the options"}
+{"type":"text","data":"I would start with the tests."}
+{"type":"error","message":"rate limited"}
+{"type":"end","stopReason":"end_turn","sessionId":"ses_grok_reason_1"}

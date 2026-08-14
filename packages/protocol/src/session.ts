@@ -114,7 +114,8 @@ export type SessionPurpose = z.infer<typeof sessionPurpose>
 /**
  * The permission mode a new session should start with.
  *
- * Agents without modes store null. Claude Code and OpenCode default to bypass.
+ * Agents without modes store null. Claude Code, OpenCode, and Grok Build
+ * default to bypass.
  * `environment_setup` always starts in bypass: the agent has to write a
  * proposal file unattended, and a leftover Plan mode from a coding session
  * would stall on that write.
@@ -124,7 +125,9 @@ export function resolvePermissionMode(
   purpose: SessionPurpose,
   requested?: PermissionMode,
 ): PermissionMode | null {
-  if (agentId !== 'claude-code' && agentId !== 'opencode') return null
+  if (agentId !== 'claude-code' && agentId !== 'opencode' && agentId !== 'grok-build') {
+    return null
+  }
   if (purpose === 'environment_setup') return DEFAULT_PERMISSION_MODE
   return requested ?? DEFAULT_PERMISSION_MODE
 }

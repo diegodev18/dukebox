@@ -1,0 +1,5 @@
+{"type":"tool_call","toolCallId":"call_1","title":"Read","kind":"read","status":"in_progress","toolName":"read_file","rawInput":{"path":"src/main.rs"},"content":[],"locations":[]}
+{"type":"tool_call_update","toolCallId":"call_1","status":"completed","content":[],"rawOutput":{"lines":42},"locations":[]}
+{"type":"text","data":"The file is 42 lines."}
+{"type":"usage","usage":{"input_tokens":40,"output_tokens":10,"cache_read_input_tokens":8,"cache_creation_input_tokens":4,"reasoning_tokens":6}}
+{"type":"end","stopReason":"end_turn","sessionId":"ses_grok_tools_1","total_cost_usd":0.0127}

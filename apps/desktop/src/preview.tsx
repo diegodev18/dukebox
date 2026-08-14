@@ -689,7 +689,7 @@ function Preview() {
                       : 'bg-done opacity-50'
                   }`}
                 />
-                <AgentIcon agentId="claude-code" />
+                <AgentIcon agentId="grok-build" />
               </span>
             </header>
 

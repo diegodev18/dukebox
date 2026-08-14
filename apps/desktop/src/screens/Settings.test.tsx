@@ -44,6 +44,9 @@ function clientMock() {
     agentCredentialsConfigured: vi.fn().mockResolvedValue(false),
     setAgentCredentials: vi.fn().mockResolvedValue(undefined),
     clearAgentCredentials: vi.fn().mockResolvedValue(undefined),
+    grokCredentialsConfigured: vi.fn().mockResolvedValue(false),
+    setGrokCredentials: vi.fn().mockResolvedValue(undefined),
+    clearGrokCredentials: vi.fn().mockResolvedValue(undefined),
     listOpencodeProviders: vi.fn().mockResolvedValue([]),
     upsertOpencodeProvider: vi.fn().mockResolvedValue({
       id: 'anthropic',
@@ -232,10 +235,10 @@ describe('Settings', () => {
     renderSettings({ client })
     await openCategory('Agents')
 
-    await waitFor(() => expect(screen.getByText('Not configured')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText('Not configured').length).toBeGreaterThan(0))
 
     await userEvent.type(screen.getByPlaceholderText(/paste token/i), 'sk-ant-123')
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Save' })[0]!)
 
     await waitFor(() => expect(client.setAgentCredentials).toHaveBeenCalledWith('sk-ant-123'))
   })
@@ -250,6 +253,34 @@ describe('Settings', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
     await waitFor(() => expect(client.clearAgentCredentials).toHaveBeenCalled())
+  })
+
+  it('saves a Grok Build API key from Agents', async () => {
+    const client = clientMock()
+    renderSettings({ client })
+    await openCategory('Agents')
+
+    await waitFor(() => expect(screen.getByLabelText('Grok Build API key')).toBeInTheDocument())
+
+    await userEvent.type(screen.getByLabelText('Grok Build API key'), 'xai-test-key')
+    const grokSave = screen
+      .getAllByRole('button', { name: 'Save' })
+      .find((button) => !(button as HTMLButtonElement).disabled)
+    await userEvent.click(grokSave!)
+
+    await waitFor(() => expect(client.setGrokCredentials).toHaveBeenCalledWith('xai-test-key'))
+  })
+
+  it('clears the Grok Build key when configured', async () => {
+    const client = clientMock()
+    client.grokCredentialsConfigured.mockResolvedValue(true)
+    renderSettings({ client })
+    await openCategory('Agents')
+
+    await waitFor(() => expect(screen.getByText('Configured')).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    await waitFor(() => expect(client.clearGrokCredentials).toHaveBeenCalled())
   })
 
   it('saves an OpenCode provider from Agents', async () => {
