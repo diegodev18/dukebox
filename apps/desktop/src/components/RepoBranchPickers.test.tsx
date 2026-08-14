@@ -3,6 +3,22 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AgentPicker, PermissionModePicker } from '@/components/RepoBranchPickers'
 
+describe('picker icon alignment', () => {
+  it('puts the agent mark in a fixed square so it centers with the label', async () => {
+    render(<AgentPicker value="grok-build" onChange={vi.fn()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agent' }))
+
+    const selected = screen.getByRole('option', { selected: true })
+    const mark = selected.querySelector('[aria-label="Grok Build"]')
+    expect(mark).toHaveClass('flex', 'size-3.5')
+    expect(mark).not.toHaveClass('inline-flex')
+
+    const slot = mark?.parentElement
+    expect(slot).toHaveClass('flex', 'size-3.5', 'items-center', 'justify-center')
+  })
+})
+
 describe('picker keyboard', () => {
   it('moves the highlight with arrows and picks with Enter', async () => {
     const onChange = vi.fn()

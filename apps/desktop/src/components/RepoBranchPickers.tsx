@@ -251,7 +251,7 @@ export function InstancePicker({
       onOpenChange={setOpen}
       disabled={disabled || instances.length === 0}
       label={
-        <span className="inline-flex items-center gap-1.5">
+        <span className="inline-flex min-w-0 items-center gap-1.5 leading-none">
           <ServerIcon size={14} className="flex-none" />
           <span className="truncate">{selected?.name ?? 'Instance'}</span>
         </span>
@@ -312,7 +312,7 @@ export function AgentPicker({
       onOpenChange={setOpen}
       disabled={Boolean(disabled)}
       label={
-        <span className="inline-flex items-center gap-1.5">
+        <span className="inline-flex min-w-0 items-center gap-1.5 leading-none">
           <AgentIcon agentId={value} className="size-3.5" />
           <span className="truncate">{label || 'Agent'}</span>
         </span>
@@ -613,9 +613,11 @@ function PickerShell({
         aria-expanded={open}
         aria-label={ariaLabel}
         onClick={() => onOpenChange(!open)}
-        className="inline-flex max-w-48 items-center gap-1 rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+        className="inline-flex max-w-48 items-center gap-1 rounded-md px-2 py-1 text-[13px] leading-none text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
       >
-        <span className="truncate font-medium text-foreground">{label}</span>
+        <span className="flex min-w-0 items-center font-medium text-foreground">
+          {typeof label === 'string' ? <span className="truncate">{label}</span> : label}
+        </span>
         <ChevronDownIcon size={14} className="shrink-0 opacity-70" />
       </button>
 
@@ -744,10 +746,16 @@ function PickerRow({
       onClick={onSelect}
       className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-muted aria-selected:bg-muted data-[highlighted]:bg-muted"
     >
-      {icon && <span className="shrink-0 text-muted-foreground">{icon}</span>}
+      {/* Sized flex box, not an inline span: inline SVG sits on the
+          text baseline and the mark then reads high of the label. */}
+      {icon && (
+        <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground [&_svg]:block">
+          {icon}
+        </span>
+      )}
       <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>
       {selected && (
-        <span className="shrink-0 text-foreground">
+        <span className="flex size-3.5 shrink-0 items-center justify-center text-foreground">
           <CheckIcon size={14} />
         </span>
       )}

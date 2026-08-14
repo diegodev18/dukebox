@@ -1,4 +1,5 @@
 import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react'
+import { cn } from '@/lib/utils'
 import {
   ArrowDown01Icon,
   ArrowLeft01Icon,
@@ -44,8 +45,8 @@ export interface IconProps {
 }
 
 function icon(data: IconSvgElement) {
-  return function IconComponent({ size = 16, ...props }: IconProps) {
-    return <HugeiconsIcon icon={data} size={size} {...props} />
+  return function IconComponent({ size = 16, className, ...props }: IconProps) {
+    return <HugeiconsIcon icon={data} size={size} className={cn('block', className)} {...props} />
   }
 }
 
