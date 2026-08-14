@@ -199,6 +199,30 @@ describe('Sidebar', () => {
     expect(onDelete).toHaveBeenCalledWith(session.id)
   })
 
+  it('lifts the delete dialog out of the sidebar stacking context', async () => {
+    renderSidebar()
+
+    await userEvent.click(screen.getByRole('button', { name: /session actions/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+
+    const dialog = screen.getByRole('dialog', { name: /delete this session/i })
+    expect(dialog.closest('nav')).toBeNull()
+    expect(dialog.parentElement?.parentElement).toBe(document.body)
+  })
+
+  it('shows the full session title in the delete confirmation', async () => {
+    const title =
+      'En la preview de la pull request me muestra muchos cambios que realmente no se haran al hacer merge a Github.'
+    renderSidebar({ sessionOverride: { title } })
+
+    await userEvent.click(screen.getByRole('button', { name: /session actions/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+
+    const dialog = screen.getByRole('dialog', { name: /delete this session/i })
+    expect(within(dialog).getByText(title)).toBeInTheDocument()
+    expect(within(dialog).getByText(title)).toHaveClass('break-words')
+  })
+
   it('opens a project menu on right-click of the repository', () => {
     renderSidebar()
 
