@@ -115,6 +115,14 @@ export function Transcript({
   const showWorking = transcript.running && (status === undefined || !isTerminal(status))
   const turnActive = Boolean(running || transcript.running)
   const last = transcript.blocks.at(-1)
+  // Copy is available for user prompts and the final assistant reply only.
+  const lastAgentMessageId = useMemo(() => {
+    for (let index = transcript.blocks.length - 1; index >= 0; index -= 1) {
+      const block = transcript.blocks[index]
+      if (block?.kind === 'text') return block.id
+    }
+    return undefined
+  }, [transcript.blocks])
   const streamingTextId = turnActive && last?.kind === 'text' ? last.id : undefined
   const streamingThinkingId = turnActive && last?.kind === 'thinking' ? last.id : undefined
   const settled = status !== undefined && isTerminal(status)
@@ -161,6 +169,7 @@ export function Transcript({
                     streaming={block.id === streamingTextId || block.id === streamingThinkingId}
                     running={block.id === setupPromptId ? running : undefined}
                     status={block.id === setupPromptId ? status : undefined}
+                    copyable={block.kind === 'prompt' || block.id === lastAgentMessageId}
                   />
                 )
               }}
@@ -192,6 +201,7 @@ const BlockView = memo(function BlockView({
   disabled = false,
   onEdit,
   streaming = false,
+  copyable = false,
 }: {
   block: Exclude<Block, ToolBlock>
   onRespond: Props['onRespond']
@@ -201,6 +211,7 @@ const BlockView = memo(function BlockView({
   disabled?: boolean
   onEdit?: Props['onEdit'] | undefined
   streaming?: boolean
+  copyable?: boolean
 }) {
   switch (block.kind) {
     case 'prompt':
@@ -208,7 +219,7 @@ const BlockView = memo(function BlockView({
         return <SetupPrompt text={block.text} running={running} status={status} />
       }
       return (
-        <MessageBlock text={block.text} editDisabled={disabled} onEdit={onEdit}>
+        <MessageBlock text={block.text} editDisabled={disabled} onEdit={onEdit} copyable>
           <p
             data-selectable
             className="rounded-[var(--radius)] bg-surface px-3.5 py-2.5 whitespace-pre-wrap"
@@ -220,7 +231,7 @@ const BlockView = memo(function BlockView({
 
     case 'text':
       return (
-        <MessageBlock text={block.text}>
+        <MessageBlock text={block.text} copyable={copyable}>
           {streaming ? (
             <p data-selectable className="whitespace-pre-wrap">
               {block.text}
@@ -253,24 +264,35 @@ const BlockView = memo(function BlockView({
 /**
  * A user prompt or assistant reply, with copy (and, for prompts, edit) on hover.
  *
- * Edit loads the text into the composer rather than rewriting history: the
- * protocol has no rewind, so a follow-up is the honest action.
+ * Copy appears only for user messages and the final assistant reply — the
+ * answer worth grabbing. Edit loads the text into the composer rather than
+ * rewriting history: the protocol has no rewind, so a follow-up is the honest
+ * action.
  */
 function MessageBlock({
   text,
   onEdit,
   editDisabled = false,
+  copyable = true,
   children,
 }: {
   text: string
   onEdit?: ((text: string) => void) | undefined
   editDisabled?: boolean
+  copyable?: boolean
   children: ReactNode
 }) {
   return (
     <div className="group flex flex-col items-start gap-1">
       {children}
-      <MessageActions text={text} {...(onEdit ? { onEdit } : {})} editDisabled={editDisabled} />
+      {copyable || onEdit ? (
+        <MessageActions
+          text={text}
+          {...(onEdit ? { onEdit } : {})}
+          editDisabled={editDisabled}
+          copyable={copyable}
+        />
+      ) : null}
     </div>
   )
 }
@@ -279,10 +301,12 @@ function MessageActions({
   text,
   onEdit,
   editDisabled = false,
+  copyable = true,
 }: {
   text: string
   onEdit?: (text: string) => void
   editDisabled?: boolean
+  copyable?: boolean
 }) {
   const [copied, setCopied] = useState(false)
 
@@ -307,15 +331,17 @@ function MessageActions({
         copied ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
       }`}
     >
-      <button
-        type="button"
-        onClick={() => void copy()}
-        aria-label={copied ? 'Copied' : 'Copy'}
-        title={copied ? 'Copied' : 'Copy'}
-        className="grid size-6 place-items-center rounded-[calc(var(--radius)*0.5)] text-muted-foreground hover:bg-muted hover:text-foreground"
-      >
-        {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
-      </button>
+      {copyable ? (
+        <button
+          type="button"
+          onClick={() => void copy()}
+          aria-label={copied ? 'Copied' : 'Copy'}
+          title={copied ? 'Copied' : 'Copy'}
+          className="grid size-6 place-items-center rounded-[calc(var(--radius)*0.5)] text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+        </button>
+      ) : null}
       {onEdit ? (
         <button
           type="button"
