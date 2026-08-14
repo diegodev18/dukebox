@@ -2,7 +2,13 @@ import { chmod, mkdir, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { defaultGrokBinDir, ensureGrokBinary, grokDownloadUrls, grokPlatform } from '@/grok/binary'
+import {
+  defaultGrokBinDir,
+  ensureGrokBinary,
+  grokBinCandidates,
+  grokDownloadUrls,
+  grokPlatform,
+} from '@/grok/binary'
 
 describe('grokPlatform', () => {
   it('maps node arch names onto grok artifact names', () => {
@@ -20,16 +26,19 @@ describe('grokDownloadUrls', () => {
   })
 })
 
-describe('defaultGrokBinDir', () => {
-  it('honours DUKEBOX_GROK_BIN_DIR', () => {
-    const previous = process.env.DUKEBOX_GROK_BIN_DIR
-    process.env.DUKEBOX_GROK_BIN_DIR = '/tmp/custom-grok'
-    try {
-      expect(defaultGrokBinDir()).toBe('/tmp/custom-grok')
-    } finally {
-      if (previous === undefined) delete process.env.DUKEBOX_GROK_BIN_DIR
-      else process.env.DUKEBOX_GROK_BIN_DIR = previous
-    }
+describe('grokBinCandidates', () => {
+  it('honours DUKEBOX_GROK_BIN_DIR then HOME, never /run', () => {
+    const dirs = grokBinCandidates({
+      DUKEBOX_GROK_BIN_DIR: '/opt/grok',
+      HOME: '/var/lib/dukebox',
+    })
+    expect(dirs[0]).toBe('/opt/grok')
+    expect(dirs).toContain('/var/lib/dukebox/grok')
+    expect(dirs.some((dir) => dir.startsWith('/run/'))).toBe(false)
+  })
+
+  it('does not pick RuntimeDirectory just because it exists', () => {
+    expect(defaultGrokBinDir()).not.toBe('/run/dukebox/grok')
   })
 })
 
@@ -66,7 +75,7 @@ describe('ensureGrokBinary', () => {
     expect(download).toHaveBeenCalledTimes(2)
   })
 
-  it('falls back to tmp when the preferred directory cannot be created', async () => {
+  it('falls back to another dir when the preferred directory cannot be created', async () => {
     // A file as the parent makes mkdir fail immediately with ENOTDIR on every
     // platform. `/proc/...` hangs under some Linux / Docker mounts.
     const blocker = join(tmpdir(), `dukebox-not-a-dir-${Date.now()}`)
@@ -74,7 +83,21 @@ describe('ensureGrokBinary', () => {
     await unlink(join(tmpdir(), 'dukebox-grok', 'grok-1.0.3')).catch(() => undefined)
     const download = vi.fn(async () => Buffer.from('#!/bin/sh\n'))
     const path = await ensureGrokBinary({ dir: join(blocker, 'grok'), download })
-    expect(path.startsWith(join(tmpdir(), 'dukebox-grok'))).toBe(true)
+    expect(path.startsWith(blocker)).toBe(false)
+    expect(download).toHaveBeenCalled()
+  })
+
+  it('skips a directory that cannot execute binaries', async () => {
+    const noexec = join(tmpdir(), `dukebox-noexec-${Date.now()}`)
+    await mkdir(noexec, { recursive: true })
+    await unlink(join(tmpdir(), 'dukebox-grok', 'grok-1.0.3')).catch(() => undefined)
+    const download = vi.fn(async () => Buffer.from('#!/bin/sh\n'))
+    const path = await ensureGrokBinary({
+      dir: noexec,
+      download,
+      canExecuteDir: async (dir) => dir !== noexec,
+    })
+    expect(path.startsWith(noexec)).toBe(false)
     expect(download).toHaveBeenCalled()
   })
 })
