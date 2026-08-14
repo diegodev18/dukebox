@@ -981,7 +981,10 @@ export class SessionManager {
     if (!repo) return toSummary(session).pullRequest
 
     const found = session.prUrl
-      ? await github.viewPullRequest(repo, session.prUrl).catch(() => null)
+      ? await github.viewPullRequest(repo, session.prUrl).catch((error) => {
+          console.error(`view pull request for session ${sessionId}:`, error)
+          return null
+        })
       : await github.findPullRequest(repo, session.branch)
     if (!found) return toSummary(session).pullRequest
 

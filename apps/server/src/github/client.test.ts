@@ -6,7 +6,7 @@ import { GitHubClient, GitHubError, pullRequestFailureMessage } from '@/github/c
  * client builds and how it reads what comes back — running the real `gh` would
  * mean using someone's actual GitHub account.
  *
- * The recorded shapes come from gh 2.83.1.
+ * The recorded shapes come from gh 2.83.1 and 2.97.0.
  */
 
 /** A client whose CLI returns a fixed response. */
@@ -401,6 +401,56 @@ describe('viewPullRequest', () => {
           submittedAt: '2026-08-14T12:00:00Z',
         },
       ],
+    })
+  })
+
+  it('treats an empty reviewDecision the way gh emits it as none', async () => {
+    const { client } = clientReturning(
+      JSON.stringify({
+        url: 'https://github.com/diego/dukebox/pull/122',
+        title: 'Align Dukebox PR preview with GitHub change set',
+        body: '## Summary\n\nLine-change detection.',
+        isDraft: true,
+        state: 'OPEN',
+        mergeable: 'MERGEABLE',
+        mergeStateStatus: 'CLEAN',
+        reviewDecision: '',
+        statusCheckRollup: [
+          {
+            __typename: 'CheckRun',
+            conclusion: 'SUCCESS',
+            detailsUrl: 'https://github.com/diego/dukebox/actions/runs/1',
+            name: 'Verify',
+            status: 'COMPLETED',
+            workflowName: 'CI',
+          },
+        ],
+        commits: [
+          {
+            oid: '2ea88a2ea7b661f9d3ee2b4850f81bda9c12fed2',
+            messageHeadline: 'Align Dukebox pull request preview with GitHub change set',
+            authors: [{ login: 'diegodev18', name: 'Diego Sanchez' }],
+          },
+        ],
+        reviews: [],
+      }),
+    )
+
+    await expect(
+      client.viewPullRequest('diego/dukebox', 'https://github.com/diego/dukebox/pull/122'),
+    ).resolves.toMatchObject({
+      body: '## Summary\n\nLine-change detection.',
+      reviewDecision: null,
+      checks: 'passing',
+      checkRuns: [{ name: 'Verify', state: 'passing' }],
+      commits: [
+        {
+          sha: '2ea88a2ea7b661f9d3ee2b4850f81bda9c12fed2',
+          title: 'Align Dukebox pull request preview with GitHub change set',
+          author: 'diegodev18',
+        },
+      ],
+      reviews: [],
     })
   })
 })
