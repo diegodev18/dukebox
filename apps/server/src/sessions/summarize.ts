@@ -27,6 +27,7 @@ export function toSummary(session: Session): SessionSummary {
     title: session.title,
     branch: session.branch,
     baseBranch: session.baseBranch,
+    baseCommit: session.baseCommit,
     changedFileCount: session.changedFileCount,
     createdAt: session.createdAt.getTime(),
     updatedAt: session.updatedAt.getTime(),
