@@ -1285,6 +1285,75 @@ describe('pull requests', () => {
     await withGitHub.stopAll()
   })
 
+  it('does not open another pull request after this one is merged', async () => {
+    const { manager: withGitHub, created } = managerWithGitHub()
+    const session = await startOn(withGitHub)
+
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+    await withGitHub.openPullRequest(session.id)
+    expect(created).toHaveLength(1)
+
+    await withGitHub.mergePullRequest(session.id)
+
+    await container?.exec(['sh', '-c', 'echo more > EXTRA.md'], { cwd: '/workspace/repo' })
+    adapter.emit({ type: 'done', reason: 'completed' })
+    await waitForStatus(session.id, 'done')
+
+    expect(created).toHaveLength(1)
+    await expect(withGitHub.openPullRequest(session.id)).rejects.toThrow(/already merged/)
+
+    await withGitHub.stopAll()
+  })
+
+  it('tells the agent the pull request was merged on the next prompt', async () => {
+    const { manager: withGitHub } = managerWithGitHub()
+    const session = await startOn(withGitHub)
+
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+    await withGitHub.openPullRequest(session.id)
+    await withGitHub.mergePullRequest(session.id)
+
+    await withGitHub.prompt(session.id, 'add a follow-up')
+
+    expect(adapter.prompts.at(-1)?.text).toContain('pull request for this session was merged')
+    expect(adapter.prompts.at(-1)?.text).toContain('add a follow-up')
+
+    await withGitHub.stopAll()
+  })
+
+  it('does not treat a merged GitHub pull request as a destination', async () => {
+    const { manager: withGitHub, created } = managerWithGitHub({
+      findPullRequest: async () => ({
+        url: 'https://github.com/diego/dukebox/pull/7',
+        title: 'Already landed',
+        body: '',
+        isDraft: false,
+        state: 'merged' as const,
+        mergeable: 'MERGEABLE' as const,
+      }),
+    })
+
+    const session = await startOn(withGitHub)
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+
+    adapter.emit({ type: 'done', reason: 'completed' })
+    await waitForStatus(session.id, 'done')
+
+    expect(created).toHaveLength(0)
+
+    const [row] = await db
+      .select({ prState: sessions.prState })
+      .from(sessions)
+      .where(eq(sessions.id, session.id))
+    expect(row?.prState).toBe('merged')
+    await expect(withGitHub.openPullRequest(session.id)).rejects.toThrow(/already merged/)
+
+    await withGitHub.stopAll()
+  })
+
   it('returns whether GitHub considers the pull request mergeable', async () => {
     const { manager: withGitHub } = managerWithGitHub({
       findPullRequest: async () => ({

@@ -499,6 +499,12 @@ function Preview() {
   const [view, setView] = useState<'new' | 'coding' | 'setup'>('setup')
   const [searchOpen, setSearchOpen] = useState(false)
   const [composerDraft, setComposerDraft] = useState<{ text: string; key: number } | null>(null)
+  const [codingPullRequest, setCodingPullRequest] = useState<SessionSummary['pullRequest']>({
+    url: 'https://github.com/diegodev18/dukebox/pull/1',
+    title: 'Fix the demux bug',
+    isDraft: true,
+    state: 'open',
+  })
   const terminals = usePreviewTerminals()
   const composing = view === 'new'
   const {
@@ -527,13 +533,8 @@ function Preview() {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     lastSeq: codingTranscript.lastSeq,
-    pullRequestUrl: 'https://github.com/diegodev18/dukebox/pull/1',
-    pullRequest: {
-      url: 'https://github.com/diegodev18/dukebox/pull/1',
-      title: 'Fix the demux bug',
-      isDraft: true,
-      state: 'open' as const,
-    },
+    pullRequestUrl: codingPullRequest?.url ?? null,
+    pullRequest: codingPullRequest,
     environmentId: null,
     permissionMode: 'plan',
   } as SessionSummary
@@ -695,6 +696,22 @@ function Preview() {
               </span>
             </header>
 
+            {activeSession.pullRequest?.state === 'merged' && (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-surface px-4.5 py-2 text-[12.5px] text-muted-foreground">
+                <p>
+                  This pull request was merged. A message here stays on this branch. For new work,
+                  start from {activeSession.baseBranch}.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setView('new')}
+                  className="rounded-[calc(var(--radius)*0.6)] border border-border px-2 py-0.5 text-[12px] font-medium text-foreground hover:bg-muted"
+                >
+                  New session from {activeSession.baseBranch}
+                </button>
+              </div>
+            )}
+
             <Transcript
               transcript={{ ...activeTranscript, running: view === 'coding' }}
               onRespond={(id, allow) => console.log('respond', id, allow)}
@@ -744,7 +761,11 @@ function Preview() {
               view === 'coding'
                 ? {
                     client: fakeClient,
-                    onUpdated: (patch) => console.log('pr updated', patch),
+                    onUpdated: (patch) => {
+                      setCodingPullRequest(patch.pullRequest)
+                      console.log('pr updated', patch)
+                    },
+                    onContinue: () => setView('new'),
                   }
                 : null
             }

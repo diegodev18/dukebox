@@ -11,8 +11,12 @@ import {
   ENVIRONMENT_PROPOSAL_PATH,
   isTerminal,
   mergeProjectConfig,
+  MERGED_SESSION_AGENT_NOTICE,
   parseGitPreferences,
   parseSecretReference,
+  pullRequestState,
+  reuseExistingPullRequest,
+  sessionOpensPullRequests,
   projectConfig,
   resolveEnvironment,
   type CommitIdentity,
@@ -1078,24 +1082,33 @@ export class SessionManager {
     sessionId: string,
     options: { reason: 'turn_end' | 'open'; title?: string },
   ): Promise<PullRequestSummary | null> {
-    const running = await this.ensureRunning(sessionId)
-    const github = this.deps.github
-
     const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
     if (!session) throw new SessionError('no such session')
 
     const prefs = parseGitPreferences(session.gitPreferences)
     const userAsked = options.reason === 'open'
+    const knownState = pullRequestState.safeParse(session.prState)
+    const prState = knownState.success ? knownState.data : undefined
+
+    if (!sessionOpensPullRequests(prState)) {
+      if (userAsked) {
+        throw new SessionError("this session's pull request is already merged")
+      }
+      return toSummary(session).pullRequest
+    }
 
     if (session.purpose === 'environment_setup') {
       if (userAsked) throw new SessionError('environment setup sessions do not open pull requests')
       return null
     }
 
+    const github = this.deps.github
     if (!github) {
       if (userAsked) throw new SessionError('GitHub is not configured on this server')
       return null
     }
+
+    const running = await this.ensureRunning(sessionId)
 
     const dirty = await running.workspace.isDirty()
     const changed = await running.workspace.changedFiles(running.baseCommit)
@@ -1135,7 +1148,7 @@ export class SessionManager {
     await this.ensurePush(sessionId, running, session.branch, github)
 
     const existing = await github.findPullRequest(running.repoFullName, session.branch)
-    if (existing && (existing.state === 'open' || existing.state === 'merged')) {
+    if (existing && reuseExistingPullRequest(existing.state)) {
       const summary: PullRequestSummary = {
         url: existing.url,
         title: existing.title,
@@ -1143,6 +1156,20 @@ export class SessionManager {
         state: existing.state,
       }
       await this.persistPullRequest(sessionId, summary)
+      return summary
+    }
+
+    if (existing?.state === 'merged') {
+      const summary: PullRequestSummary = {
+        url: existing.url,
+        title: existing.title,
+        isDraft: existing.isDraft,
+        state: existing.state,
+      }
+      await this.persistPullRequest(sessionId, summary)
+      if (userAsked) {
+        throw new SessionError("this session's pull request is already merged")
+      }
       return summary
     }
 
@@ -1381,14 +1408,22 @@ export class SessionManager {
   ): Promise<void> {
     const running = await this.ensureRunning(sessionId)
 
+    const [row] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
+    const prState = pullRequestState.safeParse(row?.prState)
+    const agentText =
+      prState.success && !sessionOpensPullRequests(prState.data)
+        ? `${MERGED_SESSION_AGENT_NOTICE}\n\n${text}`
+        : text
+
     await this.setStatus(sessionId, 'running')
 
     // Recorded here rather than by the sender, so it survives a reload and
-    // reaches every other device watching this session.
+    // reaches every other device watching this session. The merge notice is
+    // only for the agent — the transcript keeps what the person typed.
     await this.deps.bus.append(sessionId, { type: 'user_prompt', text })
 
     await running.adapter.send({
-      text,
+      text: agentText,
       ...(images ? { images } : {}),
       ...(files ? { files } : {}),
     })

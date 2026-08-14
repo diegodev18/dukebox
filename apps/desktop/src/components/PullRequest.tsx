@@ -17,6 +17,8 @@ import { pullRequestStatus, pullRequestStatusLabel } from '@/lib/pullRequest'
 export interface PullRequestTab {
   client: DukeboxClient
   onUpdated: (patch: { pullRequestUrl: string; pullRequest: PullRequestSummary }) => void
+  /** Open New Session from this project's base branch after a merge. */
+  onContinue?: () => void
 }
 
 interface Props {
@@ -24,6 +26,7 @@ interface Props {
   session: SessionSummary
   files: FileChange[]
   onUpdated: PullRequestTab['onUpdated']
+  onContinue?: PullRequestTab['onContinue']
   disabled?: boolean
 }
 
@@ -35,7 +38,14 @@ type Action =
 
 type MergePrompt = 'idle' | 'confirm' | 'conflicts'
 
-export function PullRequestPanel({ client, session, files, onUpdated, disabled = false }: Props) {
+export function PullRequestPanel({
+  client,
+  session,
+  files,
+  onUpdated,
+  onContinue,
+  disabled = false,
+}: Props) {
   const [action, setAction] = useState<Action>({ kind: 'idle' })
   const [mergePrompt, setMergePrompt] = useState<MergePrompt>('idle')
   const pr = session.pullRequest
@@ -204,7 +214,25 @@ export function PullRequestPanel({ client, session, files, onUpdated, disabled =
               >
                 View on GitHub
               </button>
+
+              {pr.state === 'merged' && onContinue && (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={onContinue}
+                  className="rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12.5px] font-medium hover:bg-muted disabled:opacity-50"
+                >
+                  New session from {session.baseBranch}
+                </button>
+              )}
             </div>
+
+            {pr.state === 'merged' && (
+              <p className="mt-2 text-[12px] text-muted-foreground">
+                This pull request was merged. A message here stays on this branch. For new work,
+                start from {session.baseBranch}.
+              </p>
+            )}
 
             {mergePrompt === 'conflicts' && (
               <p className="mt-2 text-[12px] text-muted-foreground">

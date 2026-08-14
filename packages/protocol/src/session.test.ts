@@ -7,6 +7,8 @@ import {
   parseGitPreferences,
   permissionMode,
   resolvePermissionMode,
+  reuseExistingPullRequest,
+  sessionOpensPullRequests,
   sessionSummary,
 } from '@/session'
 
@@ -140,5 +142,20 @@ describe('gitPreferences', () => {
 
   it('falls back to defaults for garbage', () => {
     expect(parseGitPreferences('nope')).toEqual(DEFAULT_GIT_PREFERENCES)
+  })
+})
+
+describe('session pull request destination', () => {
+  it('reuses only an open pull request on the session branch', () => {
+    expect(reuseExistingPullRequest('open')).toBe(true)
+    expect(reuseExistingPullRequest('merged')).toBe(false)
+    expect(reuseExistingPullRequest('closed')).toBe(false)
+  })
+
+  it('stops treating a merged session as a pull request destination', () => {
+    expect(sessionOpensPullRequests(undefined)).toBe(true)
+    expect(sessionOpensPullRequests('open')).toBe(true)
+    expect(sessionOpensPullRequests('closed')).toBe(true)
+    expect(sessionOpensPullRequests('merged')).toBe(false)
   })
 })
