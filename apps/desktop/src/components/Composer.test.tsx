@@ -390,6 +390,42 @@ describe('Composer drag and drop', () => {
     expect(screen.queryByText('Drop to attach')).not.toBeInTheDocument()
   })
 
+  it('highlights and attaches a Firefox file drag, which reports application/x-moz-file', async () => {
+    render(<Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />)
+
+    const box = composerBox()
+    fireEvent.dragEnter(box, { dataTransfer: { types: ['application/x-moz-file'] } })
+    expect(await screen.findByText('Drop to attach')).toBeInTheDocument()
+
+    fireEvent.drop(box, {
+      dataTransfer: { types: ['application/x-moz-file'], files: [new File(['x'], 'shot.png')] },
+    })
+
+    expect(await screen.findByText('shot.png')).toBeInTheDocument()
+  })
+
+  it('attaches a drag that only announces its files through items', async () => {
+    render(<Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />)
+
+    const box = composerBox()
+    const file = new File(['x'], 'diagram.png', { type: 'image/png' })
+
+    fireEvent.dragEnter(box, { dataTransfer: { types: ['text/plain'], items: [{ kind: 'file' }] } })
+    expect(await screen.findByText('Drop to attach')).toBeInTheDocument()
+
+    // Some Chromium drags omit "Files" from types and leave `files` empty on
+    // drop, exposing each file only through `items[].getAsFile()`.
+    fireEvent.drop(box, {
+      dataTransfer: {
+        types: ['text/plain'],
+        files: [],
+        items: [{ kind: 'file', getAsFile: () => file }],
+      },
+    })
+
+    expect(await screen.findByText('diagram.png')).toBeInTheDocument()
+  })
+
   it('does not attach dropped files while disconnected', () => {
     render(<Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} disabled />)
 
