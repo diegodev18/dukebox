@@ -107,7 +107,11 @@ export function Sidebar({
       aria-label="Sessions"
       className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border bg-surface"
     >
-      <div className="px-2 pt-2.5 pb-1">
+      <div className="px-3 pt-3 pb-1">
+        <p className="text-[13px] font-semibold tracking-tight text-foreground">Dukebox</p>
+      </div>
+
+      <div className="px-2 pb-1">
         <SidebarAction
           icon={<PlusIcon size={16} />}
           {...(disabled ? {} : { onClick: () => onNewSession() })}
