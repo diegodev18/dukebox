@@ -33,7 +33,7 @@ describe('extensionFor', () => {
 })
 
 describe('stageUpload', () => {
-  it('writes the payload into /tmp/imgs and returns the container path', async () => {
+  it('writes the payload into /tmp/imgs via stdin, not an env var', async () => {
     const exec = vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' }))
     const container = { exec } as unknown as SessionContainer
 
@@ -41,9 +41,36 @@ describe('stageUpload', () => {
 
     expect(path).toBe(`${UPLOADS_DIR}/notes.txt`)
     expect(exec).toHaveBeenCalledWith(
-      ['sh', '-c', `mkdir -p ${UPLOADS_DIR} && printf '%s' "$DUKEBOX_FILE" | base64 -d > ${path}`],
-      { env: { DUKEBOX_FILE: 'aGVsbG8=' } },
+      ['sh', '-c', `mkdir -p ${UPLOADS_DIR} && base64 -d > ${path}`],
+      { stdin: 'aGVsbG8=' },
     )
+    const options = exec.mock.calls[0]?.[1] as { env?: unknown; stdin?: unknown }
+    expect(options.env).toBeUndefined()
+  })
+
+  it('pipes a payload larger than Linux MAX_ARG_STRLEN through stdin', async () => {
+    // A single env var cannot exceed ~128 KiB on Linux. Real screenshots do.
+    const payload = 'A'.repeat(200_000)
+    const exec = vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' }))
+    const container = { exec } as unknown as SessionContainer
+
+    await stageUpload(container, 'shot.png', payload)
+
+    expect(exec).toHaveBeenCalledWith(
+      ['sh', '-c', `mkdir -p ${UPLOADS_DIR} && base64 -d > ${UPLOADS_DIR}/shot.png`],
+      { stdin: payload },
+    )
+  })
+
+  it('rejects when the container write fails', async () => {
+    const exec = vi.fn(async () => ({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'base64: invalid input',
+    }))
+    const container = { exec } as unknown as SessionContainer
+
+    await expect(stageUpload(container, 'notes.txt', 'aGVsbG8=')).rejects.toThrow(/notes\.txt/)
   })
 
   it('appends a media-type extension when asked', async () => {

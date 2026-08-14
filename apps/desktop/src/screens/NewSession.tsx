@@ -27,7 +27,7 @@ import {
 import { readFile, type ComposerFile } from '@/components/Composer'
 import { modelsForProvider } from '@/components/OpenCodeProviders'
 import { AttachIcon, CloseIcon, FileIcon, SendIcon } from '@/components/icons'
-import { useFileDrop } from '@/lib/useFileDrop'
+import { filesFromPaste, useFileDrop } from '@/lib/useFileDrop'
 import {
   AgentPicker,
   BASE_IMAGE_VALUE,
@@ -740,6 +740,12 @@ export function NewSession({
                   event.preventDefault()
                   void submit()
                 }
+              }}
+              onPaste={(event) => {
+                const pasted = filesFromPaste(event.clipboardData)
+                if (pasted.length === 0) return
+                event.preventDefault()
+                attachFiles(pasted)
               }}
               rows={3}
               disabled={busy}

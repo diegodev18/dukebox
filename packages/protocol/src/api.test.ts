@@ -8,6 +8,7 @@ import {
   workspaceFileResponse,
   resolvePullRequestConflictsResponse,
   pullRequestResponse,
+  partitionAttachments,
 } from '@/api'
 
 describe('createSessionRequest', () => {
@@ -113,6 +114,32 @@ describe('createSessionRequest', () => {
       prompt: 'fix it',
     })
     expect(parsed.files).toBeUndefined()
+  })
+})
+
+describe('partitionAttachments', () => {
+  it('lifts png/jpeg/gif/webp data URIs onto images and leaves the rest as files', () => {
+    const png = 'data:image/png;base64,QUFB'
+    const notes = { name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }
+
+    expect(
+      partitionAttachments(
+        [notes, { name: 'shot.png', data: png }],
+        ['data:image/jpeg;base64,QkJC'],
+      ),
+    ).toEqual({
+      images: ['data:image/jpeg;base64,QkJC', png],
+      files: [notes],
+    })
+  })
+
+  it('returns nothing when there are no attachments', () => {
+    expect(partitionAttachments()).toEqual({})
+  })
+
+  it('leaves svg and other types as files rather than inline images', () => {
+    const svg = { name: 'icon.svg', data: 'data:image/svg+xml;base64,PHN2Zz4=' }
+    expect(partitionAttachments([svg])).toEqual({ files: [svg] })
   })
 })
 

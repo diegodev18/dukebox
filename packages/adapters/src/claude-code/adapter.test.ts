@@ -315,12 +315,8 @@ describe('ClaudeCodeAdapter', () => {
     })
 
     expect(exec).toHaveBeenCalledWith(
-      [
-        'sh',
-        '-c',
-        'mkdir -p /tmp/imgs && printf \'%s\' "$DUKEBOX_FILE" | base64 -d > /tmp/imgs/notes.txt',
-      ],
-      { env: { DUKEBOX_FILE: 'aGVsbG8=' } },
+      ['sh', '-c', 'mkdir -p /tmp/imgs && base64 -d > /tmp/imgs/notes.txt'],
+      { stdin: 'aGVsbG8=' },
     )
     expect(written).toEqual([
       encodeUserMessage(

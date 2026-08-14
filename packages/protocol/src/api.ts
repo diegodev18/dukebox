@@ -203,6 +203,43 @@ export const attachedFile = z.object({
 
 export type AttachedFile = z.infer<typeof attachedFile>
 
+/**
+ * Image types Claude (and most vision APIs) accept as inline content blocks.
+ *
+ * The desktop attaches every file the same way. Adapters that can see images
+ * need them on `images`; everything else is staged to `/tmp/imgs/`.
+ */
+const INLINE_IMAGE_URI = /^data:(image\/(?:png|jpeg|gif|webp));base64,/i
+
+export function isInlineImageDataUri(data: string): boolean {
+  return INLINE_IMAGE_URI.test(data)
+}
+
+/**
+ * Lift inline-able images out of `files` onto `images`.
+ *
+ * Existing clients send screenshots as files. Without this split, Claude
+ * never gets an image block and OpenCode/Grok still stage them — but a
+ * screenshot that stayed in `files` used to be written via an env var that
+ * Linux rejected, which failed the session.
+ */
+export function partitionAttachments(
+  files?: AttachedFile[],
+  images?: string[],
+): { files?: AttachedFile[]; images?: string[] } {
+  const extra: string[] = []
+  const rest: AttachedFile[] = []
+  for (const file of files ?? []) {
+    if (isInlineImageDataUri(file.data)) extra.push(file.data)
+    else rest.push(file)
+  }
+  const allImages = [...(images ?? []), ...extra]
+  return {
+    ...(allImages.length > 0 ? { images: allImages } : {}),
+    ...(rest.length > 0 ? { files: rest } : {}),
+  }
+}
+
 export const createSessionRequest = z
   .object({
     projectId: z.string().uuid(),

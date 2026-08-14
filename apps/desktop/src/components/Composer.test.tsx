@@ -433,4 +433,26 @@ describe('Composer drag and drop', () => {
 
     expect(screen.queryByText('notes.txt')).not.toBeInTheDocument()
   })
+
+  it('attaches an image pasted into the field', async () => {
+    render(<Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />)
+
+    fireEvent.paste(screen.getByLabelText('Message'), {
+      clipboardData: {
+        files: [new File(['x'], 'image.png', { type: 'image/png' })],
+      },
+    })
+
+    expect(await screen.findByText('image.png')).toBeInTheDocument()
+  })
+
+  it('leaves a text paste alone so the field still receives it', () => {
+    render(<Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />)
+
+    fireEvent.paste(screen.getByLabelText('Message'), {
+      clipboardData: { files: [], items: [] },
+    })
+
+    expect(screen.queryByText('image.png')).not.toBeInTheDocument()
+  })
 })

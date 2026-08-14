@@ -4,6 +4,7 @@ import { UpdateBanner } from '@/components/UpdateBanner'
 import { COMMANDS } from '@/lib/commands'
 import { DukeboxClient, isAuthFailure } from '@/lib/client'
 import { activeConnection, removeConnection, type Connection } from '@/lib/connection'
+import { preventWindowFileNavigation } from '@/lib/useFileDrop'
 import type { Settings } from '@/lib/settings'
 import { useSettings } from '@/lib/useSettings'
 import { useUpdate } from '@/lib/useUpdate'
@@ -45,6 +46,10 @@ function Loaded({
   // which server this copy is paired to, so the check lives here rather than
   // inside a screen. Whether it runs at launch is the setting that owns it.
   const update = useUpdate(settings.checkForUpdatesOnLaunch)
+
+  // A file dropped on the transcript or chrome must not navigate the webview
+  // away from the session. The composer still handles drops on itself.
+  useEffect(() => preventWindowFileNavigation(), [])
 
   useEffect(() => {
     let cancelled = false

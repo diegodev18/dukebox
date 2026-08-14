@@ -128,18 +128,24 @@ export class SessionContainer {
    */
   async exec(
     command: string[],
-    options: { cwd?: string; env?: Record<string, string> } = {},
+    options: { cwd?: string; env?: Record<string, string>; stdin?: string | Buffer } = {},
   ): Promise<ExecResult> {
+    const attachStdin = options.stdin !== undefined
     const exec = await this.container.exec({
       Cmd: command,
       AttachStdout: true,
       AttachStderr: true,
+      ...(attachStdin ? { AttachStdin: true } : {}),
       ...(options.cwd ? { WorkingDir: options.cwd } : {}),
       ...(options.env ? { Env: toEnvArray(options.env) } : {}),
     })
 
-    const stream = await exec.start({ hijack: true, stdin: false })
-    const { stdout, stderr } = await collectMultiplexed(this.docker, stream)
+    const stream = await exec.start({ hijack: true, stdin: attachStdin })
+    const collected = collectMultiplexed(this.docker, stream)
+    if (options.stdin !== undefined) {
+      await writeExecStdin(stream, options.stdin)
+    }
+    const { stdout, stderr } = await collected
 
     // The exit code is only populated once the process has exited, which is
     // why this is inspected after the stream has ended rather than before.
@@ -468,6 +474,28 @@ function isStatusCode(error: unknown, code: number): boolean {
  * 8-byte header per chunk. Reading it raw would splice stderr into the middle
  * of stdout.
  */
+/**
+ * Feed stdin to a hijacked exec and half-close the write side so the process
+ * sees EOF. The read side stays open for stdout/stderr.
+ *
+ * Used to stage uploads: a payload in an env var hits Linux `MAX_ARG_STRLEN`
+ * (~128 KiB) and fails the session; stdin does not.
+ */
+function writeExecStdin(stream: NodeJS.ReadWriteStream, data: string | Buffer): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onError = (error: Error) => {
+      stream.off('error', onError)
+      reject(error)
+    }
+    stream.once('error', onError)
+    const payload = typeof data === 'string' ? data : new Uint8Array(data)
+    stream.end(payload, () => {
+      stream.off('error', onError)
+      resolve()
+    })
+  })
+}
+
 async function collectMultiplexed(
   docker: Docker,
   stream: NodeJS.ReadableStream,

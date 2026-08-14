@@ -602,6 +602,23 @@ describe('prompt, interrupt, and stop', () => {
     })
   })
 
+  it('lifts attached images onto the images field so vision adapters see them', async () => {
+    const session = await startSession('first')
+    await waitForStatus(session.id, 'running')
+
+    const png = 'data:image/png;base64,QUFB'
+    await manager.prompt(session.id, 'what is this', undefined, [
+      { name: 'shot.png', data: png },
+      { name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' },
+    ])
+
+    expect(adapter.prompts.at(-1)).toEqual({
+      text: 'what is this',
+      images: [png],
+      files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
+    })
+  })
+
   it('rejects a prompt for a session that is not running', async () => {
     await expect(manager.prompt('00000000-0000-4000-8000-000000000000', 'x')).rejects.toThrow(
       SessionError,

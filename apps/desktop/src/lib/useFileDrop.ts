@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent } from 'react'
+import { useRef, useState, type DragEvent as ReactDragEvent } from 'react'
 
 /**
  * Drag-and-drop file attaching for the composer.
@@ -17,6 +17,50 @@ import { useRef, useState, type DragEvent } from 'react'
  * missing. Enumeration is allowed in the protected drag-store mode of
  * `dragenter`/`dragover`, so `items` can be read there.
  */
+
+/** Files from a paste. Screenshots land here as `image/png` with no filename. */
+export function filesFromPaste(data: DataTransfer | null | undefined): File[] {
+  if (!data) return []
+
+  const fromFiles = Array.from(data.files ?? [])
+  if (fromFiles.length > 0) return fromFiles
+
+  return Array.from(data.items ?? [])
+    .map((item) => (item.kind === 'file' ? item.getAsFile() : null))
+    .filter((file): file is File => file !== null)
+}
+
+export function dataTransferHasFiles(dataTransfer: DataTransfer | null | undefined): boolean {
+  if (!dataTransfer) return false
+
+  const types = Array.from(dataTransfer.types ?? []).map((type) => type.toLowerCase())
+  if (types.includes('files') || types.includes('application/x-moz-file')) return true
+
+  return Array.from(dataTransfer.items ?? []).some((item) => item.kind === 'file')
+}
+
+/**
+ * Stop the browser from navigating to a dropped file.
+ *
+ * The composer only intercepts drops on itself. A drop on the transcript,
+ * sidebar, or chrome is the default browser action — replace the page with
+ * the image — which looks exactly like the session dying.
+ */
+export function preventWindowFileNavigation(): () => void {
+  const prevent = (event: Event) => {
+    const drag = event as DragEvent
+    if (!dataTransferHasFiles(drag.dataTransfer)) return
+    event.preventDefault()
+  }
+
+  window.addEventListener('dragover', prevent)
+  window.addEventListener('drop', prevent)
+  return () => {
+    window.removeEventListener('dragover', prevent)
+    window.removeEventListener('drop', prevent)
+  }
+}
+
 export function useFileDrop({
   disabled,
   onFiles,
@@ -27,17 +71,9 @@ export function useFileDrop({
   const [dragging, setDragging] = useState(false)
   const depth = useRef(0)
 
-  const carriesFiles = (event: DragEvent): boolean => {
-    const dataTransfer = event.dataTransfer
-    if (!dataTransfer) return false
+  const carriesFiles = (event: ReactDragEvent): boolean => dataTransferHasFiles(event.dataTransfer)
 
-    const types = Array.from(dataTransfer.types ?? []).map((type) => type.toLowerCase())
-    if (types.includes('files') || types.includes('application/x-moz-file')) return true
-
-    return Array.from(dataTransfer.items ?? []).some((item) => item.kind === 'file')
-  }
-
-  const onDragEnter = (event: DragEvent) => {
+  const onDragEnter = (event: ReactDragEvent) => {
     if (!carriesFiles(event)) return
     event.preventDefault()
     if (disabled) return
@@ -45,19 +81,19 @@ export function useFileDrop({
     setDragging(true)
   }
 
-  const onDragOver = (event: DragEvent) => {
+  const onDragOver = (event: ReactDragEvent) => {
     if (!carriesFiles(event)) return
     event.preventDefault()
     event.dataTransfer.dropEffect = 'copy'
   }
 
-  const onDragLeave = (event: DragEvent) => {
+  const onDragLeave = (event: ReactDragEvent) => {
     event.preventDefault()
     depth.current = Math.max(0, depth.current - 1)
     if (depth.current === 0) setDragging(false)
   }
 
-  const readFiles = (event: DragEvent): File[] => {
+  const readFiles = (event: ReactDragEvent): File[] => {
     const dataTransfer = event.dataTransfer
     if (!dataTransfer) return []
 
@@ -70,7 +106,7 @@ export function useFileDrop({
       .filter((file): file is File => file !== null)
   }
 
-  const onDrop = (event: DragEvent) => {
+  const onDrop = (event: ReactDragEvent) => {
     event.preventDefault()
     depth.current = 0
     setDragging(false)

@@ -343,20 +343,12 @@ describe('GrokBuildAdapter', () => {
     })
 
     expect(exec).toHaveBeenCalledWith(
-      [
-        'sh',
-        '-c',
-        'mkdir -p /tmp/imgs && printf \'%s\' "$DUKEBOX_FILE" | base64 -d > /tmp/imgs/image-0.png',
-      ],
-      { env: { DUKEBOX_FILE: 'QUFB' } },
+      ['sh', '-c', 'mkdir -p /tmp/imgs && base64 -d > /tmp/imgs/image-0.png'],
+      { stdin: 'QUFB' },
     )
     expect(exec).toHaveBeenCalledWith(
-      [
-        'sh',
-        '-c',
-        'mkdir -p /tmp/imgs && printf \'%s\' "$DUKEBOX_FILE" | base64 -d > /tmp/imgs/spec.pdf',
-      ],
-      { env: { DUKEBOX_FILE: 'REVF' } },
+      ['sh', '-c', 'mkdir -p /tmp/imgs && base64 -d > /tmp/imgs/spec.pdf'],
+      { stdin: 'REVF' },
     )
 
     const [command] = execStream.mock.calls[0] as unknown as [string[], unknown]

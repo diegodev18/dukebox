@@ -100,7 +100,7 @@ describe('Sandbox', () => {
       const container = await sandbox.get(sessionId)
       await container?.remove()
     }
-  })
+  }, 120_000)
 
   it('reaches the Docker daemon', async () => {
     await expect(sandbox.ping()).resolves.not.toThrow()
@@ -118,6 +118,15 @@ describe('Sandbox', () => {
     expect(result.exitCode).toBe(0)
     expect(result.stdout.trim()).toBe('hello')
     expect(result.stderr).toBe('')
+  })
+
+  it('feeds stdin to the process, including payloads larger than MAX_ARG_STRLEN', async () => {
+    const container = await createSession()
+    const payload = 'A'.repeat(200_000)
+    const result = await container.exec(['wc', '-c'], { stdin: payload })
+
+    expect(result.exitCode).toBe(0)
+    expect(Number(result.stdout.trim())).toBe(payload.length)
   })
 
   it('separates stderr from stdout', async () => {

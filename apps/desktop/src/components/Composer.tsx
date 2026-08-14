@@ -3,7 +3,7 @@ import type { PermissionMode } from '@dukebox/protocol'
 import { availablePermissionModes, cyclePermissionMode } from '@/components/AgentIcon'
 import { PermissionModePicker } from '@/components/RepoBranchPickers'
 import { AttachIcon, CloseIcon, FileIcon } from '@/components/icons'
-import { useFileDrop } from '@/lib/useFileDrop'
+import { filesFromPaste, useFileDrop } from '@/lib/useFileDrop'
 
 /**
  * Where a person talks to the agent.
@@ -169,6 +169,12 @@ export const Composer = memo(function Composer({
               event.preventDefault()
               submit()
             }
+          }}
+          onPaste={(event) => {
+            const pasted = filesFromPaste(event.clipboardData)
+            if (pasted.length === 0) return
+            event.preventDefault()
+            attachFiles(pasted)
           }}
           disabled={disabled}
           rows={1}
