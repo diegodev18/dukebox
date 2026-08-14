@@ -81,9 +81,34 @@ describe('listRepositories', () => {
     await client.listRepositories()
 
     const args = run.mock.calls[0]?.[0] as unknown as string[]
-    expect(args).toContain('--json')
-    expect(args.join(' ')).toContain('nameWithOwner')
-    expect(args.join(' ')).toContain('defaultBranchRef')
+    const joined = args.join(' ')
+    expect(joined).toContain('api')
+    expect(joined).toContain('user/repos')
+    expect(joined).toContain('--jq')
+    expect(joined).toContain('nameWithOwner')
+    expect(joined).toContain('defaultBranchRef')
+  })
+
+  it('includes organization and collaborator repositories', async () => {
+    const { client, run } = clientReturning(REPO_LIST)
+    await client.listRepositories()
+
+    // Without `affiliation` the endpoint defaults to owned repositories only,
+    // which would keep hiding the org and collaborator ones.
+    const args = run.mock.calls[0]?.[0] as unknown as string[]
+    expect(args.join(' ')).toContain('affiliation=owner,collaborator,organization_member')
+  })
+
+  it('keeps only repositories the user can write to', async () => {
+    const { client, run } = clientReturning(REPO_LIST)
+    await client.listRepositories()
+
+    // The filtering happens inside gh's jq, so this asserts the expression is
+    // there: a session's agent must push branches and open pull requests.
+    const args = run.mock.calls[0]?.[0] as unknown as string[]
+    const jq = args[args.indexOf('--jq') + 1] ?? ''
+    expect(jq).toContain('select')
+    expect(jq).toContain('permissions.push')
   })
 
   it('parses the repositories', async () => {
@@ -99,7 +124,7 @@ describe('listRepositories', () => {
     await client.listRepositories(25)
 
     const args = run.mock.calls[0]?.[0] as unknown as string[]
-    expect(args[args.indexOf('--limit') + 1]).toBe('25')
+    expect(args.join(' ')).toContain('per_page=25')
   })
 
   it('handles a repository with no default branch', async () => {
