@@ -4,6 +4,7 @@ import {
   type DeviceRole,
   type DeviceSummary,
   type GitPreferences,
+  type GrokLoginSnapshot,
   type PairingInvite,
 } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
@@ -608,6 +609,170 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
   )
 }
 
+function GrokLoginWizard({
+  client,
+  onFinished,
+}: {
+  client: DukeboxClient
+  onFinished: () => void
+}) {
+  const [login, setLogin] = useState<GrokLoginSnapshot>({ status: 'idle' })
+  const [working, setWorking] = useState(false)
+  const [now, setNow] = useState(Date.now())
+
+  const live = login.status === 'installing' || login.status === 'waiting'
+
+  useEffect(() => {
+    let cancelled = false
+    client
+      .grokLoginStatus()
+      .then((next) => {
+        if (!cancelled) setLogin(next)
+      })
+      .catch(() => {
+        // The form still works without a live login.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [client])
+
+  useEffect(() => {
+    if (!live) return
+    const tick = window.setInterval(() => {
+      setNow(Date.now())
+      void client
+        .grokLoginStatus()
+        .then(setLogin)
+        .catch(() => undefined)
+    }, 1000)
+    return () => window.clearInterval(tick)
+  }, [client, live])
+
+  const wasLive = useRef(false)
+  useEffect(() => {
+    if (live) wasLive.current = true
+    if (login.status === 'success' && wasLive.current) {
+      wasLive.current = false
+      onFinished()
+    }
+  }, [live, login.status, onFinished])
+
+  const start = async () => {
+    setWorking(true)
+    try {
+      setLogin(await client.startGrokLogin())
+    } catch (error) {
+      setLogin({
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Could not start Grok login.',
+      })
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const cancel = async () => {
+    setWorking(true)
+    try {
+      setLogin(await client.cancelGrokLogin())
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const remaining = login.expiresAt
+    ? Math.max(0, Math.ceil((login.expiresAt - now) / 1000))
+    : undefined
+  const clock =
+    remaining === undefined
+      ? undefined
+      : `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`
+
+  return (
+    <div className="mt-3 rounded-[calc(var(--radius)*0.8)] border border-border bg-background px-3 py-3">
+      {login.status === 'idle' || login.status === 'success' ? (
+        <button
+          type="button"
+          disabled={working}
+          onClick={() => void start()}
+          className="rounded-[calc(var(--radius)*0.6)] bg-foreground px-3.5 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
+        >
+          {login.status === 'success' ? 'Sign in again' : 'Sign in with Grok'}
+        </button>
+      ) : null}
+
+      {login.status === 'installing' && (
+        <p role="status" className="text-[13px] text-muted-foreground">
+          Downloading Grok Build on the server…
+        </p>
+      )}
+
+      {login.status === 'waiting' && (
+        <div>
+          <p className="text-[13px] text-foreground">
+            Open this page and enter the code. You have {clock ?? 'a few minutes'}.
+          </p>
+          {login.url && (
+            <a
+              href={login.url}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 block break-all text-[13px] text-foreground underline-offset-2 hover:underline"
+            >
+              {login.url}
+            </a>
+          )}
+          {login.userCode && (
+            <p
+              className="mt-2 font-mono text-[22px] tracking-[0.18em] text-foreground"
+              aria-label="Grok login code"
+            >
+              {login.userCode}
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={working}
+            onClick={() => void cancel()}
+            className="mt-3 rounded-[calc(var(--radius)*0.6)] border border-border px-3.5 py-1.5 text-[12.5px] font-medium hover:bg-muted disabled:opacity-40"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {login.status === 'failed' && (
+        <div>
+          <p className="text-[13px] text-destructive">{login.error ?? 'Sign-in failed.'}</p>
+          <button
+            type="button"
+            disabled={working}
+            onClick={() => void start()}
+            className="mt-2 rounded-[calc(var(--radius)*0.6)] bg-foreground px-3.5 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
+      {login.status === 'expired' && (
+        <div>
+          <p className="text-[13px] text-muted-foreground">The code expired.</p>
+          <button
+            type="button"
+            disabled={working}
+            onClick={() => void start()}
+            className="mt-2 rounded-[calc(var(--radius)*0.6)] bg-foreground px-3.5 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
+          >
+            New code
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
   const [status, setStatus] = useState<{
     apiKey: boolean
@@ -680,13 +845,16 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
         Grok Build
       </h3>
       <p className="mt-1 text-[12.5px] text-muted-foreground">
-        A SuperGrok or X Premium Plus login uses your subscription. An API key from console.x.ai is
-        billed separately. If both are set, Grok uses the subscription.
+        Sign in with SuperGrok or X Premium Plus. The server shows a code; you enter it on any
+        device. An API key from console.x.ai is billed separately.
       </p>
 
-      <p className="mt-3 text-[12px] font-medium text-foreground">Subscription</p>
+      <GrokLoginWizard client={client} onFinished={() => void reload()} />
+
+      <p className="mt-4 text-[12px] font-medium text-foreground">Subscription</p>
       <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-        Run <code>grok login</code> on any machine, then paste <code>~/.grok/auth.json</code>.
+        Or paste <code>~/.grok/auth.json</code> from a machine that already ran{' '}
+        <code>grok login</code>.
       </p>
       <textarea
         value={authJson}

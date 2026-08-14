@@ -17,6 +17,7 @@ import {
 import type { EventBus } from '@/events/bus'
 import type { GitHubClient } from '@/github/client'
 import type { SecretStore } from '@/secrets/store'
+import type { GrokDeviceLogin } from '@/grok/login'
 import type { SessionManager } from '@/sessions/manager'
 import { OWNER_FORBIDDEN, requireOwner, type AuthedVariables } from '@/http/auth'
 import { clientKey, tooManyAttempts } from '@/http/rateLimit'
@@ -55,6 +56,7 @@ export interface AppContext {
     bus: EventBus
     sessions: SessionManager
     secrets: SecretStore
+    grokLogin?: GrokDeviceLogin
   }
 }
 
@@ -248,7 +250,14 @@ export function createApp(context: AppContext) {
       }),
     )
     app.route('/api', environmentRoutes({ db: context.db }))
-    app.route('/api', secretRoutes({ db: context.db, secrets: context.features.secrets }))
+    app.route(
+      '/api',
+      secretRoutes({
+        db: context.db,
+        secrets: context.features.secrets,
+        ...(context.features.grokLogin ? { grokLogin: context.features.grokLogin } : {}),
+      }),
+    )
     app.route('/api', opencodeRoutes({ secrets: context.features.secrets }))
   }
 

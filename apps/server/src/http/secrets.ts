@@ -9,6 +9,7 @@ import {
   type SecretStore,
 } from '@/secrets/store'
 import { requireOwner, type AuthedVariables } from '@/http/auth'
+import { GrokDeviceLogin } from '@/grok/login'
 
 /**
  * Secrets: values a session needs but that must not live in a repository.
@@ -21,6 +22,7 @@ import { requireOwner, type AuthedVariables } from '@/http/auth'
 export interface SecretRoutesDeps {
   db: Database
   secrets: SecretStore
+  grokLogin?: GrokDeviceLogin
 }
 
 const setSecretRequest = z.object({
@@ -67,6 +69,7 @@ function parseGrokAuthJson(raw: string): string | undefined {
 
 export function secretRoutes(deps: SecretRoutesDeps) {
   const app = new Hono<{ Variables: AuthedVariables }>()
+  const grokLogin = deps.grokLogin ?? new GrokDeviceLogin({ secrets: deps.secrets })
 
   /**
    * The agent's credentials.
@@ -132,6 +135,18 @@ export function secretRoutes(deps: SecretRoutesDeps) {
 
   app.get('/grok-credentials', async (c) => {
     return c.json(await grokCredentialStatus(deps.secrets))
+  })
+
+  app.get('/grok-login', requireOwner, (c) => {
+    return c.json(grokLogin.snapshot())
+  })
+
+  app.post('/grok-login', requireOwner, async (c) => {
+    return c.json(await grokLogin.start())
+  })
+
+  app.delete('/grok-login', requireOwner, (c) => {
+    return c.json(grokLogin.cancel())
   })
 
   app.delete('/grok-credentials', requireOwner, async (c) => {

@@ -6,6 +6,7 @@ import type {
   EnvironmentProposal,
   EnvironmentSummary,
   GitPreferences,
+  GrokLoginSnapshot,
   ListInvitesResponse,
   ListOpencodeCatalogResponse,
   ListOpencodeProvidersResponse,
@@ -438,6 +439,18 @@ export class DukeboxClient {
   async clearGrokCredentials(kind?: 'apiKey' | 'subscription'): Promise<void> {
     const query = kind ? `?kind=${kind}` : ''
     await this.request(`/api/grok-credentials${query}`, { method: 'DELETE' })
+  }
+
+  async grokLoginStatus(): Promise<GrokLoginSnapshot> {
+    return this.request('/api/grok-login')
+  }
+
+  async startGrokLogin(): Promise<GrokLoginSnapshot> {
+    return this.request('/api/grok-login', { method: 'POST' })
+  }
+
+  async cancelGrokLogin(): Promise<GrokLoginSnapshot> {
+    return this.request('/api/grok-login', { method: 'DELETE' })
   }
 
   async listOpencodeCatalog(): Promise<ListOpencodeCatalogResponse['providers']> {

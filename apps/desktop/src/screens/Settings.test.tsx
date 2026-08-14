@@ -52,6 +52,14 @@ function clientMock() {
     }),
     setGrokCredentials: vi.fn().mockResolvedValue(undefined),
     clearGrokCredentials: vi.fn().mockResolvedValue(undefined),
+    grokLoginStatus: vi.fn().mockResolvedValue({ status: 'idle' }),
+    startGrokLogin: vi.fn().mockResolvedValue({
+      status: 'waiting',
+      url: 'https://accounts.x.ai/activate',
+      userCode: 'ABCD-EFGH',
+      expiresAt: Date.now() + 300_000,
+    }),
+    cancelGrokLogin: vi.fn().mockResolvedValue({ status: 'idle' }),
     listOpencodeProviders: vi.fn().mockResolvedValue([]),
     upsertOpencodeProvider: vi.fn().mockResolvedValue({
       id: 'anthropic',
@@ -258,6 +266,36 @@ describe('Settings', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
     await waitFor(() => expect(client.clearAgentCredentials).toHaveBeenCalled())
+  })
+
+  it('starts a Grok device login from Agents', async () => {
+    const client = clientMock()
+    renderSettings({ client })
+    await openCategory('Agents')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Sign in with Grok' }))
+
+    await waitFor(() => expect(client.startGrokLogin).toHaveBeenCalled())
+    expect(await screen.findByLabelText('Grok login code')).toHaveTextContent('ABCD-EFGH')
+    expect(screen.getByRole('link', { name: /accounts.x.ai/ })).toHaveAttribute(
+      'href',
+      'https://accounts.x.ai/activate',
+    )
+  })
+
+  it('cancels an in-flight Grok login', async () => {
+    const client = clientMock()
+    client.grokLoginStatus.mockResolvedValue({
+      status: 'waiting',
+      url: 'https://accounts.x.ai/activate',
+      userCode: 'ABCD-EFGH',
+      expiresAt: Date.now() + 300_000,
+    })
+    renderSettings({ client })
+    await openCategory('Agents')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(client.cancelGrokLogin).toHaveBeenCalled())
   })
 
   it('saves a Grok Build API key from Agents', async () => {
