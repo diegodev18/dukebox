@@ -218,12 +218,42 @@ export const pullRequestSummary = z.object({
 
 export type PullRequestSummary = z.infer<typeof pullRequestSummary>
 
+export const pullRequestChecks = z.enum(['passing', 'pending', 'failing', 'none'])
+
+export type PullRequestChecks = z.infer<typeof pullRequestChecks>
+
+export const pullRequestReviewDecision = z.enum([
+  'APPROVED',
+  'CHANGES_REQUESTED',
+  'REVIEW_REQUIRED',
+])
+
+export type PullRequestReviewDecision = z.infer<typeof pullRequestReviewDecision>
+
 export const pullRequestDetails = pullRequestSummary.extend({
   body: z.string().optional(),
   mergeable: z.enum(['MERGEABLE', 'CONFLICTING', 'UNKNOWN']).nullable().optional(),
+  checks: pullRequestChecks.optional(),
+  reviewDecision: pullRequestReviewDecision.nullable().optional(),
 })
 
 export type PullRequestDetails = z.infer<typeof pullRequestDetails>
+
+/** Why this pull request must not merge yet, or null when the app may proceed. */
+export function pullRequestMergeBlock(pr: {
+  checks?: PullRequestChecks | undefined
+  reviewDecision?: PullRequestReviewDecision | null | undefined
+}): string | null {
+  if (pr.checks === 'failing') return 'GitHub status checks have not passed'
+  if (pr.checks === 'pending') return 'GitHub status checks are still running'
+  if (pr.reviewDecision === 'CHANGES_REQUESTED') {
+    return 'changes were requested on this pull request'
+  }
+  if (pr.reviewDecision === 'REVIEW_REQUIRED') {
+    return 'this pull request still needs a review'
+  }
+  return null
+}
 
 /** A session as the client sees it. */
 export const sessionSummary = z.object({

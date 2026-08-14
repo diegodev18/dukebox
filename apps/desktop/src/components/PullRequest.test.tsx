@@ -159,6 +159,7 @@ describe('PullRequestPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Resolve conflicts' }))
     expect(client.resolvePullRequestConflicts).toHaveBeenCalledWith(session.id)
     expect(screen.getByText(/The agent is resolving conflicts/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Merge' })).not.toBeInTheDocument()
   })
 
   it('confirms merge after a clean conflict resolution', async () => {
@@ -213,6 +214,71 @@ describe('PullRequestPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Confirm merge' }))
     expect(screen.getByRole('button', { name: 'Resolve conflicts' })).toBeInTheDocument()
     expect(client.resolvePullRequestConflicts).not.toHaveBeenCalled()
+  })
+
+  it('refreshes the pull request from the server when the tab opens', async () => {
+    const client = {
+      getPullRequest: vi.fn().mockResolvedValue({
+        ...openPr,
+        isDraft: false,
+        state: 'merged',
+      }),
+    }
+    const onUpdated = vi.fn()
+
+    render(
+      <PullRequestPanel
+        client={client as never}
+        session={sessionWithPr()}
+        files={[]}
+        onUpdated={onUpdated}
+      />,
+    )
+
+    await waitFor(() =>
+      expect(onUpdated).toHaveBeenCalledWith({
+        pullRequestUrl: openPr.url,
+        pullRequest: expect.objectContaining({ state: 'merged' }),
+      }),
+    )
+    expect(client.getPullRequest).toHaveBeenCalledWith(session.id)
+  })
+
+  it('refuses merge when status checks have not passed', async () => {
+    const client = {
+      getPullRequest: vi.fn().mockResolvedValue({
+        ...openPr,
+        mergeable: 'MERGEABLE',
+        checks: 'failing',
+      }),
+      mergePullRequest: vi.fn(),
+    }
+
+    render(
+      <PullRequestPanel
+        client={client as never}
+        session={sessionWithPr()}
+        files={[]}
+        onUpdated={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Merge' }))
+    expect(client.mergePullRequest).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent(/status checks have not passed/)
+  })
+
+  it('hides merge while the agent is running', () => {
+    render(
+      <PullRequestPanel
+        client={{} as never}
+        session={sessionWithPr({ status: 'running' })}
+        files={[]}
+        onUpdated={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Merge' })).not.toBeInTheDocument()
   })
 
   it('offers a new session from the base branch after a merge', async () => {

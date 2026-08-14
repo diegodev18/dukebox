@@ -1,6 +1,11 @@
-import type { FileChange, PullRequestSummary, SessionSummary } from '@dukebox/protocol'
+import {
+  pullRequestMergeBlock,
+  type FileChange,
+  type PullRequestSummary,
+  type SessionSummary,
+} from '@dukebox/protocol'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ApiFailure, type DukeboxClient } from '@/lib/client'
 import { FileChangeList } from '@/components/FileChangeList'
 import { BranchIcon } from '@/components/icons'
@@ -36,7 +41,7 @@ type Action =
   | { kind: 'failed'; message: string }
   | { kind: 'notice'; message: string }
 
-type MergePrompt = 'idle' | 'confirm' | 'conflicts'
+type MergePrompt = 'idle' | 'confirm' | 'conflicts' | 'resolving'
 
 export function PullRequestPanel({
   client,
@@ -49,7 +54,42 @@ export function PullRequestPanel({
   const [action, setAction] = useState<Action>({ kind: 'idle' })
   const [mergePrompt, setMergePrompt] = useState<MergePrompt>('idle')
   const pr = session.pullRequest
-  const busy = action.kind === 'working' || disabled
+  const agentWorking = session.status === 'running'
+  const busy = action.kind === 'working' || disabled || agentWorking
+  const onUpdatedRef = useRef(onUpdated)
+  onUpdatedRef.current = onUpdated
+
+  useEffect(() => {
+    if (!session.pullRequest && !session.pullRequestUrl) return
+    let cancelled = false
+    void Promise.resolve()
+      .then(() => client.getPullRequest(session.id))
+      .then((details) => {
+        if (cancelled) return
+        onUpdatedRef.current({
+          pullRequestUrl: details.url,
+          pullRequest: {
+            url: details.url,
+            title: details.title,
+            isDraft: details.isDraft,
+            state: details.state,
+          },
+        })
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [client, session.id, session.pullRequestUrl])
+
+  const previousStatus = useRef(session.status)
+  useEffect(() => {
+    const wasRunning = previousStatus.current === 'running'
+    previousStatus.current = session.status
+    if (wasRunning && session.status !== 'running' && mergePrompt === 'resolving') {
+      setMergePrompt('idle')
+    }
+  }, [session.status, mergePrompt])
 
   const run = async (verb: string, work: () => Promise<PullRequestSummary>) => {
     setAction({ kind: 'working', verb })
@@ -76,6 +116,24 @@ export function PullRequestPanel({
     setMergePrompt('idle')
     try {
       const details = await client.getPullRequest(session.id)
+      onUpdated({
+        pullRequestUrl: details.url,
+        pullRequest: {
+          url: details.url,
+          title: details.title,
+          isDraft: details.isDraft,
+          state: details.state,
+        },
+      })
+      if (details.state !== 'open' || details.isDraft) {
+        setAction({ kind: 'idle' })
+        return
+      }
+      const blocked = pullRequestMergeBlock(details)
+      if (blocked) {
+        setAction({ kind: 'failed', message: blocked })
+        return
+      }
       if (details.mergeable === 'CONFLICTING') {
         setMergePrompt('conflicts')
       } else {
@@ -102,7 +160,7 @@ export function PullRequestPanel({
         setAction({ kind: 'idle' })
         return
       }
-      setMergePrompt('idle')
+      setMergePrompt('resolving')
       setAction({
         kind: 'notice',
         message:
@@ -150,7 +208,7 @@ export function PullRequestPanel({
                 </button>
               )}
 
-              {pr.state === 'open' && !pr.isDraft && mergePrompt === 'idle' && (
+              {pr.state === 'open' && !pr.isDraft && mergePrompt === 'idle' && !agentWorking && (
                 <button
                   type="button"
                   disabled={busy}

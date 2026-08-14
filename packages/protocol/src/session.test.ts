@@ -7,6 +7,7 @@ import {
   parseGitPreferences,
   permissionMode,
   resolvePermissionMode,
+  pullRequestMergeBlock,
   reuseExistingPullRequest,
   sessionOpensPullRequests,
   sessionSummary,
@@ -165,5 +166,18 @@ describe('session pull request destination', () => {
     expect(sessionOpensPullRequests('open')).toBe(true)
     expect(sessionOpensPullRequests('closed')).toBe(true)
     expect(sessionOpensPullRequests('merged')).toBe(false)
+  })
+})
+
+describe('pullRequestMergeBlock', () => {
+  it('blocks failing or pending checks and missing reviews', () => {
+    expect(pullRequestMergeBlock({ checks: 'failing' })).toMatch(/status checks have not passed/)
+    expect(pullRequestMergeBlock({ checks: 'pending' })).toMatch(/still running/)
+    expect(pullRequestMergeBlock({ reviewDecision: 'CHANGES_REQUESTED' })).toMatch(
+      /changes were requested/,
+    )
+    expect(pullRequestMergeBlock({ reviewDecision: 'REVIEW_REQUIRED' })).toMatch(/needs a review/)
+    expect(pullRequestMergeBlock({ checks: 'passing', reviewDecision: 'APPROVED' })).toBeNull()
+    expect(pullRequestMergeBlock({ checks: 'none' })).toBeNull()
   })
 })
