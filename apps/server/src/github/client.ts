@@ -40,8 +40,21 @@ export function pullRequestFailureMessage(error: GitHubError): string {
   if (/already merged|is closed|not open/i.test(raw)) {
     return 'this pull request is no longer open'
   }
-  if (/review|required status|protected branch|not allowed to merge/i.test(raw)) {
-    return 'GitHub refused to merge this pull request'
+  if (/required status|status check/i.test(raw)) {
+    if (/pending|in progress|not complet/i.test(raw)) {
+      return 'GitHub status checks are still running'
+    }
+    return 'GitHub status checks have not passed'
+  }
+  if (/changes requested/i.test(raw)) {
+    return 'changes were requested on this pull request'
+  }
+  if (/review/i.test(raw)) return 'this pull request still needs a review'
+  if (/protected branch/i.test(raw)) {
+    return 'the branch is protected and this merge is not allowed'
+  }
+  if (/not allowed to merge|permission/i.test(raw)) {
+    return 'you do not have permission to merge this pull request'
   }
   return 'the pull request action failed'
 }
@@ -59,11 +72,45 @@ const branch = z.object({ name: z.string() })
 
 const checkRollupEntry = z
   .object({
+    name: z.string().optional(),
+    context: z.string().optional(),
     state: z.string().optional(),
     conclusion: z.string().optional(),
     status: z.string().optional(),
+    detailsUrl: z.string().nullish(),
+    targetUrl: z.string().nullish(),
   })
   .passthrough()
+
+const pullRequestCommitEntry = z
+  .object({
+    oid: z.string().optional(),
+    messageHeadline: z.string().optional(),
+    authors: z
+      .array(z.object({ login: z.string().optional(), name: z.string().optional() }).passthrough())
+      .nullish(),
+  })
+  .passthrough()
+
+const pullRequestReviewEntry = z
+  .object({
+    author: z.object({ login: z.string().optional() }).passthrough().nullish(),
+    state: z.string().optional(),
+    body: z.string().nullish(),
+    submittedAt: z.string().nullish(),
+  })
+  .passthrough()
+
+const mergeStateStatus = z.enum([
+  'BEHIND',
+  'BLOCKED',
+  'CLEAN',
+  'DIRTY',
+  'DRAFT',
+  'HAS_HOOKS',
+  'UNKNOWN',
+  'UNSTABLE',
+])
 
 const pullRequestView = z.object({
   url: z.string(),
@@ -74,7 +121,29 @@ const pullRequestView = z.object({
   mergeable: z.enum(['MERGEABLE', 'CONFLICTING', 'UNKNOWN']).nullish(),
   statusCheckRollup: z.array(checkRollupEntry).nullish(),
   reviewDecision: z.enum(['APPROVED', 'CHANGES_REQUESTED', 'REVIEW_REQUIRED']).nullish(),
+  mergeStateStatus: mergeStateStatus.nullish(),
+  commits: z.array(pullRequestCommitEntry).nullish(),
+  reviews: z.array(pullRequestReviewEntry).nullish(),
 })
+
+export type PullRequestCheckRun = {
+  name: string
+  state: 'pending' | 'passing' | 'failing' | 'neutral'
+  url?: string
+}
+
+export type PullRequestCommit = {
+  sha: string
+  title: string
+  author?: string
+}
+
+export type PullRequestReview = {
+  author: string
+  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING'
+  body?: string
+  submittedAt?: string
+}
 
 export type PullRequestView = {
   url: string
@@ -85,25 +154,120 @@ export type PullRequestView = {
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN' | null
   checks: 'passing' | 'pending' | 'failing' | 'none'
   reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null
+  mergeStateStatus: z.infer<typeof mergeStateStatus> | null
+  commits: PullRequestCommit[]
+  checkRuns: PullRequestCheckRun[]
+  reviews: PullRequestReview[]
+}
+
+const PR_VIEW_JSON =
+  'url,title,body,isDraft,state,mergeable,statusCheckRollup,reviewDecision,commits,reviews,mergeStateStatus'
+
+const FAILING_TOKENS = new Set(['FAILURE', 'ERROR', 'FAILING', 'TIMED_OUT', 'STARTUP_FAILURE'])
+const PENDING_TOKENS = new Set(['PENDING', 'QUEUED', 'IN_PROGRESS', 'EXPECTED', 'WAITING'])
+const PASSING_TOKENS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED', 'COMPLETED'])
+
+export function checkRunStateFromEntry(entry: {
+  state?: string
+  conclusion?: string
+  status?: string
+}): PullRequestCheckRun['state'] {
+  const tokens = [entry.conclusion, entry.state, entry.status]
+    .filter((token): token is string => Boolean(token))
+    .map((token) => token.toUpperCase())
+  if (tokens.some((token) => FAILING_TOKENS.has(token))) return 'failing'
+  if (tokens.some((token) => PENDING_TOKENS.has(token))) return 'pending'
+  if (tokens.some((token) => token === 'NEUTRAL' || token === 'SKIPPED' || token === 'CANCELLED')) {
+    return 'neutral'
+  }
+  if (tokens.some((token) => PASSING_TOKENS.has(token))) return 'passing'
+  return 'pending'
 }
 
 export function checksFromRollup(rollup: unknown): PullRequestView['checks'] {
-  if (!Array.isArray(rollup) || rollup.length === 0) return 'none'
-  const tokens = rollup.map((entry) => {
-    const row = entry as { state?: string; conclusion?: string; status?: string }
-    return (row.conclusion ?? row.state ?? row.status ?? '').toUpperCase()
-  })
-  if (tokens.some((token) => token === 'FAILURE' || token === 'ERROR' || token === 'FAILING')) {
-    return 'failing'
-  }
-  if (
-    tokens.some((token) =>
-      ['PENDING', 'QUEUED', 'IN_PROGRESS', 'EXPECTED', 'PENDING'].includes(token),
-    )
-  ) {
-    return 'pending'
-  }
+  const runs = checkRunsFromRollup(rollup)
+  if (runs.length === 0) return 'none'
+  if (runs.some((run) => run.state === 'failing')) return 'failing'
+  if (runs.some((run) => run.state === 'pending')) return 'pending'
   return 'passing'
+}
+
+export function checkRunsFromRollup(rollup: unknown): PullRequestCheckRun[] {
+  if (!Array.isArray(rollup)) return []
+  return rollup.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return []
+    const row = entry as {
+      name?: string
+      context?: string
+      state?: string
+      conclusion?: string
+      status?: string
+      detailsUrl?: string | null
+      targetUrl?: string | null
+    }
+    const name = row.name || row.context
+    if (!name) return []
+    const url = row.detailsUrl || row.targetUrl
+    return [
+      {
+        name,
+        state: checkRunStateFromEntry(row),
+        ...(url ? { url } : {}),
+      },
+    ]
+  })
+}
+
+function commitsFromGh(raw: unknown): PullRequestCommit[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return []
+    const row = entry as {
+      oid?: string
+      messageHeadline?: string
+      authors?: { login?: string; name?: string }[] | null
+    }
+    if (!row.oid) return []
+    const author = row.authors?.find((person) => person.login || person.name)
+    return [
+      {
+        sha: row.oid,
+        title: row.messageHeadline ?? '',
+        ...(author?.login || author?.name ? { author: author.login || author.name } : {}),
+      },
+    ]
+  })
+}
+
+const REVIEW_STATES = new Set([
+  'APPROVED',
+  'CHANGES_REQUESTED',
+  'COMMENTED',
+  'DISMISSED',
+  'PENDING',
+])
+
+function reviewsFromGh(raw: unknown): PullRequestReview[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return []
+    const row = entry as {
+      author?: { login?: string } | null
+      state?: string
+      body?: string | null
+      submittedAt?: string | null
+    }
+    const state = (row.state ?? 'COMMENTED').toUpperCase()
+    if (!REVIEW_STATES.has(state)) return []
+    return [
+      {
+        author: row.author?.login || 'unknown',
+        state: state as PullRequestReview['state'],
+        ...(row.body ? { body: row.body } : {}),
+        ...(row.submittedAt ? { submittedAt: row.submittedAt } : {}),
+      },
+    ]
+  })
 }
 
 function toPullRequestView(raw: {
@@ -115,8 +279,19 @@ function toPullRequestView(raw: {
   mergeable?: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN' | null
   statusCheckRollup?: unknown
   reviewDecision?: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null
+  mergeStateStatus?: PullRequestView['mergeStateStatus'] | null
+  commits?: unknown
+  reviews?: unknown
 }): PullRequestView {
   const state = raw.state.toLowerCase()
+  const checkRuns = checkRunsFromRollup(raw.statusCheckRollup)
+  let checks = checksFromRollup(raw.statusCheckRollup)
+  if (
+    checks === 'none' &&
+    (raw.mergeStateStatus === 'BLOCKED' || raw.mergeStateStatus === 'UNSTABLE')
+  ) {
+    checks = 'pending'
+  }
   return {
     url: raw.url,
     title: raw.title,
@@ -124,8 +299,12 @@ function toPullRequestView(raw: {
     isDraft: raw.isDraft,
     state: state === 'merged' || state === 'closed' ? state : 'open',
     mergeable: raw.mergeable ?? null,
-    checks: checksFromRollup(raw.statusCheckRollup),
+    checks,
     reviewDecision: raw.reviewDecision ?? null,
+    mergeStateStatus: raw.mergeStateStatus ?? null,
+    commits: commitsFromGh(raw.commits),
+    checkRuns,
+    reviews: reviewsFromGh(raw.reviews),
   }
 }
 
@@ -322,7 +501,7 @@ export class GitHubClient {
         '--head',
         head,
         '--json',
-        'url,title,body,isDraft,state,mergeable,statusCheckRollup,reviewDecision',
+        PR_VIEW_JSON,
         '--state',
         'all',
         '--limit',
@@ -338,15 +517,7 @@ export class GitHubClient {
   /** One pull request, identified by URL. */
   async viewPullRequest(repoFullName: string, url: string): Promise<PullRequestView> {
     const raw = await this.json(
-      [
-        'pr',
-        'view',
-        url,
-        '--repo',
-        repoFullName,
-        '--json',
-        'url,title,body,isDraft,state,mergeable,statusCheckRollup,reviewDecision',
-      ],
+      ['pr', 'view', url, '--repo', repoFullName, '--json', PR_VIEW_JSON],
       pullRequestView,
     )
 

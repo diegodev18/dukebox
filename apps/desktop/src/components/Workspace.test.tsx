@@ -114,8 +114,15 @@ describe('Workspace terminal tabs', () => {
   })
 })
 
+const getPullRequest = vi.fn().mockResolvedValue({
+  url: 'https://github.com/diego/dukebox/pull/1',
+  title: 'Fix the demux bug',
+  isDraft: true,
+  state: 'open',
+})
+
 const pullRequestTab = {
-  client: {} as never,
+  client: { getPullRequest } as never,
   onUpdated: vi.fn(),
 }
 
@@ -134,7 +141,7 @@ describe('Workspace pull request tab', () => {
     expect(screen.getByRole('tab', { name: 'Pull request' })).toBeInTheDocument()
   })
 
-  it('includes the pull request number in the tab name', () => {
+  it('includes the pull request number in the tab name', async () => {
     render(
       <Workspace
         session={{
@@ -155,6 +162,7 @@ describe('Workspace pull request tab', () => {
     )
 
     expect(screen.getByRole('tab', { name: 'Pull request #1' })).toBeInTheDocument()
+    await waitFor(() => expect(getPullRequest).toHaveBeenCalled())
   })
 
   it('keeps the pull request chrome still and scrolls the diff like Changes', async () => {

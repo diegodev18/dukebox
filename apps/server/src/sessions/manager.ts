@@ -995,6 +995,18 @@ export class SessionManager {
       mergeable,
       ...('checks' in found && found.checks ? { checks: found.checks } : {}),
       ...('reviewDecision' in found ? { reviewDecision: found.reviewDecision } : {}),
+      ...('mergeStateStatus' in found && found.mergeStateStatus
+        ? { mergeStateStatus: found.mergeStateStatus }
+        : {}),
+      ...('commits' in found && found.commits && found.commits.length > 0
+        ? { commits: found.commits }
+        : {}),
+      ...('checkRuns' in found && found.checkRuns && found.checkRuns.length > 0
+        ? { checkRuns: found.checkRuns }
+        : {}),
+      ...('reviews' in found && found.reviews && found.reviews.length > 0
+        ? { reviews: found.reviews }
+        : {}),
     }
   }
 
@@ -1064,7 +1076,9 @@ export class SessionManager {
       }
       if (error instanceof GitHubError) {
         console.error(`merge pull request for session ${sessionId}:`, error.message)
-        throw new SessionError(pullRequestFailureMessage(error))
+        const fresh = await github.viewPullRequest(repo, session.prUrl).catch(() => null)
+        const blocked = fresh ? pullRequestMergeBlock(fresh) : null
+        throw new SessionError(blocked ?? pullRequestFailureMessage(error))
       }
       throw error
     }

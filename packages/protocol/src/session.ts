@@ -230,11 +230,68 @@ export const pullRequestReviewDecision = z.enum([
 
 export type PullRequestReviewDecision = z.infer<typeof pullRequestReviewDecision>
 
+/** GitHub GraphQL `mergeStateStatus` on a pull request. */
+export const pullRequestMergeStateStatus = z.enum([
+  'BEHIND',
+  'BLOCKED',
+  'CLEAN',
+  'DIRTY',
+  'DRAFT',
+  'HAS_HOOKS',
+  'UNKNOWN',
+  'UNSTABLE',
+])
+
+export type PullRequestMergeStateStatus = z.infer<typeof pullRequestMergeStateStatus>
+
+export const pullRequestCheckRunState = z.enum(['pending', 'passing', 'failing', 'neutral'])
+
+export type PullRequestCheckRunState = z.infer<typeof pullRequestCheckRunState>
+
+export const pullRequestCheckRun = z.object({
+  name: z.string(),
+  state: pullRequestCheckRunState,
+  url: z.string().optional(),
+})
+
+export type PullRequestCheckRun = z.infer<typeof pullRequestCheckRun>
+
+export const pullRequestCommit = z.object({
+  sha: z.string(),
+  title: z.string(),
+  author: z.string().optional(),
+})
+
+export type PullRequestCommit = z.infer<typeof pullRequestCommit>
+
+export const pullRequestReviewState = z.enum([
+  'APPROVED',
+  'CHANGES_REQUESTED',
+  'COMMENTED',
+  'DISMISSED',
+  'PENDING',
+])
+
+export type PullRequestReviewState = z.infer<typeof pullRequestReviewState>
+
+export const pullRequestReview = z.object({
+  author: z.string(),
+  state: pullRequestReviewState,
+  body: z.string().optional(),
+  submittedAt: z.string().optional(),
+})
+
+export type PullRequestReview = z.infer<typeof pullRequestReview>
+
 export const pullRequestDetails = pullRequestSummary.extend({
   body: z.string().optional(),
   mergeable: z.enum(['MERGEABLE', 'CONFLICTING', 'UNKNOWN']).nullable().optional(),
   checks: pullRequestChecks.optional(),
   reviewDecision: pullRequestReviewDecision.nullable().optional(),
+  mergeStateStatus: pullRequestMergeStateStatus.nullable().optional(),
+  commits: z.array(pullRequestCommit).optional(),
+  checkRuns: z.array(pullRequestCheckRun).optional(),
+  reviews: z.array(pullRequestReview).optional(),
 })
 
 export type PullRequestDetails = z.infer<typeof pullRequestDetails>
@@ -243,15 +300,36 @@ export type PullRequestDetails = z.infer<typeof pullRequestDetails>
 export function pullRequestMergeBlock(pr: {
   checks?: PullRequestChecks | undefined
   reviewDecision?: PullRequestReviewDecision | null | undefined
+  mergeStateStatus?: PullRequestMergeStateStatus | null | undefined
 }): string | null {
   if (pr.checks === 'failing') return 'GitHub status checks have not passed'
   if (pr.checks === 'pending') return 'GitHub status checks are still running'
+  // GitHub often returns an empty check rollup for a few seconds after open
+  // while still refusing the merge. BLOCKED / UNSTABLE with no rollup means
+  // required checks (or something equivalent) are not green yet.
+  if (
+    (pr.checks === 'none' || pr.checks === undefined) &&
+    (pr.mergeStateStatus === 'BLOCKED' || pr.mergeStateStatus === 'UNSTABLE')
+  ) {
+    return 'GitHub status checks are still running'
+  }
   if (pr.reviewDecision === 'CHANGES_REQUESTED') {
     return 'changes were requested on this pull request'
   }
   if (pr.reviewDecision === 'REVIEW_REQUIRED') {
     return 'this pull request still needs a review'
   }
+  return null
+}
+
+/** Which pull-request panel explains the current merge block, if any. */
+export function pullRequestMergeBlockPanel(
+  pr: Parameters<typeof pullRequestMergeBlock>[0],
+): 'checks' | 'reviews' | null {
+  const message = pullRequestMergeBlock(pr)
+  if (!message) return null
+  if (/review|changes were requested/i.test(message)) return 'reviews'
+  if (/status checks/i.test(message)) return 'checks'
   return null
 }
 
