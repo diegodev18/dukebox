@@ -2,21 +2,21 @@ import { environments, projects, sessions } from '@dukebox/db'
 import { randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
+import { issuePairingCode, redeemPairingCode } from '@/auth/pairing'
+import { EventBus } from '@/events/bus'
+import type { GrokDeviceLogin } from '@/grok/login'
+import { GitHubError, type GitHubClient } from '@/github/client'
+import { createApp } from '@/http/app'
+import { OPENCODE_PROVIDERS_SECRET } from '@/opencode/providers'
 import {
   AGENT_CREDENTIAL_SECRET,
   GROK_AUTH_SECRET,
   GROK_CREDENTIAL_SECRET,
   SecretStore,
 } from '@/secrets/store'
-import { OPENCODE_PROVIDERS_SECRET } from '@/opencode/providers'
-import { issuePairingCode, redeemPairingCode } from '@/auth/pairing'
-import { EventBus } from '@/events/bus'
-import type { GitHubClient } from '@/github/client'
 import { SessionError, MergeConflictError, SessionManager } from '@/sessions/manager'
 import { close, db, prepareDatabase, resetDatabase } from '@/testing/database'
 import { closeRedis, redis } from '@/testing/redis'
-import { createApp } from '@/http/app'
-import type { GrokDeviceLogin } from '@/grok/login'
 
 /**
  * The REST surface the desktop app talks to.
@@ -872,6 +872,22 @@ describe('POST /api/sessions/:id/pr', () => {
     const response = await post(`/api/sessions/${session.id}/pr/merge`, { method: 'squash' })
     expect(response.status).toBe(200)
     expect(sessionManager.mergePullRequest).toHaveBeenCalledWith(session.id, 'squash')
+  })
+
+  it('maps a GitHub draft refusal to a conflict, not an internal error', async () => {
+    vi.mocked(sessionManager.mergePullRequest).mockRejectedValueOnce(
+      new GitHubError('gh pr failed: pull request is still a draft'),
+    )
+
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await post(`/api/sessions/${session.id}/pr/merge`, {})
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({
+      error: 'conflict',
+      message: 'this pull request is still a draft',
+    })
   })
 
   it('reports merge conflicts as merge_conflict', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { GitHubClient, GitHubError } from '@/github/client'
+import { GitHubClient, GitHubError, pullRequestFailureMessage } from '@/github/client'
 
 /**
  * The CLI is injected rather than executed. These assert the arguments the
@@ -353,6 +353,23 @@ describe('editPullRequest', () => {
     expect(args.slice(0, 2)).toEqual(['pr', 'edit'])
     expect(args[args.indexOf('--title') + 1]).toBe('New title')
     expect(args[args.indexOf('--body') + 1]).toBe('New body')
+  })
+})
+
+describe('pullRequestFailureMessage', () => {
+  it('does not forward gh stderr', () => {
+    expect(pullRequestFailureMessage(new GitHubError('gh pr failed: is still a draft'))).toBe(
+      'this pull request is still a draft',
+    )
+    expect(
+      pullRequestFailureMessage(new GitHubError('gh pr failed: Pull request is already merged')),
+    ).toBe('this pull request is no longer open')
+    expect(
+      pullRequestFailureMessage(new GitHubError('gh pr failed: required status checks have not')),
+    ).toBe('GitHub refused to merge this pull request')
+    expect(
+      pullRequestFailureMessage(new GitHubError('gh pr failed: explosion in /tmp/secret')),
+    ).toBe('the pull request action failed')
   })
 })
 

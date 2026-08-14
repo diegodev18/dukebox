@@ -8,9 +8,24 @@ import {
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { Hono, type Context } from 'hono'
 import type { EventBus } from '@/events/bus'
+import { GitHubError, pullRequestFailureMessage } from '@/github/client'
 import { routeParam, type AuthedVariables } from '@/http/auth'
 import { SessionError, MergeConflictError, type SessionManager } from '@/sessions/manager'
 import { toSummary } from '@/sessions/summarize'
+
+function pullRequestHttpError(c: Context, error: unknown) {
+  if (error instanceof MergeConflictError) {
+    return c.json({ error: 'merge_conflict', message: error.message }, 409)
+  }
+  if (error instanceof SessionError) {
+    return c.json({ error: 'conflict', message: error.message }, 409)
+  }
+  if (error instanceof GitHubError) {
+    console.error('pull request github error:', error.message)
+    return c.json({ error: 'conflict', message: pullRequestFailureMessage(error) }, 409)
+  }
+  throw error
+}
 
 /**
  * Sessions: an agent working in a container on one repository.
@@ -239,12 +254,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
       const opened = await deps.sessions.openPullRequest(routeParam(c, 'id'), parsed.data.title)
       return c.json(opened)
     } catch (error) {
-      if (error instanceof SessionError) {
-        // 409: the request was understood, but the session is not in a state
-        // where a pull request means anything.
-        return c.json({ error: 'conflict', message: error.message }, 409)
-      }
-      throw error
+      return pullRequestHttpError(c, error)
     }
   })
 
@@ -259,7 +269,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
       if (error instanceof SessionError) {
         return c.json({ error: 'not_found', message: error.message }, 404)
       }
-      throw error
+      return pullRequestHttpError(c, error)
     }
   })
 
@@ -267,10 +277,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
     try {
       return c.json(await deps.sessions.markPullRequestReady(routeParam(c, 'id')))
     } catch (error) {
-      if (error instanceof SessionError) {
-        return c.json({ error: 'conflict', message: error.message }, 409)
-      }
-      throw error
+      return pullRequestHttpError(c, error)
     }
   })
 
@@ -285,13 +292,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
     try {
       return c.json(await deps.sessions.mergePullRequest(routeParam(c, 'id'), parsed.data.method))
     } catch (error) {
-      if (error instanceof MergeConflictError) {
-        return c.json({ error: 'merge_conflict', message: error.message }, 409)
-      }
-      if (error instanceof SessionError) {
-        return c.json({ error: 'conflict', message: error.message }, 409)
-      }
-      throw error
+      return pullRequestHttpError(c, error)
     }
   })
 
@@ -299,10 +300,7 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
     try {
       return c.json(await deps.sessions.resolvePullRequestConflicts(routeParam(c, 'id')))
     } catch (error) {
-      if (error instanceof SessionError) {
-        return c.json({ error: 'conflict', message: error.message }, 409)
-      }
-      throw error
+      return pullRequestHttpError(c, error)
     }
   })
 

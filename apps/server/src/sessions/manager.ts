@@ -53,14 +53,14 @@ import { rm } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { join } from 'node:path'
 import type { EventBus } from '@/events/bus'
-import { GitHubError, type GitHubClient } from '@/github/client'
+import { GitHubError, pullRequestFailureMessage, type GitHubClient } from '@/github/client'
+import { buildOpencodeSessionEnv, loadOpencodeProviders } from '@/opencode/providers'
 import {
   AGENT_CREDENTIAL_SECRET,
   GROK_AUTH_SECRET,
   GROK_CREDENTIAL_SECRET,
   type SecretStore,
 } from '@/secrets/store'
-import { buildOpencodeSessionEnv, loadOpencodeProviders } from '@/opencode/providers'
 import {
   ENVIRONMENT_SETUP_PROMPT,
   MAX_ENVIRONMENT_SETUP_VERIFY_RETRIES,
@@ -665,13 +665,30 @@ export class SessionManager {
     }
 
     if (running.purpose === 'coding' && reason !== 'error') {
-      try {
-        await this.syncPullRequest(sessionId, { reason: 'turn_end' })
-      } catch (error) {
-        console.error(
-          `auto pull request for session ${sessionId}:`,
-          error instanceof Error ? error.message : error,
-        )
+      const conflicted = await running.workspace.conflictedFiles().catch(() => [] as string[])
+      if (conflicted.length > 0) {
+        await this.deps.bus
+          .append(sessionId, {
+            type: 'error',
+            message:
+              'Unmerged conflict markers are still in the working tree. The branch was not committed or pushed.',
+            fatal: false,
+          })
+          .catch(() => undefined)
+      } else {
+        try {
+          await this.syncPullRequest(sessionId, { reason: 'turn_end' })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          console.error(`auto pull request for session ${sessionId}:`, message)
+          await this.deps.bus
+            .append(sessionId, {
+              type: 'error',
+              message: `Could not update the pull request: ${message}`,
+              fatal: false,
+            })
+            .catch(() => undefined)
+        }
       }
     }
 
@@ -948,7 +965,9 @@ export class SessionManager {
     const repo = await this.repoFullName(session.projectId)
     if (!repo) return toSummary(session).pullRequest
 
-    const found = await github.findPullRequest(repo, session.branch)
+    const found = session.prUrl
+      ? await github.viewPullRequest(repo, session.prUrl).catch(() => null)
+      : await github.findPullRequest(repo, session.branch)
     if (!found) return toSummary(session).pullRequest
 
     const mergeable = await this.settleMergeable(github, repo, found.url, found.mergeable)
@@ -995,9 +1014,25 @@ export class SessionManager {
 
     const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
     if (!session?.prUrl) throw new SessionError('this session has no pull request')
+    if (session.status === 'running') {
+      throw new SessionError('the agent is still working on this session')
+    }
 
     const repo = await this.requireRepoFullName(session.projectId)
     const view = await github.viewPullRequest(repo, session.prUrl)
+    if (view.state !== 'open') {
+      await this.persistPullRequest(sessionId, {
+        url: view.url,
+        title: view.title,
+        isDraft: view.isDraft,
+        state: view.state,
+      })
+      throw new SessionError('this pull request is no longer open')
+    }
+    if (view.isDraft) {
+      throw new SessionError('this pull request is still a draft')
+    }
+
     const mergeable = await this.settleMergeable(github, repo, session.prUrl, view.mergeable)
     if (mergeable === 'CONFLICTING') {
       throw new MergeConflictError()
@@ -1014,6 +1049,10 @@ export class SessionManager {
     } catch (error) {
       if (error instanceof GitHubError && /conflict|not mergeable/i.test(error.message)) {
         throw new MergeConflictError()
+      }
+      if (error instanceof GitHubError) {
+        console.error(`merge pull request for session ${sessionId}:`, error.message)
+        throw new SessionError(pullRequestFailureMessage(error))
       }
       throw error
     }
@@ -1109,6 +1148,16 @@ export class SessionManager {
     }
 
     const running = await this.ensureRunning(sessionId)
+
+    const conflicted = await running.workspace.conflictedFiles()
+    if (conflicted.length > 0) {
+      if (userAsked) {
+        throw new SessionError(
+          'unmerged conflict markers are still in the working tree. Resolve them before opening or updating the pull request.',
+        )
+      }
+      return toSummary(session).pullRequest
+    }
 
     const dirty = await running.workspace.isDirty()
     const changed = await running.workspace.changedFiles(running.baseCommit)

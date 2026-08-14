@@ -1277,6 +1277,7 @@ describe('pull requests', () => {
     const container = await sandbox.get(session.id)
     await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
     await withGitHub.openPullRequest(session.id)
+    await db.update(sessions).set({ status: 'done' }).where(eq(sessions.id, session.id))
 
     const result = await withGitHub.mergePullRequest(session.id)
     expect(result.state).toBe('merged')
@@ -1294,6 +1295,7 @@ describe('pull requests', () => {
     await withGitHub.openPullRequest(session.id)
     expect(created).toHaveLength(1)
 
+    await db.update(sessions).set({ status: 'done' }).where(eq(sessions.id, session.id))
     await withGitHub.mergePullRequest(session.id)
 
     await container?.exec(['sh', '-c', 'echo more > EXTRA.md'], { cwd: '/workspace/repo' })
@@ -1313,6 +1315,7 @@ describe('pull requests', () => {
     const container = await sandbox.get(session.id)
     await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
     await withGitHub.openPullRequest(session.id)
+    await db.update(sessions).set({ status: 'done' }).where(eq(sessions.id, session.id))
     await withGitHub.mergePullRequest(session.id)
 
     await withGitHub.prompt(session.id, 'add a follow-up')
@@ -1364,6 +1367,14 @@ describe('pull requests', () => {
         state: 'open',
         mergeable: 'CONFLICTING',
       }),
+      viewPullRequest: async () => ({
+        url: 'https://github.com/diego/dukebox/pull/1',
+        title: 'Add a thing',
+        body: '',
+        isDraft: false,
+        state: 'open',
+        mergeable: 'CONFLICTING',
+      }),
     })
 
     const session = await startOn(withGitHub)
@@ -1405,9 +1416,44 @@ describe('pull requests', () => {
     const container = await sandbox.get(session.id)
     await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
     await withGitHub.openPullRequest(session.id)
+    await db.update(sessions).set({ status: 'done' }).where(eq(sessions.id, session.id))
 
     await expect(withGitHub.mergePullRequest(session.id)).rejects.toThrow(MergeConflictError)
     expect(merged).toHaveLength(0)
+
+    await withGitHub.stopAll()
+  })
+
+  it('refuses to merge while the agent is still working', async () => {
+    const { manager: withGitHub } = managerWithGitHub()
+    const session = await startOn(withGitHub)
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+    await withGitHub.openPullRequest(session.id)
+
+    await expect(withGitHub.mergePullRequest(session.id)).rejects.toThrow(/still working/)
+
+    await withGitHub.stopAll()
+  })
+
+  it('refuses to merge a draft pull request', async () => {
+    const { manager: withGitHub } = managerWithGitHub({
+      viewPullRequest: async () => ({
+        url: 'https://github.com/diego/dukebox/pull/1',
+        title: 'Add a thing',
+        body: '',
+        isDraft: true,
+        state: 'open',
+        mergeable: 'MERGEABLE',
+      }),
+    })
+    const session = await startOn(withGitHub)
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+    await withGitHub.openPullRequest(session.id)
+    await db.update(sessions).set({ status: 'done' }).where(eq(sessions.id, session.id))
+
+    await expect(withGitHub.mergePullRequest(session.id)).rejects.toThrow(/still a draft/)
 
     await withGitHub.stopAll()
   })

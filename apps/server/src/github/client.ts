@@ -28,6 +28,24 @@ export class GitHubError extends Error {
   }
 }
 
+/**
+ * A short reason the app can show. `gh` stderr stays on the server log.
+ *
+ * Callers still inspect `GitHubError.message` when they need the raw text
+ * (conflict detection); this is only for the JSON body that reaches the desktop.
+ */
+export function pullRequestFailureMessage(error: GitHubError): string {
+  const raw = error.message
+  if (/draft/i.test(raw)) return 'this pull request is still a draft'
+  if (/already merged|is closed|not open/i.test(raw)) {
+    return 'this pull request is no longer open'
+  }
+  if (/review|required status|protected branch|not allowed to merge/i.test(raw)) {
+    return 'GitHub refused to merge this pull request'
+  }
+  return 'the pull request action failed'
+}
+
 const repository = z.object({
   nameWithOwner: z.string(),
   defaultBranchRef: z.object({ name: z.string() }).nullable(),
