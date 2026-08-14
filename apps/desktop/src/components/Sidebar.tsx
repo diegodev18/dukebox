@@ -865,8 +865,12 @@ function ConfirmDeleteDialog({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  return (
+  return createPortal(
     <div
+      // Sidebar and Workspace both sit in `relative z-10` columns so their
+      // resize handles win the seam. A `fixed` overlay left inside the nav
+      // stays in that stacking context, and Workspace paints over the right
+      // half of the dialog. Portal to `body` so the veil covers the window.
       className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-6"
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) onDismiss()
@@ -903,7 +907,8 @@ function ConfirmDeleteDialog({
         >
           <p className="text-[13px] text-muted-foreground">{description}</p>
           <label className="mt-3 block text-[12px] text-muted-foreground">
-            Type <span className="font-medium text-foreground">{typedLabel}</span> to confirm
+            Type <span className="font-medium break-words text-foreground">{typedLabel}</span> to
+            confirm
             <input
               ref={input}
               value={typed}
@@ -932,7 +937,8 @@ function ConfirmDeleteDialog({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
