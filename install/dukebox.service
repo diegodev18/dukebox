@@ -55,7 +55,7 @@ RestrictSUIDSGID=true
 # service stops, so a crash cannot leave one listening.
 RuntimeDirectory=dukebox
 RuntimeDirectoryMode=0755
-ReadWritePaths=/run/dukebox
+ReadWritePaths=/run/dukebox /var/lib/dukebox
 
 StandardOutput=journal
 StandardError=journal

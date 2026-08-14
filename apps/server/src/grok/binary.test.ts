@@ -1,8 +1,8 @@
-import { chmod, mkdir, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { ensureGrokBinary, grokDownloadUrls, grokPlatform } from '@/grok/binary'
+import { defaultGrokBinDir, ensureGrokBinary, grokDownloadUrls, grokPlatform } from '@/grok/binary'
 
 describe('grokPlatform', () => {
   it('maps node arch names onto grok artifact names', () => {
@@ -17,6 +17,19 @@ describe('grokDownloadUrls', () => {
     const urls = grokDownloadUrls('1.0.3', { os: 'linux', arch: 'x86_64' })
     expect(urls[0]).toBe('https://x.ai/cli/grok-1.0.3-linux-x86_64')
     expect(urls[1]).toContain('grok-build-public-artifacts')
+  })
+})
+
+describe('defaultGrokBinDir', () => {
+  it('honours DUKEBOX_GROK_BIN_DIR', () => {
+    const previous = process.env.DUKEBOX_GROK_BIN_DIR
+    process.env.DUKEBOX_GROK_BIN_DIR = '/tmp/custom-grok'
+    try {
+      expect(defaultGrokBinDir()).toBe('/tmp/custom-grok')
+    } finally {
+      if (previous === undefined) delete process.env.DUKEBOX_GROK_BIN_DIR
+      else process.env.DUKEBOX_GROK_BIN_DIR = previous
+    }
   })
 })
 
@@ -51,5 +64,17 @@ describe('ensureGrokBinary', () => {
 
     await ensureGrokBinary({ dir, download })
     expect(download).toHaveBeenCalledTimes(2)
+  })
+
+  it('falls back to tmp when the preferred directory cannot be created', async () => {
+    // A file as the parent makes mkdir fail immediately with ENOTDIR on every
+    // platform. `/proc/...` hangs under some Linux / Docker mounts.
+    const blocker = join(tmpdir(), `dukebox-not-a-dir-${Date.now()}`)
+    await writeFile(blocker, '')
+    await unlink(join(tmpdir(), 'dukebox-grok', 'grok-1.0.3')).catch(() => undefined)
+    const download = vi.fn(async () => Buffer.from('#!/bin/sh\n'))
+    const path = await ensureGrokBinary({ dir: join(blocker, 'grok'), download })
+    expect(path.startsWith(join(tmpdir(), 'dukebox-grok'))).toBe(true)
+    expect(download).toHaveBeenCalled()
   })
 })
