@@ -93,6 +93,11 @@ function bodyFrom(options: {
   return sections.join('\n\n')
 }
 
+/** True when the GitHub body is still the one Dukebox wrote, not a human edit. */
+export function dukeboxOwnsPullRequestBody(body: string): boolean {
+  return body.includes('Opened by [Dukebox]')
+}
+
 function summaryParagraph(commits: readonly string[], prompt: string): string {
   if (commits.length === 1 && commits[0]) return commits[0].trim()
   if (commits.length > 1) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pullRequestContent } from '@/sessions/summary'
+import { dukeboxOwnsPullRequestBody, pullRequestContent } from '@/sessions/summary'
 
 const SESSION = '00000000-0000-4000-8000-000000000000'
 
@@ -108,5 +108,10 @@ describe('body', () => {
 
   it('never includes chat-shaped prose that was not in the git inputs', () => {
     expect(content({ prompt: 'Fix it' }).body).not.toContain('I ramble at length')
+  })
+
+  it('treats a Dukebox-written body as owned, not a human rewrite', () => {
+    expect(dukeboxOwnsPullRequestBody(content().body)).toBe(true)
+    expect(dukeboxOwnsPullRequestBody('## Summary\n\nI rewrote this on GitHub.')).toBe(false)
   })
 })

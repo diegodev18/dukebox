@@ -1229,6 +1229,36 @@ describe('pull requests', () => {
     await withGitHub.stopAll()
   })
 
+  it('updates a Dukebox-written pull request when the session keeps changing', async () => {
+    const edited: { title?: string; body?: string }[] = []
+    const { manager: withGitHub, created } = managerWithGitHub({
+      findPullRequest: async () => ({
+        url: 'https://github.com/diego/dukebox/pull/7',
+        title: 'Existing',
+        body: 'Opened by [Dukebox](https://github.com/diegodev18/dukebox).',
+        isDraft: true,
+        state: 'open' as const,
+        mergeable: 'MERGEABLE' as const,
+      }),
+      editPullRequest: async (options) => {
+        edited.push({ title: options.title, body: options.body })
+      },
+    })
+
+    const session = await startOn(withGitHub)
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+
+    const pr = await withGitHub.openPullRequest(session.id)
+
+    expect(pr.url).toContain('/pull/7')
+    expect(created).toHaveLength(0)
+    expect(edited).toHaveLength(1)
+    expect(edited[0]?.body).toContain('Opened by [Dukebox]')
+
+    await withGitHub.stopAll()
+  })
+
   it('marks a draft ready for review', async () => {
     const ready: string[] = []
     const { manager: withGitHub } = managerWithGitHub({

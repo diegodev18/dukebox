@@ -68,6 +68,7 @@ import {
   parseEnvironmentProposalJson,
 } from '@/sessions/environmentSetup'
 import { writePullRequestContent } from '@/sessions/pr-writer'
+import { dukeboxOwnsPullRequestBody } from '@/sessions/summary'
 import { toSummary } from '@/sessions/summarize'
 import { titleFromPrompt, writeSessionTitle } from '@/sessions/title'
 
@@ -182,6 +183,8 @@ interface RunningSession {
    * agent. Caps the environment_setup retry loop.
    */
   setupVerifyAttempts: number
+  /** OpenCode `provider/model` this session is running, when known. */
+  sessionModel?: string
 }
 
 export class SessionError extends Error {}
@@ -589,6 +592,7 @@ export class SessionManager {
       repoFullName,
       purpose,
       setupVerifyAttempts: 0,
+      ...(model ? { sessionModel: model } : {}),
       ...(credentials ? { credentials } : {}),
     })
     await this.setStatus(session.id, 'running')
@@ -623,6 +627,8 @@ export class SessionManager {
           // As soon as it is known, not at turn end: a crash mid-turn would
           // otherwise lose the id that `--resume` / `--session` needs.
           await this.persistAgentSessionId(sessionId, adapter.agentSessionId())
+          const live = this.running.get(sessionId)
+          if (live && event.model) live.sessionModel = event.model
         }
 
         if (event.type === 'done') {
@@ -1177,6 +1183,7 @@ export class SessionManager {
       sessionId,
       branch: session.branch,
       preferences: prefs,
+      ...(running.sessionModel ? { sessionModel: running.sessionModel } : {}),
       ...(this.deps.secrets ? { secrets: this.deps.secrets } : {}),
     })
 
@@ -1204,6 +1211,41 @@ export class SessionManager {
         isDraft: existing.isDraft,
         state: existing.state,
       }
+
+      if (dukeboxOwnsPullRequestBody(existing.body)) {
+        const afterCommit = await running.workspace.commitsSince(running.baseCommit)
+        const afterStat = await running.workspace.diffStat(running.baseCommit)
+        const afterFiles = await running.workspace.changedFiles(running.baseCommit)
+        const written =
+          afterCommit.join('\n') === commits.join('\n')
+            ? content
+            : await writePullRequestContent({
+                prompt: session.prompt.trim() || session.title || '',
+                commits: afterCommit,
+                diffStat: afterStat,
+                changedFiles: afterFiles,
+                sessionId,
+                branch: session.branch,
+                preferences: prefs,
+                ...(running.sessionModel ? { sessionModel: running.sessionModel } : {}),
+                ...(this.deps.secrets ? { secrets: this.deps.secrets } : {}),
+              })
+        try {
+          await github.editPullRequest({
+            repoFullName: running.repoFullName,
+            url: existing.url,
+            title: options.title ?? written.title,
+            body: written.body,
+          })
+          summary.title = options.title ?? written.title
+        } catch (error) {
+          console.error(
+            `update pull request for session ${sessionId}:`,
+            error instanceof Error ? error.message : error,
+          )
+        }
+      }
+
       await this.persistPullRequest(sessionId, summary)
       return summary
     }
@@ -1238,6 +1280,7 @@ export class SessionManager {
             sessionId,
             branch: session.branch,
             preferences: prefs,
+            ...(running.sessionModel ? { sessionModel: running.sessionModel } : {}),
             ...(this.deps.secrets ? { secrets: this.deps.secrets } : {}),
           })
 
