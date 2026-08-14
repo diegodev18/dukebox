@@ -106,6 +106,10 @@ export function encodeUserMessage(message: UserMessage, stagedFiles: string[] = 
   })}\n`
 }
 
+export function encodeInterrupt(): string {
+  return `${JSON.stringify({ type: 'control_request', request: 'interrupt' })}\n`
+}
+
 export function encodeSetPermissionMode(mode: PermissionMode, requestId: string): string {
   return `${JSON.stringify({
     type: 'control_request',
@@ -308,7 +312,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
   async interrupt(): Promise<void> {
     if (!this.stream) return
-    this.stream.write(`${JSON.stringify({ type: 'control_request', request: 'interrupt' })}\n`)
+    this.stream.write(encodeInterrupt())
   }
 
   async *events(): AsyncIterable<AgentEvent> {

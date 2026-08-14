@@ -173,7 +173,7 @@ describe('ClaudeCodeMapper', () => {
     })
   })
 
-  describe('tool-error', () => {
+  describe('tool-error fixture', () => {
     it('still terminates the turn', () => {
       const { events } = mapFixture('tool-error')
       expect(events.at(-1)).toMatchObject({ type: 'done' })
@@ -187,6 +187,55 @@ describe('ClaudeCodeMapper', () => {
         .join('')
 
       expect(text).not.toBe('')
+    })
+  })
+
+  describe('failed tool results', () => {
+    it('marks an explicit is_error tool result as failed', () => {
+      const mapper = new ClaudeCodeMapper()
+      const events = mapper.map({
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'toolu_1',
+              is_error: true,
+              content: 'ENOENT: no such file',
+            },
+          ],
+        },
+      })
+
+      expect(events).toEqual([
+        { type: 'tool_result', id: 'toolu_1', output: 'ENOENT: no such file', isError: true },
+      ])
+    })
+
+    it('flattens a block-array tool result into text', () => {
+      const mapper = new ClaudeCodeMapper()
+      const events = mapper.map({
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'toolu_2',
+              is_error: false,
+              content: [
+                { type: 'text', text: 'first line' },
+                { type: 'text', text: 'second line' },
+              ],
+            },
+          ],
+        },
+      })
+
+      expect(events).toEqual([
+        { type: 'tool_result', id: 'toolu_2', output: 'first line\nsecond line', isError: false },
+      ])
     })
   })
 

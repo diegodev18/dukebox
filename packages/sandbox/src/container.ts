@@ -426,7 +426,7 @@ function toEnvArray(env: Record<string, string>): string[] {
  * FitAddon measuring a hidden panel reports exactly that. Flooring rejects
  * the fractional sizes a layout pass can produce; the minima match xterm.js.
  */
-function clampTerminalSize(cols: number, rows: number): { cols: number; rows: number } {
+export function clampTerminalSize(cols: number, rows: number): { cols: number; rows: number } {
   return {
     cols: Number.isFinite(cols) && cols >= 2 ? Math.floor(cols) : 80,
     rows: Number.isFinite(rows) && rows >= 1 ? Math.floor(rows) : 24,
@@ -443,7 +443,7 @@ function clampTerminalSize(cols: number, rows: number): { cols: number; rows: nu
 const FORBIDDEN_MOUNT_PATTERNS = [/docker\.sock$/, /^\/proc(\/|$)/, /^\/sys(\/|$)/, /^\/$/]
 
 /** Convert a mount to a Docker bind string, refusing dangerous sources. */
-function toBind(mount: { source: string; target: string; readOnly?: boolean }): string {
+export function toBind(mount: { source: string; target: string; readOnly?: boolean }): string {
   for (const pattern of FORBIDDEN_MOUNT_PATTERNS) {
     if (pattern.test(mount.source)) {
       throw new Error(`refusing to mount ${mount.source} into a session container`)

@@ -87,6 +87,20 @@ describe('issuePairingCode', () => {
     })
   })
 
+  it('refuses a second owner code while an unused owner invite is still valid', async () => {
+    await issuePairingCode(db, ENDPOINT, 'owner')
+    await expect(issuePairingCode(db, ENDPOINT, 'owner')).rejects.toMatchObject({
+      code: 'owner_exists',
+    })
+  })
+
+  it('refuses a default-role code while an unused owner invite is still valid', async () => {
+    await issuePairingCode(db, ENDPOINT, 'owner')
+    await expect(issuePairingCode(db, ENDPOINT)).rejects.toMatchObject({
+      code: 'owner_exists',
+    })
+  })
+
   it('issues an owner code after a previous owner invite expires', async () => {
     await db.insert(pairingCodes).values({
       codeHash: hashSecret('AAAA-BBBB'),

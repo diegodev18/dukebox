@@ -15,12 +15,12 @@ import {
 } from 'vitest'
 import { WebSocket } from 'ws'
 import { TerminalRegistry } from '@/sessions/terminals'
-import { issuePairingCode, redeemPairingCode } from '@/auth/pairing'
+import { authenticateDevice, issuePairingCode, redeemPairingCode } from '@/auth/pairing'
 import { EventBus } from '@/events/bus'
 import { createApp } from '@/http/app'
 import { close, db, prepareDatabase, resetDatabase } from '@/testing/database'
 import { closeRedis, redis } from '@/testing/redis'
-import { attachWebSocketServer, tokenFromRequest } from '@/ws/server'
+import { attachWebSocketServer, disconnectDevice, tokenFromRequest } from '@/ws/server'
 
 const bus = new EventBus(db, redis)
 
@@ -28,6 +28,8 @@ let server: ReturnType<typeof serve> | undefined
 let wss: ReturnType<typeof attachWebSocketServer> | undefined
 let port = 0
 const onPrompt = vi.fn(async () => {})
+const onInterrupt = vi.fn(async () => {})
+const onPermissionResponse = vi.fn(async () => {})
 const onSetPermissionMode = vi.fn(async () => {})
 
 /**
@@ -90,6 +92,8 @@ beforeAll(async () => {
     db,
     bus,
     onPrompt,
+    onInterrupt,
+    onPermissionResponse,
     onSetPermissionMode,
     terminals,
     auditTerminal,
@@ -100,6 +104,8 @@ beforeEach(async () => {
   await resetDatabase()
   await redis.flushdb()
   onPrompt.mockClear()
+  onInterrupt.mockClear()
+  onPermissionResponse.mockClear()
   onSetPermissionMode.mockClear()
   auditTerminal.mockClear()
   fakeTerminals = []
@@ -233,6 +239,19 @@ class TestClient {
   close(): void {
     this.socket.close()
   }
+
+  waitForClose(timeoutMs = 3000): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('timed out waiting for the socket to close')),
+        timeoutMs,
+      )
+      this.socket.once('close', (code) => {
+        clearTimeout(timer)
+        resolve(code)
+      })
+    })
+  }
 }
 
 const TEXT = (delta: string): AgentEvent => ({ type: 'assistant_text', delta })
@@ -265,6 +284,19 @@ describe('handshake', () => {
 
   it('rejects an unknown token', async () => {
     expect(await TestClient.expectRejected(`ws://127.0.0.1:${port}/ws?token=nope`)).toBe(401)
+  })
+})
+
+describe('disconnectDevice', () => {
+  it('closes every live socket for a revoked device', async () => {
+    const token = await pairDevice()
+    const device = await authenticateDevice(db, token)
+    const client = await TestClient.connect(token)
+    const closed = client.waitForClose()
+
+    disconnectDevice(device!.id)
+
+    expect(await closed).toBe(4000)
   })
 })
 
@@ -602,6 +634,47 @@ describe('commands', () => {
     await client.waitFor(() => onSetPermissionMode.mock.calls.length === 1)
 
     expect(onSetPermissionMode).toHaveBeenCalledWith(sessionId, 'plan')
+    client.close()
+  })
+
+  it('forwards an interrupt to the session', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({ type: 'interrupt', sessionId })
+    await client.waitFor(() => onInterrupt.mock.calls.length === 1)
+
+    expect(onInterrupt).toHaveBeenCalledWith(sessionId)
+    client.close()
+  })
+
+  it('forwards a permission response to the session', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({ type: 'permission_response', sessionId, id: 'req-1', allow: true })
+    await client.waitFor(() => onPermissionResponse.mock.calls.length === 1)
+
+    expect(onPermissionResponse).toHaveBeenCalledWith(sessionId, 'req-1', true)
+    client.close()
+  })
+
+  it('reports an interrupt failure without dropping the connection', async () => {
+    onInterrupt.mockRejectedValueOnce(new Error('session is not running'))
+
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({ type: 'interrupt', sessionId })
+    await client.waitFor(() =>
+      client.received.some(
+        (message) =>
+          message.type === 'command_error' && message.message.includes('session is not running'),
+      ),
+    )
+
+    client.send({ type: 'subscribe', sessionId })
+    await client.waitForCaughtUp()
     client.close()
   })
 
