@@ -122,7 +122,13 @@ export function AgentIcon({ agentId, className = 'size-3.5' }: Props) {
   if (!icon || !label) return null
 
   return (
-    <span title={label} aria-label={label} className={`inline-flex flex-none ${className}`}>
+    <span
+      title={label}
+      aria-label={label}
+      // `flex` not `inline-flex`: an inline box sits on the text baseline
+      // and the mark then reads high of the label beside it.
+      className={`flex shrink-0 items-center justify-center ${className}`}
+    >
       {icon}
     </span>
   )
@@ -159,7 +165,7 @@ function iconFor(agentId: string) {
 function ClaudeLogo() {
   return (
     <svg
-      className="size-full"
+      className="block size-full"
       preserveAspectRatio="xMidYMid"
       viewBox="0 0 256 257"
       aria-hidden="true"
@@ -175,7 +181,7 @@ function ClaudeLogo() {
 function CodexLogo() {
   return (
     <svg
-      className="size-full"
+      className="block size-full"
       fill="currentColor"
       fillRule="evenodd"
       viewBox="0 0 24 24"
@@ -191,7 +197,7 @@ function CodexLogo() {
 
 function OpenCodeLogo() {
   return (
-    <svg className="size-full" viewBox="0 0 512 512" fill="none" aria-hidden="true">
+    <svg className="block size-full" viewBox="0 0 512 512" fill="none" aria-hidden="true">
       <rect width="512" height="512" fill="#131010" />
       <path d="M320 224V352H192V224H320Z" fill="#5A5858" />
       <path
@@ -206,7 +212,7 @@ function OpenCodeLogo() {
 
 function GrokBuildLogo() {
   return (
-    <svg className="size-full" viewBox="0 0 1024 1024" fill="none" aria-hidden="true">
+    <svg className="block size-full" viewBox="0 0 1024 1024" fill="none" aria-hidden="true">
       <path
         d="M395.479 633.828L735.91 381.105C752.599 368.715 776.454 373.548 784.406 392.792C826.26 494.285 807.561 616.253 724.288 699.996C641.016 783.739 525.151 802.104 419.247 760.277L303.556 814.143C469.49 928.202 670.987 899.995 796.901 773.282C896.776 672.843 927.708 535.937 898.785 412.476L899.047 412.739C857.105 231.37 909.358 158.874 1016.4 10.6326C1018.93 7.11771 1021.47 3.60279 1024 0L883.144 141.651V141.212L395.392 633.916"
         fill="currentColor"
@@ -221,7 +227,12 @@ function GrokBuildLogo() {
 
 function CursorLogo() {
   return (
-    <svg className="size-full" viewBox="0 0 466.73 532.09" fill="currentColor" aria-hidden="true">
+    <svg
+      className="block size-full"
+      viewBox="0 0 466.73 532.09"
+      fill="currentColor"
+      aria-hidden="true"
+    >
       <path d="M457.43,125.94L244.42,2.96c-6.84-3.95-15.28-3.95-22.12,0L9.3,125.94c-5.75,3.32-9.3,9.46-9.3,16.11v247.99c0,6.65,3.55,12.79,9.3,16.11l213.01,122.98c6.84,3.95,15.28,3.95,22.12,0l213.01-122.98c5.75-3.32,9.3-9.46,9.3-16.11v-247.99c0-6.65-3.55-12.79-9.3-16.11h-.01ZM444.05,151.99l-205.63,356.16c-1.39,2.4-5.06,1.42-5.06-1.36v-233.21c0-4.66-2.49-8.97-6.53-11.31L24.87,145.67c-2.4-1.39-1.42-5.06,1.36-5.06h411.26c5.84,0,9.49,6.33,6.57,11.39h-.01Z" />
     </svg>
   )
