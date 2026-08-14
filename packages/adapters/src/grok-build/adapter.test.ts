@@ -217,6 +217,22 @@ describe('GrokBuildAdapter', () => {
     expect(await collect(adapter)).toEqual([])
   })
 
+  it('writes auth.json into the container on start', async () => {
+    const exec = vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' }))
+    const adapter = new GrokBuildAdapter()
+
+    await adapter.start({
+      sessionId: 'session-1',
+      workingDir: '/workspace/repo',
+      container: { exec, execStream: vi.fn() } as unknown as SessionContext['container'],
+    })
+
+    expect(exec).toHaveBeenCalled()
+    const first = exec.mock.calls[0]?.[0] as string[]
+    expect(first.join(' ')).toContain('DUKEBOX_GROK_AUTH_JSON')
+    expect(first.join(' ')).toContain('/home/node/.grok/auth.json')
+  })
+
   it('does not attach stdin', async () => {
     const execStream = vi.fn(async () => new PassThrough())
     const exec = vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' }))
