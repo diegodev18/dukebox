@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Fragment, type ReactNode, type RefObject } from 'react'
+import { Fragment, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 
 /**
  * Window a long list against an existing scroller.
@@ -7,6 +7,11 @@ import { Fragment, type ReactNode, type RefObject } from 'react'
  * Short lists render in full: jsdom has no viewport height, and a handful of
  * rows is cheaper to map than to virtualize. Past the threshold, only the
  * visible window (plus overscan) is mounted.
+ *
+ * Several diffs share one scroller. The virtualizer treats scrollTop as an
+ * offset into this list, so a file that starts further down must declare how
+ * far. Without that, scrolling past the first file unmounts the next file's
+ * lines.
  */
 
 export const DEFAULT_VIRTUALIZE_AFTER = 40
@@ -40,13 +45,43 @@ export function VirtualRows({
   gap = 0,
   children,
 }: Props) {
+  const listRef = useRef<HTMLDivElement>(null)
+  const [scrollMargin, setScrollMargin] = useState(0)
   const virtualize = count >= after
+
+  useLayoutEffect(() => {
+    if (!virtualize) return
+    const list = listRef.current
+    if (!list) return
+    const found = list.closest('.overflow-auto')
+    const scroll = scrollRef.current ?? (found instanceof HTMLElement ? found : null)
+    if (!scroll) return
+
+    const measure = () => {
+      const next =
+        list.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop
+      setScrollMargin((current) => (Math.abs(current - next) < 0.5 ? current : next))
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(scroll)
+    const content = scroll.firstElementChild
+    if (content) observer.observe(content)
+    return () => observer.disconnect()
+  }, [virtualize, count, scrollRef])
+
   const virtualizer = useVirtualizer({
     count: virtualize ? count : 0,
-    getScrollElement: () => scrollRef.current,
+    getScrollElement: () => {
+      if (scrollRef.current) return scrollRef.current
+      const found = listRef.current?.closest('.overflow-auto')
+      return found instanceof HTMLElement ? found : null
+    },
     estimateSize: () => estimateSize + gap,
     overscan,
     enabled: virtualize,
+    scrollMargin,
   })
 
   if (!virtualize) {
@@ -67,6 +102,7 @@ export function VirtualRows({
 
   return (
     <div
+      ref={listRef}
       data-virtual-list
       style={{
         height: `${virtualizer.getTotalSize()}px`,
@@ -86,7 +122,7 @@ export function VirtualRows({
             left: 0,
             width: wide ? 'max-content' : '100%',
             minWidth: '100%',
-            transform: `translateY(${item.start}px)`,
+            transform: `translateY(${item.start - virtualizer.options.scrollMargin}px)`,
             paddingBottom: gap > 0 ? `${gap}px` : undefined,
           }}
         >

@@ -115,6 +115,15 @@ const script: EnvelopedEvent[] = [
     before: null,
     after: "it('strips docker frame headers', () => {})",
   }),
+  // Tall enough to virtualize, and sorted after the small files — a later
+  // diff that vanished as you scrolled was how the shared-scroller offset
+  // bug showed up.
+  event({
+    type: 'file_diff',
+    path: 'packages/sandbox/src/extra.ts',
+    before: Array.from({ length: 140 }, (_, i) => `const before${i} = ${i}`).join('\n'),
+    after: Array.from({ length: 140 }, (_, i) => `const after${i} = ${i}`).join('\n'),
+  }),
   event({
     type: 'permission_request',
     id: 'perm-plan',
