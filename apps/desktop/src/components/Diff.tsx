@@ -1,13 +1,5 @@
 import { MAX_LCS_LINES, alignLines, countLineChanges, type FileChange } from '@dukebox/protocol'
-import {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type RefObject,
-} from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { cn } from '@/lib/utils'
 import { VirtualRows } from '@/components/VirtualRows'
 import { tokensForCode, type HighlightToken } from '@/lib/syntaxHighlight'
@@ -36,9 +28,10 @@ export function Diff({ file }: { file: FileChange }) {
   const highlight = useFileHighlight(file.path, before, after, inView)
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set())
 
-  useLayoutEffect(() => {
-    scrollRef.current = root.current?.closest('.overflow-auto') ?? null
-  }, [lines.length])
+  const setRoot = (node: HTMLDivElement | null) => {
+    root.current = node
+    scrollRef.current = node?.closest('.overflow-auto') ?? null
+  }
 
   const toggleSkip = (index: number) => {
     setExpanded((current) => {
@@ -52,7 +45,11 @@ export function Diff({ file }: { file: FileChange }) {
   const rows = useMemo(() => flattenDiffRows(lines, expanded), [lines, expanded])
 
   return (
-    <div ref={root} data-selectable aria-busy={highlight.before == null || highlight.after == null}>
+    <div
+      ref={setRoot}
+      data-selectable
+      aria-busy={highlight.before == null || highlight.after == null}
+    >
       {simplified && (
         <p className="px-3 py-1.5 text-[12px] text-muted-foreground">
           Diff simplified (file too large)
