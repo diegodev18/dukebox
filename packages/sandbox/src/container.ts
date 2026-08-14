@@ -201,39 +201,7 @@ export class SessionContainer {
     endWhenExecCloses(raw, stdout)
     raw.on('error', (error: Error) => stdout.emit('error', error))
 
-    // Hand-wired rather than Duplex.from: that helper pipelines both sides
-    // and treats a closed hijack socket as ERR_STREAM_PREMATURE_CLOSE, which
-    // the agent adapter would take as a fatal turn end.
-    const stream = new Duplex({
-      read() {
-        stdout.resume()
-      },
-      write(chunk, encoding, callback) {
-        if (!attachStdin) {
-          callback()
-          return
-        }
-        if (!raw.write(chunk, encoding)) {
-          raw.once('drain', callback)
-          return
-        }
-        callback()
-      },
-      destroy(error, callback) {
-        raw.destroy()
-        callback(error)
-      },
-    })
-
-    stdout.on('data', (chunk: Buffer) => {
-      if (!stream.push(chunk)) stdout.pause()
-    })
-    stdout.on('end', () => {
-      if (!stream.readableEnded) stream.push(null)
-    })
-    stdout.on('error', (error: Error) => stream.destroy(error))
-
-    return stream
+    return createExecDuplex(raw, stdout, attachStdin)
   }
 
   /**
@@ -487,6 +455,55 @@ export function endWhenExecCloses(
   }
   raw.on('end', end)
   raw.on('close', end)
+}
+
+/**
+ * Pair demuxed stdout with the hijack writable.
+ *
+ * Hand-wired rather than `Duplex.from`: that helper pipelines both sides and
+ * treats a closed hijack socket as ERR_STREAM_PREMATURE_CLOSE, which the
+ * agent adapter would take as a fatal turn end. `final` must still close the
+ * hijack stdin — otherwise `stream.end()` never reaches the process, and a
+ * command like `cat` waits for EOF forever.
+ */
+export function createExecDuplex(raw: Duplex, stdout: PassThrough, attachStdin: boolean): Duplex {
+  const stream = new Duplex({
+    read() {
+      stdout.resume()
+    },
+    write(chunk, encoding, callback) {
+      if (!attachStdin) {
+        callback()
+        return
+      }
+      if (!raw.write(chunk, encoding)) {
+        raw.once('drain', callback)
+        return
+      }
+      callback()
+    },
+    final(callback) {
+      if (!attachStdin || raw.writableEnded) {
+        callback()
+        return
+      }
+      raw.end(callback)
+    },
+    destroy(error, callback) {
+      raw.destroy()
+      callback(error)
+    },
+  })
+
+  stdout.on('data', (chunk: Buffer) => {
+    if (!stream.push(chunk)) stdout.pause()
+  })
+  stdout.on('end', () => {
+    if (!stream.readableEnded) stream.push(null)
+  })
+  stdout.on('error', (error: Error) => stream.destroy(error))
+
+  return stream
 }
 
 /**

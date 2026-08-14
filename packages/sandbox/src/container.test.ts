@@ -4,6 +4,7 @@ import { PassThrough } from 'node:stream'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
   clampTerminalSize,
+  createExecDuplex,
   cpuQuota,
   DEFAULT_LIMITS,
   endWhenExecCloses,
@@ -85,6 +86,29 @@ describe('endWhenExecCloses', () => {
     raw.emit('close')
 
     expect(stdout.writableEnded).toBe(true)
+  })
+})
+
+describe('createExecDuplex', () => {
+  it('ends the hijack writable when the caller ends the duplex', async () => {
+    const raw = new PassThrough()
+    const stdout = new PassThrough()
+    const stream = createExecDuplex(raw, stdout, true)
+
+    stream.write('echoed back\n')
+    stream.end()
+
+    await new Promise<void>((resolve) => raw.once('finish', resolve))
+    expect(raw.writableEnded).toBe(true)
+  })
+
+  it('forwards writes to the hijack stream', () => {
+    const raw = new PassThrough()
+    const stdout = new PassThrough()
+    const stream = createExecDuplex(raw, stdout, true)
+
+    stream.write('hello')
+    expect(raw.read()?.toString()).toBe('hello')
   })
 })
 
