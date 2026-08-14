@@ -1,8 +1,17 @@
-import { memo, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import {
+  forwardRef,
+  memo,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from 'react'
 import type { PermissionMode } from '@dukebox/protocol'
 import { availablePermissionModes, cyclePermissionMode } from '@/components/AgentIcon'
+import { AttachmentChips } from '@/components/AttachmentChips'
 import { PermissionModePicker } from '@/components/RepoBranchPickers'
-import { AttachIcon, CloseIcon, FileIcon } from '@/components/icons'
+import { AttachIcon } from '@/components/icons'
 import { filesFromPaste, useFileDrop } from '@/lib/useFileDrop'
 
 /**
@@ -43,236 +52,238 @@ interface Props {
    * text is edited again, so the field refills rather than looking unchanged.
    */
   draft?: { text: string; key: number }
+  /**
+   * When false, the parent owns drag-and-drop (the session column) so a drop
+   * on the transcript attaches here instead of navigating away.
+   */
+  captureDrop?: boolean
 }
 
-export const Composer = memo(function Composer({
-  onSend,
-  onInterrupt,
-  running,
-  disabled = false,
-  placeholder = 'Ask for a change…',
-  error,
-  permissionMode,
-  onPermissionModeChange,
-  agentId,
-  draft,
-}: Props) {
-  const [text, setText] = useState('')
-  const [files, setFiles] = useState<ComposerFile[]>([])
-  const field = useRef<HTMLTextAreaElement>(null)
-  const picker = useRef<HTMLInputElement>(null)
-  const lastSent = useRef('')
-  const lastSentFiles = useRef<ComposerFile[]>([])
+export interface ComposerHandle {
+  attachFiles: (files: File[]) => void
+}
 
-  // Grow with the content, up to a point. A composer that takes the window is
-  // worse than one that scrolls.
-  useEffect(() => {
-    const element = field.current
-    if (!element) return
+export const Composer = memo(
+  forwardRef<ComposerHandle, Props>(function Composer(
+    {
+      onSend,
+      onInterrupt,
+      running,
+      disabled = false,
+      placeholder = 'Ask for a change…',
+      error,
+      permissionMode,
+      onPermissionModeChange,
+      agentId,
+      draft,
+      captureDrop = true,
+    },
+    ref,
+  ) {
+    const [text, setText] = useState('')
+    const [files, setFiles] = useState<ComposerFile[]>([])
+    const field = useRef<HTMLTextAreaElement>(null)
+    const picker = useRef<HTMLInputElement>(null)
+    const lastSent = useRef('')
+    const lastSentFiles = useRef<ComposerFile[]>([])
 
-    element.style.height = 'auto'
-    element.style.height = `${Math.min(element.scrollHeight, 200)}px`
-  }, [text])
+    // Grow with the content, up to a point. A composer that takes the window is
+    // worse than one that scrolls.
+    useEffect(() => {
+      const element = field.current
+      if (!element) return
 
-  useEffect(() => {
-    if (!error || !lastSent.current) return
+      element.style.height = 'auto'
+      element.style.height = `${Math.min(element.scrollHeight, 200)}px`
+    }, [text])
 
-    const restored = lastSent.current
-    const draftFiles = lastSentFiles.current
-    lastSent.current = ''
-    lastSentFiles.current = []
-    setText((current) => (current.trim() === '' ? restored : current))
-    setFiles((current) => (current.length === 0 ? draftFiles : current))
-  }, [error])
+    useEffect(() => {
+      if (!error || !lastSent.current) return
 
-  useEffect(() => {
-    if (!draft) return
+      const restored = lastSent.current
+      const draftFiles = lastSentFiles.current
+      lastSent.current = ''
+      lastSentFiles.current = []
+      setText((current) => (current.trim() === '' ? restored : current))
+      setFiles((current) => (current.length === 0 ? draftFiles : current))
+    }, [error])
 
-    setText(draft.text)
-    field.current?.focus()
-  }, [draft])
+    useEffect(() => {
+      if (!draft) return
 
-  const submit = () => {
-    const trimmed = text.trim()
-    // While the agent is working, Stop owns the control. Clearing the field
-    // here would look like the follow-up sent, and it did not.
-    if (!trimmed || disabled || running) return
+      setText(draft.text)
+      field.current?.focus()
+    }, [draft])
 
-    lastSent.current = trimmed
-    lastSentFiles.current = files
-    if (files.length > 0) onSend(trimmed, files)
-    else onSend(trimmed)
-    setText('')
-    setFiles([])
-  }
+    const submit = () => {
+      const trimmed = text.trim()
+      // While the agent is working, Stop owns the control. Clearing the field
+      // here would look like the follow-up sent, and it did not.
+      if (!trimmed || disabled || running) return
 
-  // Selected files are read once, immediately, and held as base64 data URIs so
-  // the send is a single message. Re-selecting the same file works because the
-  // input's value is reset after every pick.
-  const attachFiles = (picked: File[]) => {
-    if (picked.length === 0 || disabled) return
+      lastSent.current = trimmed
+      lastSentFiles.current = files
+      if (files.length > 0) onSend(trimmed, files)
+      else onSend(trimmed)
+      setText('')
+      setFiles([])
+    }
 
-    void Promise.all(picked.map(readFile))
-      .then((read) => setFiles((current) => [...current, ...read]))
-      .catch(() => {
-        // A file that could not be read is dropped rather than blocking the
-        // ones that could.
-      })
-  }
+    // Selected files are read once, immediately, and held as base64 data URIs so
+    // the send is a single message. Re-selecting the same file works because the
+    // input's value is reset after every pick.
+    const attachFiles = (picked: File[]) => {
+      if (picked.length === 0 || disabled) return
 
-  const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
-    const picked = Array.from(event.target.files ?? [])
-    event.target.value = ''
-    attachFiles(picked)
-  }
+      void Promise.all(picked.map(readFile))
+        .then((read) => setFiles((current) => [...current, ...read]))
+        .catch(() => {
+          // A file that could not be read is dropped rather than blocking the
+          // ones that could.
+        })
+    }
 
-  const { dragging, onDragEnter, onDragOver, onDragLeave, onDrop } = useFileDrop({
-    disabled,
-    onFiles: attachFiles,
-  })
+    useImperativeHandle(ref, () => ({ attachFiles }), [disabled])
 
-  const removeFile = (index: number) => {
-    setFiles((current) => current.filter((_, i) => i !== index))
-  }
+    const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
+      const picked = Array.from(event.target.files ?? [])
+      event.target.value = ''
+      attachFiles(picked)
+    }
 
-  return (
-    <div className="shrink-0 px-6 pb-5">
-      <div
-        className={`measure relative rounded-[var(--radius)] border bg-surface transition-[border-color,box-shadow] ${dragging ? 'border-primary ring-2 ring-primary/20' : 'border-border focus-within:border-muted-foreground/40'}`}
-        onDragEnter={onDragEnter}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-      >
-        <textarea
-          ref={field}
-          value={text}
-          onChange={(event) => {
-            const element = event.currentTarget
-            setText(element.value)
-            element.style.height = 'auto'
-            element.style.height = `${Math.min(element.scrollHeight, 200)}px`
-          }}
-          onKeyDown={(event) => {
-            if (
-              event.key === 'Tab' &&
-              event.shiftKey &&
-              permissionMode &&
-              onPermissionModeChange &&
-              !disabled
-            ) {
+    const { dragging, onDragEnter, onDragOver, onDragLeave, onDrop } = useFileDrop({
+      disabled: disabled || !captureDrop,
+      onFiles: attachFiles,
+    })
+
+    const removeFile = (index: number) => {
+      setFiles((current) => current.filter((_, i) => i !== index))
+    }
+
+    return (
+      <div className="shrink-0 px-6 pb-5">
+        <div
+          className={`measure relative rounded-[var(--radius)] border bg-surface transition-[border-color,box-shadow] ${dragging ? 'border-primary ring-2 ring-primary/20' : 'border-border focus-within:border-muted-foreground/40'}`}
+          {...(captureDrop ? { onDragEnter, onDragOver, onDragLeave, onDrop } : {})}
+        >
+          <textarea
+            ref={field}
+            value={text}
+            onChange={(event) => {
+              const element = event.currentTarget
+              setText(element.value)
+              element.style.height = 'auto'
+              element.style.height = `${Math.min(element.scrollHeight, 200)}px`
+            }}
+            onKeyDown={(event) => {
+              if (
+                event.key === 'Tab' &&
+                event.shiftKey &&
+                permissionMode &&
+                onPermissionModeChange &&
+                !disabled
+              ) {
+                event.preventDefault()
+                onPermissionModeChange(cyclePermissionMode(permissionMode, agentId))
+                return
+              }
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault()
+                submit()
+              }
+            }}
+            onPaste={(event) => {
+              const pasted = filesFromPaste(event.clipboardData)
+              if (pasted.length === 0) return
               event.preventDefault()
-              onPermissionModeChange(cyclePermissionMode(permissionMode, agentId))
-              return
-            }
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault()
-              submit()
-            }
-          }}
-          onPaste={(event) => {
-            const pasted = filesFromPaste(event.clipboardData)
-            if (pasted.length === 0) return
-            event.preventDefault()
-            attachFiles(pasted)
-          }}
-          disabled={disabled}
-          rows={1}
-          placeholder={disabled ? 'Waiting for connection…' : placeholder}
-          aria-label="Message"
-          aria-invalid={Boolean(error)}
-          {...(error ? { 'aria-describedby': 'composer-error' } : {})}
-          className="block w-full resize-none bg-transparent px-3.5 pt-3 pb-1.5 outline-none placeholder:text-muted-foreground disabled:opacity-50"
-        />
+              attachFiles(pasted)
+            }}
+            disabled={disabled}
+            rows={1}
+            placeholder={disabled ? 'Waiting for connection…' : placeholder}
+            aria-label="Message"
+            aria-invalid={Boolean(error)}
+            {...(error ? { 'aria-describedby': 'composer-error' } : {})}
+            className="block w-full resize-none bg-transparent px-3.5 pt-3 pb-1.5 outline-none placeholder:text-muted-foreground disabled:opacity-50"
+          />
 
-        {files.length > 0 && (
-          <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto px-3 pb-2">
-            {files.map((file, index) => (
-              <span
-                key={`${file.name}-${index}`}
-                className="inline-flex max-w-56 items-center gap-1.5 rounded-md border border-border bg-muted/50 py-1 pr-1 pl-2 text-[12px]"
+          {files.length > 0 && (
+            <div className="px-3 pb-2">
+              <AttachmentChips attachments={files} onRemove={removeFile} disabled={disabled} />
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => picker.current?.click()}
+                disabled={disabled}
+                aria-label="Attach files"
+                title="Attach files"
+                className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
               >
-                <FileIcon size={13} className="shrink-0 text-muted-foreground" />
-                <span className="min-w-0 truncate">{file.name}</span>
-                <button
-                  type="button"
-                  onClick={() => removeFile(index)}
-                  disabled={disabled}
-                  aria-label={`Remove ${file.name}`}
-                  className="rounded p-0.5 text-muted-foreground hover:bg-border hover:text-foreground disabled:opacity-40"
-                >
-                  <CloseIcon size={12} />
-                </button>
-              </span>
-            ))}
+                <AttachIcon size={15} />
+              </button>
+              {permissionMode && onPermissionModeChange ? (
+                <PermissionModePicker
+                  value={permissionMode}
+                  onChange={onPermissionModeChange}
+                  {...(agentId ? { modes: availablePermissionModes(agentId) } : {})}
+                  {...(disabled ? { disabled: true } : {})}
+                />
+              ) : null}
+              <p className="text-[11.5px] text-muted-foreground">
+                {permissionMode && onPermissionModeChange
+                  ? '↵ Send · ⇧↵ Newline · ⇧⇥ Mode'
+                  : '↵ Send · ⇧↵ Newline'}
+              </p>
+            </div>
+            {running ? (
+              <button
+                type="button"
+                onClick={onInterrupt}
+                disabled={disabled}
+                className="rounded-[calc(var(--radius)*0.6)] border border-border px-3 py-1.5 text-[12.5px] font-medium hover:bg-muted disabled:opacity-40"
+              >
+                Stop
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={submit}
+                disabled={!text.trim() || disabled}
+                className="rounded-[calc(var(--radius)*0.6)] bg-foreground px-3 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
+              >
+                Send
+              </button>
+            )}
           </div>
-        )}
 
-        <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => picker.current?.click()}
-              disabled={disabled}
-              aria-label="Attach files"
-              title="Attach files"
-              className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
-            >
-              <AttachIcon size={15} />
-            </button>
-            {permissionMode && onPermissionModeChange ? (
-              <PermissionModePicker
-                value={permissionMode}
-                onChange={onPermissionModeChange}
-                {...(agentId ? { modes: availablePermissionModes(agentId) } : {})}
-                {...(disabled ? { disabled: true } : {})}
-              />
-            ) : null}
-            <p className="text-[11.5px] text-muted-foreground">
-              {permissionMode && onPermissionModeChange
-                ? '↵ Send · ⇧↵ Newline · ⇧⇥ Mode'
-                : '↵ Send · ⇧↵ Newline'}
-            </p>
-          </div>
-          {running ? (
-            <button
-              type="button"
-              onClick={onInterrupt}
-              disabled={disabled}
-              className="rounded-[calc(var(--radius)*0.6)] border border-border px-3 py-1.5 text-[12.5px] font-medium hover:bg-muted disabled:opacity-40"
-            >
-              Stop
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={submit}
-              disabled={!text.trim() || disabled}
-              className="rounded-[calc(var(--radius)*0.6)] bg-foreground px-3 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
-            >
-              Send
-            </button>
+          {dragging && (
+            <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-[var(--radius)] border-2 border-dashed border-primary/60 bg-background/85">
+              <p className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+                <AttachIcon size={16} />
+                Drop to attach
+              </p>
+            </div>
           )}
         </div>
-
-        {dragging && (
-          <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-[var(--radius)] border-2 border-dashed border-primary/60 bg-background/85">
-            <p className="flex items-center gap-2 text-[13px] font-medium text-foreground">
-              <AttachIcon size={16} />
-              Drop to attach
-            </p>
-          </div>
+        <input ref={picker} type="file" multiple className="hidden" onChange={handleFiles} />
+        {error && (
+          <p
+            id="composer-error"
+            role="alert"
+            className="measure mt-2 text-[12.5px] text-destructive"
+          >
+            {error}
+          </p>
         )}
       </div>
-      <input ref={picker} type="file" multiple className="hidden" onChange={handleFiles} />
-      {error && (
-        <p id="composer-error" role="alert" className="measure mt-2 text-[12.5px] text-destructive">
-          {error}
-        </p>
-      )}
-    </div>
-  )
-})
+    )
+  }),
+)
+Composer.displayName = 'Composer'
 
 /** Read a picked file into the base64 data URI the protocol stages. */
 export function readFile(file: File): Promise<ComposerFile> {

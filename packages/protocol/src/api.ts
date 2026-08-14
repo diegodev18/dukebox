@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { environmentProposal } from '@/config'
+import type { PromptAttachment } from '@/events'
 import {
   gitPreferences,
   mergeMethod,
@@ -238,6 +239,38 @@ export function partitionAttachments(
     ...(allImages.length > 0 ? { images: allImages } : {}),
     ...(rest.length > 0 ? { files: rest } : {}),
   }
+}
+
+/**
+ * Metadata recorded on `user_prompt` so the transcript can show what was
+ * attached. Image data URIs travel with the event; other files are names only.
+ */
+export function promptAttachmentsFrom(
+  files?: AttachedFile[],
+  images?: string[],
+): PromptAttachment[] | undefined {
+  const attachments: PromptAttachment[] = []
+
+  for (const [index, image] of (images ?? []).entries()) {
+    const mediaType = /^data:([^;]+);base64,/.exec(image)?.[1]
+    const ext = mediaType?.split('/')[1]?.replace('jpeg', 'jpg') ?? 'png'
+    attachments.push({
+      name: `image-${index}.${ext}`,
+      data: image,
+      ...(mediaType ? { mediaType } : {}),
+    })
+  }
+
+  for (const file of files ?? []) {
+    const mediaType = /^data:([^;]+);base64,/.exec(file.data)?.[1]
+    attachments.push({
+      name: file.name,
+      ...(mediaType ? { mediaType } : {}),
+      ...(isInlineImageDataUri(file.data) ? { data: file.data } : {}),
+    })
+  }
+
+  return attachments.length > 0 ? attachments : undefined
 }
 
 export const createSessionRequest = z

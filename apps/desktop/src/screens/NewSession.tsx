@@ -24,9 +24,10 @@ import {
   cyclePermissionMode,
   type AvailablePermissionModeId,
 } from '@/components/AgentIcon'
+import { AttachmentChips } from '@/components/AttachmentChips'
 import { readFile, type ComposerFile } from '@/components/Composer'
 import { modelsForProvider } from '@/components/OpenCodeProviders'
-import { AttachIcon, CloseIcon, FileIcon, SendIcon } from '@/components/icons'
+import { AttachIcon, SendIcon } from '@/components/icons'
 import { filesFromPaste, useFileDrop } from '@/lib/useFileDrop'
 import {
   AgentPicker,
@@ -609,8 +610,14 @@ export function NewSession({
   }
 
   return (
-    <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
-      <div className="w-full max-w-xl" aria-busy={busy}>
+    <div
+      className="grid h-full min-h-0 min-w-0 place-items-center px-6"
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      <div className="relative w-full max-w-xl" aria-busy={busy}>
         {status.kind === 'loading' && (
           <p role="status" className="mb-3 text-[13px] text-muted-foreground">
             Loading repositories…
@@ -716,10 +723,6 @@ export function NewSession({
         ) : (
           <div
             className={`relative rounded-[calc(var(--radius)*1.1)] border bg-surface transition-[border-color,box-shadow] ${dragging ? 'border-primary ring-2 ring-primary/20' : 'border-border focus-within:border-muted-foreground/40'}`}
-            onDragEnter={onDragEnter}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
           >
             <textarea
               ref={field}
@@ -755,25 +758,8 @@ export function NewSession({
             />
 
             {files.length > 0 && (
-              <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto px-3 pb-2">
-                {files.map((file, index) => (
-                  <span
-                    key={`${file.name}-${index}`}
-                    className="inline-flex max-w-56 items-center gap-1.5 rounded-md border border-border bg-muted/50 py-1 pr-1 pl-2 text-[12px]"
-                  >
-                    <FileIcon size={13} className="shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 truncate">{file.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeFile(index)}
-                      disabled={busy}
-                      aria-label={`Remove ${file.name}`}
-                      className="rounded p-0.5 text-muted-foreground hover:bg-border hover:text-foreground disabled:opacity-40"
-                    >
-                      <CloseIcon size={12} />
-                    </button>
-                  </span>
-                ))}
+              <div className="px-3 pb-2">
+                <AttachmentChips attachments={files} onRemove={removeFile} disabled={busy} />
               </div>
             )}
 
@@ -819,14 +805,6 @@ export function NewSession({
                 )}
               </button>
             </div>
-            {dragging && (
-              <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-[calc(var(--radius)*1.1)] border-2 border-dashed border-primary/60 bg-background/85">
-                <p className="flex items-center gap-2 text-[13px] font-medium text-foreground">
-                  <AttachIcon size={16} />
-                  Drop to attach
-                </p>
-              </div>
-            )}
             <input ref={picker} type="file" multiple className="hidden" onChange={handleFiles} />
           </div>
         )}
@@ -862,6 +840,14 @@ export function NewSession({
           <p role="alert" className="mt-3 text-[13px] text-destructive">
             {status.message}
           </p>
+        )}
+        {dragging && (
+          <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-[calc(var(--radius)*1.1)] border-2 border-dashed border-primary/60 bg-background/85">
+            <p className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+              <AttachIcon size={16} />
+              Drop to attach
+            </p>
+          </div>
         )}
       </div>
     </div>

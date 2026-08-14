@@ -36,6 +36,7 @@ import {
   type EnvironmentSetupVerification,
   type EnvelopedEvent,
   partitionAttachments,
+  promptAttachmentsFrom,
 } from '@dukebox/protocol'
 import {
   CONTAINER_SOCKET_DIR,
@@ -442,7 +443,12 @@ export class SessionManager {
     // Recorded before provisioning starts, so a crash mid-clone still has the
     // text needed to retry, and the client sees the prompt while the workspace
     // is coming up rather than only after the agent is already running.
-    await this.deps.bus.append(session.id, { type: 'user_prompt', text: prompt })
+    const attachments = promptAttachmentsFrom(options.files)
+    await this.deps.bus.append(session.id, {
+      type: 'user_prompt',
+      text: prompt,
+      ...(attachments ? { attachments } : {}),
+    })
 
     // Deliberately not awaited: provisioning is slow, and its progress reaches
     // the client as events rather than as a blocked request.
@@ -1533,7 +1539,12 @@ export class SessionManager {
     // Recorded here rather than by the sender, so it survives a reload and
     // reaches every other device watching this session. The merge notice is
     // only for the agent — the transcript keeps what the person typed.
-    await this.deps.bus.append(sessionId, { type: 'user_prompt', text })
+    const attachments = promptAttachmentsFrom(files, images)
+    await this.deps.bus.append(sessionId, {
+      type: 'user_prompt',
+      text,
+      ...(attachments ? { attachments } : {}),
+    })
 
     await running.adapter.send({
       text: agentText,

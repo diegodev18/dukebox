@@ -175,6 +175,29 @@ describe('Transcript', () => {
     expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument()
   })
 
+  it('shows attached images on a user prompt', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [
+            {
+              kind: 'prompt',
+              id: 'p',
+              text: 'what is this',
+              attachments: [
+                { name: 'shot.png', mediaType: 'image/png', data: 'data:image/png;base64,QUFB' },
+              ],
+            },
+          ],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('img', { name: 'shot.png' })).toBeInTheDocument()
+    expect(screen.getByText('shot.png')).toBeInTheDocument()
+  })
+
   it('loads a user prompt into the composer when edited', async () => {
     const onEdit = vi.fn()
     render(

@@ -22,6 +22,7 @@ import {
   SetupIcon,
   TerminalIcon,
 } from '@/components/icons'
+import { AttachmentChips } from '@/components/AttachmentChips'
 import { Markdown } from '@/components/Markdown'
 import { VirtualRows } from '@/components/VirtualRows'
 
@@ -229,12 +230,16 @@ const BlockView = memo(function BlockView({
       }
       return (
         <MessageBlock text={block.text} editDisabled={disabled} onEdit={onEdit} copyable>
-          <p
-            data-selectable
-            className="rounded-[var(--radius)] bg-surface px-3.5 py-2.5 whitespace-pre-wrap"
-          >
-            {block.text}
-          </p>
+          <div className="rounded-[var(--radius)] bg-surface px-3.5 py-2.5">
+            <p data-selectable className="whitespace-pre-wrap">
+              {block.text}
+            </p>
+            {block.attachments && block.attachments.length > 0 ? (
+              <div className="mt-2">
+                <AttachmentChips attachments={block.attachments} />
+              </div>
+            ) : null}
+          </div>
         </MessageBlock>
       )
 

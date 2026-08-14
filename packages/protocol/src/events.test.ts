@@ -15,6 +15,13 @@ describe('agentEvent', () => {
       { type: 'usage', inputTokens: 10, outputTokens: 20, costUsd: 0.01 },
       { type: 'error', message: 'boom', fatal: true },
       { type: 'done', reason: 'completed' },
+      {
+        type: 'user_prompt',
+        text: 'what is this',
+        attachments: [
+          { name: 'shot.png', mediaType: 'image/png', data: 'data:image/png;base64,QUFB' },
+        ],
+      },
     ]
 
     for (const sample of samples) {

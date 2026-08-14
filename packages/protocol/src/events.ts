@@ -21,9 +21,25 @@ import { permissionMode } from '@/session'
  * is created, so a crash mid-provision still has the text needed to retry, and
  * follow-ups at the moment they are forwarded.
  */
+/**
+ * A file the user attached to a prompt.
+ *
+ * `data` is the data URI for images so the transcript can preview them.
+ * Other files keep only a name (and media type when known) — the bytes
+ * already went to the sandbox and must not be replayed through the event log.
+ */
+export const promptAttachment = z.object({
+  name: z.string().min(1),
+  mediaType: z.string().min(1).optional(),
+  data: z.string().min(1).optional(),
+})
+
+export type PromptAttachment = z.infer<typeof promptAttachment>
+
 export const userPromptEvent = z.object({
   type: z.literal('user_prompt'),
   text: z.string(),
+  attachments: z.array(promptAttachment).optional(),
 })
 
 /** A block of text from the agent, streamed in deltas. */

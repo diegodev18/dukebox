@@ -26,7 +26,9 @@ import { useColumnWidths } from '@/lib/useColumnWidths'
 import { useLiveSession } from '@/lib/liveSession'
 import type { UseUpdate } from '@/lib/useUpdate'
 import { AgentIcon, hasAgentIcon } from '@/components/AgentIcon'
-import { Composer } from '@/components/Composer'
+import { Composer, type ComposerHandle } from '@/components/Composer'
+import { AttachIcon } from '@/components/icons'
+import { useFileDrop } from '@/lib/useFileDrop'
 import { ResizeHandle } from '@/components/ResizeHandle'
 import { SessionInfo } from '@/components/SessionInfo'
 import { SearchPalette } from '@/components/SearchPalette'
@@ -634,16 +636,28 @@ function SessionColumn({
   // that used to read as "stuck processing".
   const working = transcript.running && !isTerminal(session.status)
   const [composerDraft, setComposerDraft] = useState<{ text: string; key: number } | null>(null)
+  const composer = useRef<ComposerHandle>(null)
   const onEdit = useCallback((text: string) => {
     setComposerDraft({ text, key: Date.now() })
   }, [])
+  const connected = isStreamConnected(streamStatus)
+  const { dragging, onDragEnter, onDragOver, onDragLeave, onDrop } = useFileDrop({
+    disabled: !connected,
+    onFiles: (files) => composer.current?.attachFiles(files),
+  })
 
   return (
     // `min-h-0` is what makes the transcript scroll instead of the window
     // growing. A flex item defaults to `min-height: auto`, which refuses to
     // shrink below its content, so the child's `overflow-y-auto` never has a
     // bounded height to scroll within and the column pushes the grid open.
-    <div className="flex min-h-0 min-w-0 flex-col">
+    <div
+      className="relative flex min-h-0 min-w-0 flex-col"
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
         <h1 className="truncate font-medium">{session.title}</h1>
         <SessionInfo session={session} connection={connection} />
@@ -703,7 +717,18 @@ function SessionColumn({
         disabled={!isStreamConnected(streamStatus)}
       />
 
+      {dragging && (
+        <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center bg-background/80">
+          <p className="flex items-center gap-2 rounded-[var(--radius)] border-2 border-dashed border-primary/60 bg-background px-4 py-3 text-[13px] font-medium">
+            <AttachIcon size={16} />
+            Drop to attach
+          </p>
+        </div>
+      )}
+
       <Composer
+        ref={composer}
+        captureDrop={false}
         onSend={live.send}
         onInterrupt={live.interrupt}
         running={working}
