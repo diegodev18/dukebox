@@ -25,7 +25,7 @@ import {
   type AvailablePermissionModeId,
 } from '@/components/AgentIcon'
 import { AttachmentChips } from '@/components/AttachmentChips'
-import { readFile, type ComposerFile } from '@/components/Composer'
+import { readPickedFiles, type ComposerFile } from '@/components/Composer'
 import { modelsForProvider } from '@/components/OpenCodeProviders'
 import { AttachIcon, SendIcon } from '@/components/icons'
 import { filesFromPaste, useFileDrop } from '@/lib/useFileDrop'
@@ -148,6 +148,7 @@ export function NewSession({
   const [providerId, setProviderId] = useState(initialProviderId(lastNewSession, initialAgent))
   const [prompt, setPrompt] = useState(loadNewSessionDraft)
   const [files, setFiles] = useState<ComposerFile[]>([])
+  const [attachError, setAttachError] = useState<string | null>(null)
   const [forceSetup, setForceSetup] = useState(Boolean(preferSetupProjectId))
   const [newEnvironmentName, setNewEnvironmentName] = useState('Default')
   const [newEnvironmentPattern, setNewEnvironmentPattern] = useState('**')
@@ -458,12 +459,10 @@ export function NewSession({
   const attachFiles = (picked: File[]) => {
     if (picked.length === 0 || busy) return
 
-    void Promise.all(picked.map(readFile))
-      .then((read) => setFiles((current) => [...current, ...read]))
-      .catch(() => {
-        // A file that could not be read is dropped rather than blocking the
-        // ones that could.
-      })
+    void readPickedFiles(picked).then(({ files: read, error: readError }) => {
+      if (read.length > 0) setFiles((current) => [...current, ...read])
+      setAttachError(readError)
+    })
   }
 
   const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
@@ -849,6 +848,11 @@ export function NewSession({
           </p>
         )}
 
+        {attachError && (
+          <p role="alert" className="mt-3 text-[13px] text-destructive">
+            {attachError}
+          </p>
+        )}
         {status.kind === 'failed' && (
           <p role="alert" className="mt-3 text-[13px] text-destructive">
             {status.message}

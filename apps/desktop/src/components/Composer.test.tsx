@@ -246,6 +246,31 @@ describe('Composer', () => {
     expect(await screen.findByText('two.txt')).toBeInTheDocument()
   })
 
+  it('keeps a readable file when another fails', async () => {
+    const restore = stubFileReaderFailing('broken.bin')
+    try {
+      const { container } = render(
+        <Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />,
+      )
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      fireEvent.change(input, {
+        target: {
+          files: [
+            new File(['a'], 'notes.txt', { type: 'text/plain' }),
+            new File(['b'], 'broken.bin', { type: 'application/octet-stream' }),
+          ],
+        },
+      })
+
+      expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+      expect(screen.queryByText('broken.bin')).not.toBeInTheDocument()
+      expect(await screen.findByRole('alert')).toHaveTextContent(/broken\.bin/)
+    } finally {
+      restore()
+    }
+  })
+
   it('removes an attached file from the draft', async () => {
     const { container } = render(
       <Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />,
@@ -469,3 +494,28 @@ describe('Composer drag and drop', () => {
     expect(screen.queryByText('image.png')).not.toBeInTheDocument()
   })
 })
+
+/** Make `readAsDataURL` fail for one name so a mixed pick can be asserted. */
+function stubFileReaderFailing(badName: string) {
+  const Original = globalThis.FileReader
+  class FailingReader {
+    result: string | null = null
+    error: DOMException | null = null
+    onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null
+    onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null
+    readAsDataURL(blob: Blob) {
+      const name = blob instanceof File ? blob.name : ''
+      queueMicrotask(() => {
+        if (name === badName) {
+          this.error = new DOMException(`could not read ${name}`)
+          this.onerror?.call(this as unknown as FileReader, new ProgressEvent('error'))
+          return
+        }
+        this.result = 'data:text/plain;base64,YQ=='
+        this.onload?.call(this as unknown as FileReader, new ProgressEvent('load'))
+      })
+    }
+  }
+  vi.stubGlobal('FileReader', FailingReader)
+  return () => vi.stubGlobal('FileReader', Original)
+}
