@@ -42,6 +42,18 @@ export interface SessionContext {
    * Absent means the agent's own default.
    */
   permissionMode?: PermissionMode
+  /**
+   * Grok Build OIDC session sync.
+   *
+   * The control plane owns `auth.json` and its refresh token. The adapter
+   * writes a snapshot into the container before every `grok -p` and persists
+   * whatever Grok wrote back, so a refresh in one session is what the next
+   * session receives instead of a revoked grant.
+   */
+  grokAuth?: {
+    load(): Promise<string | null>
+    persist(authJson: string): Promise<void>
+  }
 }
 
 /**

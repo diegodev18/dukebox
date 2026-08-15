@@ -239,6 +239,38 @@ describe('GrokBuildAdapter', () => {
     await expect(new GrokBuildAdapter().send({ text: 'hi' })).rejects.toThrow('not started')
   })
 
+  it('surfaces a failed credential refresh as a fatal error instead of starting grok', async () => {
+    const execStream = vi.fn(async () => new PassThrough())
+    const adapter = new GrokBuildAdapter()
+    const expired =
+      'Grok is not signed in. Open Settings and sign in again with the device code. The saved session expired and could not be renewed.'
+    let loads = 0
+
+    await adapter.start({
+      sessionId: 'session-1',
+      workingDir: '/workspace/repo',
+      container: {
+        exec: vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' })),
+        execStream,
+      } as unknown as SessionContext['container'],
+      grokAuth: {
+        load: async () => {
+          loads += 1
+          if (loads > 1) throw new Error(expired)
+          return '{"https://auth.x.ai":{"key":"ok"}}'
+        },
+        persist: async () => {},
+      },
+    })
+
+    await adapter.send({ text: 'hello' })
+
+    expect(execStream).not.toHaveBeenCalled()
+    const events = await collectUntil(adapter, 3)
+    expect(events).toContainEqual({ type: 'error', message: expired, fatal: true })
+    expect(events.at(-1)).toEqual({ type: 'done', reason: 'error' })
+  })
+
   it('treats a permission response as a no-op', async () => {
     await expect(new GrokBuildAdapter().respondToPermission('id', true)).resolves.toBeUndefined()
   })
@@ -265,6 +297,64 @@ describe('GrokBuildAdapter', () => {
     expect(first.join(' ')).toContain('DUKEBOX_GROK_AUTH_JSON')
     expect(first.join(' ')).toContain('GROK_HOME')
     expect(first.join(' ')).toContain(GROK_HOME_DIR)
+  })
+
+  it('writes the latest stored auth.json via stdin when grokAuth is provided', async () => {
+    const exec = vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' }))
+    const load = vi.fn(async () => '{"https://auth.x.ai":{"key":"fresh","refresh_token":"r"}}')
+    const persist = vi.fn(async () => {})
+    const adapter = new GrokBuildAdapter()
+
+    await adapter.start({
+      sessionId: 'session-1',
+      workingDir: '/workspace/repo',
+      container: { exec, execStream: vi.fn() } as unknown as SessionContext['container'],
+      grokAuth: { load, persist },
+    })
+
+    expect(load).toHaveBeenCalled()
+    expect(exec).toHaveBeenCalledWith(
+      ['sh', '-c', expect.stringContaining('cat > "$home/auth.json"')],
+      { stdin: '{"https://auth.x.ai":{"key":"fresh","refresh_token":"r"}}' },
+    )
+    expect(persist).not.toHaveBeenCalled()
+  })
+
+  it('persists a newer auth.json Grok wrote during the turn', async () => {
+    const store =
+      '{"https://auth.x.ai::cli":{"key":"old","refresh_token":"keep","expires_at":"2026-08-15T10:00:00Z"}}'
+    const rotated =
+      '{"https://auth.x.ai::cli":{"key":"new","refresh_token":"next","expires_at":"2026-08-15T16:00:00Z"}}'
+    let turnStarted = false
+    const stream = new PassThrough()
+    const exec = vi.fn(async (cmd: string[]) => {
+      const joined = cmd.join(' ')
+      if (joined.includes('auth.json') && !joined.includes('cat >') && turnStarted) {
+        return { exitCode: 0, stdout: rotated, stderr: '' }
+      }
+      return { exitCode: 0, stdout: '', stderr: '' }
+    })
+    const execStream = vi.fn(async () => {
+      turnStarted = true
+      return stream
+    })
+    const persist = vi.fn(async () => {})
+    const adapter = new GrokBuildAdapter()
+
+    await adapter.start({
+      sessionId: 'session-1',
+      workingDir: '/workspace/repo',
+      container: { exec, execStream } as unknown as SessionContext['container'],
+      grokAuth: { load: async () => store, persist },
+    })
+
+    await adapter.send({ text: 'hello' })
+    stream.end()
+
+    await vi.waitFor(() => expect(persist).toHaveBeenCalled())
+    const written = persist.mock.calls[0]?.[0] as string
+    expect(written).toContain('"key":"new"')
+    expect(written).toContain('"refresh_token":"next"')
   })
 
   it('does not attach stdin', async () => {

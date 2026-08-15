@@ -341,6 +341,8 @@ describe('Settings', () => {
     renderSettings({ client })
     await openCategory('Agents')
 
+    expect(screen.getByText(/shares the refresh token/i)).toBeInTheDocument()
+
     const auth = '{"https://auth.x.ai":{"key":"sess-test"}}'
     await userEvent.click(screen.getByLabelText('Grok Build auth.json'))
     await userEvent.paste(auth)

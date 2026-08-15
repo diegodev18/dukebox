@@ -71,6 +71,7 @@ import {
   environmentSetupVerifyRetryPrompt,
   parseEnvironmentProposalJson,
 } from '@/sessions/environmentSetup'
+import { grokAuthHooks } from '@/grok/session-auth'
 import { writePullRequestContent } from '@/sessions/pr-writer'
 import { dukeboxOwnsPullRequestBody } from '@/sessions/summary'
 import { pullRequestRecordUnchanged, toSummary } from '@/sessions/summarize'
@@ -248,6 +249,14 @@ export function createAgentAdapter(agentId: string): AgentAdapter {
   if (agentId === 'opencode') return new OpenCodeAdapter()
   if (agentId === 'grok-build') return new GrokBuildAdapter()
   throw new SessionError(`no adapter for agent: ${agentId}`)
+}
+
+function grokAuthContext(
+  agentId: string,
+  secrets?: SecretStore,
+): { grokAuth: ReturnType<typeof grokAuthHooks> } | Record<string, never> {
+  if (agentId !== 'grok-build' || !secrets) return {}
+  return { grokAuth: grokAuthHooks(secrets) }
 }
 
 function permissionModeContext(
@@ -591,6 +600,7 @@ export class SessionManager {
       ...(model ? { model } : {}),
       ...(session.agentSessionId ? { resumeFrom: session.agentSessionId } : {}),
       ...permissionModeContext(session, permissionMode),
+      ...grokAuthContext(session.agentId, this.deps.secrets),
     })
 
     this.running.set(session.id, {
@@ -1616,6 +1626,7 @@ export class SessionManager {
       ...(session.agentSessionId ? { resumeFrom: session.agentSessionId } : {}),
       ...(config.instructions && purpose === 'coding' ? { instructions: config.instructions } : {}),
       ...permissionModeContext(session),
+      ...grokAuthContext(session.agentId, this.deps.secrets),
     })
 
     const running: RunningSession = {

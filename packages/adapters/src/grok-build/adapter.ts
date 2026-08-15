@@ -8,6 +8,7 @@ import type { Duplex } from 'node:stream'
 import { JsonlReader } from '@/jsonl'
 import type { AgentAdapter, SessionContext, UserMessage } from '@/types'
 import { extensionFor, parseDataUri, stageUpload } from '@/uploads'
+import { mergeGrokAuthJson } from '@/grok-build/auth'
 import { GrokBuildMapper } from '@/grok-build/mapper'
 
 /**
@@ -48,23 +49,56 @@ export function grokBuildContainerEnv(options: {
   return env
 }
 
+const WRITE_AUTH_SCRIPT = [
+  `home="\${GROK_HOME:-${GROK_HOME_DIR}}"`,
+  'mkdir -p "$home"',
+  'cat > "$home/auth.json"',
+  'chmod 600 "$home/auth.json"',
+].join('\n')
+
+const READ_AUTH_SCRIPT = [
+  `home="\${GROK_HOME:-${GROK_HOME_DIR}}"`,
+  'if [ -f "$home/auth.json" ]; then cat "$home/auth.json"; fi',
+].join('\n')
+
+const ENV_MATERIALIZE_SCRIPT = [
+  `home="\${GROK_HOME:-${GROK_HOME_DIR}}"`,
+  'mkdir -p "$home"',
+  `if [ -n "$${GROK_AUTH_ENV}" ]; then printf '%s' "$${GROK_AUTH_ENV}" > "$home/auth.json"; chmod 600 "$home/auth.json"; fi`,
+].join('\n')
+
+export async function readGrokAuthFile(context: SessionContext): Promise<string | null> {
+  const result = await context.container.exec(['sh', '-c', READ_AUTH_SCRIPT])
+  const raw = result.stdout.trim()
+  return raw || null
+}
+
+export async function writeGrokAuthFile(context: SessionContext, authJson: string): Promise<void> {
+  await context.container.exec(['sh', '-c', WRITE_AUTH_SCRIPT], { stdin: authJson })
+}
+
 /**
- * Write the subscription session into the container, if one was injected.
+ * Write the subscription session into the container.
  *
  * SuperGrok / X Premium Plus credentials live in `~/.grok/auth.json`, not in
- * `XAI_API_KEY`. The control plane passes the file as env so it never has to
- * be shell-quoted; Grok prefers that session over an API key when both exist.
+ * `XAI_API_KEY`. When the control plane supplies `grokAuth`, the latest
+ * snapshot (possibly just refreshed) is written via stdin so a resume cannot
+ * overwrite a live token with the env frozen at container create. The env
+ * fallback remains for tests and older callers.
  */
 export async function materializeGrokHome(context: SessionContext): Promise<void> {
-  await context.container.exec([
-    'sh',
-    '-c',
-    [
-      `home="\${GROK_HOME:-${GROK_HOME_DIR}}"`,
-      'mkdir -p "$home"',
-      `if [ -n "$${GROK_AUTH_ENV}" ]; then printf '%s' "$${GROK_AUTH_ENV}" > "$home/auth.json"; chmod 600 "$home/auth.json"; fi`,
-    ].join('\n'),
-  ])
+  if (!context.grokAuth) {
+    await context.container.exec(['sh', '-c', ENV_MATERIALIZE_SCRIPT])
+    return
+  }
+
+  const fromStore = await context.grokAuth.load()
+  const fromDisk = await readGrokAuthFile(context)
+  const merged = mergeGrokAuthJson(fromStore, fromDisk)
+  if (!merged) return
+
+  if (merged !== fromDisk) await writeGrokAuthFile(context, merged)
+  if (merged !== fromStore) await context.grokAuth.persist(merged)
 }
 
 export const GROK_BUILD_CAPABILITIES: AgentCapabilities = {
@@ -139,7 +173,12 @@ export class GrokBuildAdapter implements AgentAdapter {
     this.mapper.rememberSession(context.resumeFrom, context.model)
     this.mode = context.permissionMode ?? DEFAULT_PERMISSION_MODE
 
-    await materializeGrokHome(context)
+    try {
+      await materializeGrokHome(context)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.emit({ type: 'error', message, fatal: true })
+    }
     this.emit({ type: 'permission_mode', mode: this.mode })
   }
 
@@ -188,12 +227,15 @@ export class GrokBuildAdapter implements AgentAdapter {
         for (const event of this.mapper.map(message)) this.emit(event)
       }
 
-      if (this.interrupted) {
-        this.finishTurn('interrupted')
-        return
-      }
+      void this.afterTurn(turnId).finally(() => {
+        if (this.turn !== turnId) return
+        if (this.interrupted) {
+          this.finishTurn('interrupted')
+          return
+        }
 
-      this.finishTurn(this.sawDone ? undefined : 'completed')
+        this.finishTurn(this.sawDone ? undefined : 'completed')
+      })
     }
 
     stream.on('end', onClosed)
@@ -236,6 +278,15 @@ export class GrokBuildAdapter implements AgentAdapter {
     }
   }
 
+  private async afterTurn(turnId: number): Promise<void> {
+    if (this.turn !== turnId || !this.context?.grokAuth) return
+    try {
+      await materializeGrokHome(this.context)
+    } catch {
+      // A failed harvest must not hide the turn that just finished.
+    }
+  }
+
   async send(message: UserMessage): Promise<void> {
     if (!this.context) throw new Error('adapter not started')
     if (this.ended) throw new Error('adapter stopped')
@@ -250,6 +301,15 @@ export class GrokBuildAdapter implements AgentAdapter {
     const turnId = this.turn
     this.sawDone = false
     this.interrupted = false
+
+    try {
+      await materializeGrokHome(this.context)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.emit({ type: 'error', message, fatal: true })
+      this.finishTurn('error')
+      return
+    }
 
     const files = await this.stageUploads(message)
     const text = appendAttachments(message.text, files)
