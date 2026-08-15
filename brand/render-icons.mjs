@@ -1,17 +1,16 @@
 #!/usr/bin/env node
 /**
- * Rasterize Duke-in-the-box app icons from brand/duke.svg.
+ * Compose the macOS dock icon from brand/duke.svg.
  *
- * The shipped dock icon is brand/app-icon.png (space-black, padded, relief).
- * Prefer `pnpm exec tauri icon ../../brand/app-icon.png` from apps/desktop
- * after replacing that PNG, rather than re-running this compositor.
+ * Full-bleed space-black field, original Duke drawing, then a squircle
+ * alpha mask so the dock matches neighboring apps (the system will not
+ * remask a custom-shaped icon). Then: `tauri icon brand/app-icon.png`.
  *
- * Requires @resvg/resvg-js and pngjs (dev one-off, not a repo dependency).
+ * Requires @resvg/resvg-js and pngjs (dev one-off).
  * Usage: node brand/render-icons.mjs
  */
 import { createRequire } from 'node:module'
-import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -20,153 +19,109 @@ const { Resvg } = require('@resvg/resvg-js')
 const { PNG } = require('pngjs')
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const duke = readFileSync(join(root, 'brand/duke.svg'), 'utf8')
-const outDir = join(root, 'apps/desktop/src-tauri/icons')
-mkdirSync(outDir, { recursive: true })
-mkdirSync(join(root, 'brand'), { recursive: true })
-
-const BOX = [0x3b, 0x52, 0xdb, 0xff]
+const dukeSvg = readFileSync(join(root, 'brand/duke.svg'), 'utf8')
 const SIZE = 1024
-const RADIUS = 228
-const PAD = 90
+const PAD = 168
+const inner = SIZE - PAD * 2
 
-const cropped = duke
+const wrapped = dukeSvg
   .replace('viewBox="0 0 1254 1254"', 'viewBox="275 268 707 707"')
   .replace(/\s+width="1254"\s+height="1254"/, '')
-
-const inner = SIZE - PAD * 2
-const wrapped = `<svg xmlns="http://www.w3.org/2000/svg" width="${inner}" height="${inner}" viewBox="275 268 707 707">${cropped.replace(/^<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '')}</svg>`
-
+const dukeInner = `<svg xmlns="http://www.w3.org/2000/svg" width="${inner}" height="${inner}" viewBox="275 268 707 707">${wrapped.replace(/^<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '')}</svg>`
 const dukePng = PNG.sync.read(
-  Buffer.from(new Resvg(wrapped, { fitTo: { mode: 'width', value: inner } }).render().asPng()),
+  Buffer.from(new Resvg(dukeInner, { fitTo: { mode: 'width', value: inner } }).render().asPng()),
 )
 
-function roundedMask(size, radius) {
-  const png = new PNG({ width: size, height: size })
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const inside = inRoundRect(x + 0.5, y + 0.5, size, radius)
-      const i = (y * size + x) << 2
-      png.data[i] = BOX[0]
-      png.data[i + 1] = BOX[1]
-      png.data[i + 2] = BOX[2]
-      png.data[i + 3] = inside ? 255 : 0
-    }
+const png = new PNG({ width: SIZE, height: SIZE })
+const data = png.data
+const cx = (SIZE - 1) / 2
+const cy = (SIZE - 1) / 2
+const maxR = Math.hypot(cx, cy)
+
+for (let y = 0; y < SIZE; y++) {
+  for (let x = 0; x < SIZE; x++) {
+    const i = (y * SIZE + x) << 2
+    const t = Math.hypot(x - cx, y - cy) / maxR
+    data[i] = Math.round(18 - t * 11)
+    data[i + 1] = Math.round(24 - t * 15)
+    data[i + 2] = Math.round(38 - t * 23)
+    data[i + 3] = 255
   }
-  return png
 }
 
-function inRoundRect(x, y, size, r) {
-  const cx = Math.min(Math.max(x, r), size - r)
-  const cy = Math.min(Math.max(y, r), size - r)
-  const dx = x - cx
-  const dy = y - cy
-  return dx * dx + dy * dy <= r * r
+function hash(x, y) {
+  let n = (x * 374761393 + y * 668265263) | 0
+  n = (n ^ (n >>> 13)) * 1274126177
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967295
 }
 
-const canvas = roundedMask(SIZE, RADIUS)
+for (let y = 0; y < SIZE; y++) {
+  for (let x = 0; x < SIZE; x++) {
+    if (hash(x, y) <= 0.9984) continue
+    const i = (y * SIZE + x) << 2
+    const b = 140 + Math.floor(hash(y, x) * 80)
+    data[i] = data[i + 1] = data[i + 2] = b
+  }
+}
+
+const lift = -18
 for (let y = 0; y < inner; y++) {
   for (let x = 0; x < inner; x++) {
     const si = (y * inner + x) << 2
-    const a = dukePng.data[si + 3]
-    if (a < 8) continue
+    const a = dukePng.data[si + 3] / 255
+    if (a < 0.02) continue
     const dx = x + PAD
-    const dy = y + PAD
+    const dy = y + PAD + lift
+    if (dx < 0 || dy < 0 || dx >= SIZE || dy >= SIZE) continue
     const di = (dy * SIZE + dx) << 2
-    if (canvas.data[di + 3] < 8) continue
-    const alpha = a / 255
-    canvas.data[di] = Math.round(dukePng.data[si] * alpha + canvas.data[di] * (1 - alpha))
-    canvas.data[di + 1] = Math.round(
-      dukePng.data[si + 1] * alpha + canvas.data[di + 1] * (1 - alpha),
-    )
-    canvas.data[di + 2] = Math.round(
-      dukePng.data[si + 2] * alpha + canvas.data[di + 2] * (1 - alpha),
-    )
-    canvas.data[di + 3] = 255
+    data[di] = Math.round(dukePng.data[si] * a + data[di] * (1 - a))
+    data[di + 1] = Math.round(dukePng.data[si + 1] * a + data[di + 1] * (1 - a))
+    data[di + 2] = Math.round(dukePng.data[si + 2] * a + data[di + 2] * (1 - a))
   }
 }
 
-const master = PNG.sync.write(canvas)
-writeFileSync(join(root, 'brand/app-icon.png'), master)
-writeFileSync(join(outDir, 'icon.png'), master)
-
-function sample(png, x, y) {
-  const x0 = Math.floor(x)
-  const y0 = Math.floor(y)
-  const x1 = Math.min(SIZE - 1, x0 + 1)
-  const y1 = Math.min(SIZE - 1, y0 + 1)
-  const fx = x - x0
-  const fy = y - y0
-  const out = [0, 0, 0, 0]
-  for (const [ix, iy, w] of [
-    [x0, y0, (1 - fx) * (1 - fy)],
-    [x1, y0, fx * (1 - fy)],
-    [x0, y1, (1 - fx) * fy],
-    [x1, y1, fx * fy],
-  ]) {
-    const i = (iy * SIZE + ix) << 2
-    for (let c = 0; c < 4; c++) out[c] += png.data[i + c] * w
-  }
-  return out.map((v) => Math.round(v))
-}
-
-function scale(png, size) {
-  const out = new PNG({ width: size, height: size })
-  const step = SIZE / size
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const [r, g, b, a] = sample(png, (x + 0.5) * step - 0.5, (y + 0.5) * step - 0.5)
-      const di = (y * size + x) << 2
-      out.data[di] = r
-      out.data[di + 1] = g
-      out.data[di + 2] = b
-      out.data[di + 3] = a
+const N = 5
+function coverage(px, py) {
+  let hit = 0
+  const offs = [-0.3, -0.1, 0.1, 0.3]
+  for (const ox of offs) {
+    for (const oy of offs) {
+      const nx = ((px + ox) / SIZE) * 2 - 1
+      const ny = ((py + oy) / SIZE) * 2 - 1
+      if (Math.pow(Math.abs(nx), N) + Math.pow(Math.abs(ny), N) <= 1) hit++
     }
   }
-  return out
+  return hit / (offs.length * offs.length)
 }
 
-for (const [name, size] of [
-  ['32x32.png', 32],
-  ['128x128.png', 128],
-  ['128x128@2x.png', 256],
-]) {
-  writeFileSync(join(outDir, name), PNG.sync.write(scale(canvas, size)))
-}
-
-// OG image — Duke on a quiet surface, for GitHub / README embeds.
-const ogW = 1280
-const ogH = 640
-const og = new PNG({ width: ogW, height: ogH })
-for (let i = 0; i < og.data.length; i += 4) {
-  og.data[i] = 250
-  og.data[i + 1] = 250
-  og.data[i + 2] = 249
-  og.data[i + 3] = 255
-}
-const hero = 360
-const heroPng = PNG.sync.read(
-  Buffer.from(new Resvg(wrapped, { fitTo: { mode: 'width', value: hero } }).render().asPng()),
-)
-const ox = Math.floor((ogW - hero) / 2)
-const oy = Math.floor((ogH - hero) / 2)
-for (let y = 0; y < hero; y++) {
-  for (let x = 0; x < hero; x++) {
-    const si = (y * hero + x) << 2
-    const a = heroPng.data[si + 3] / 255
-    if (a < 0.03) continue
-    const di = ((y + oy) * ogW + (x + ox)) << 2
-    og.data[di] = Math.round(heroPng.data[si] * a + og.data[di] * (1 - a))
-    og.data[di + 1] = Math.round(heroPng.data[si + 1] * a + og.data[di + 1] * (1 - a))
-    og.data[di + 2] = Math.round(heroPng.data[si + 2] * a + og.data[di + 2] * (1 - a))
+for (let y = 0; y < SIZE; y++) {
+  for (let x = 0; x < SIZE; x++) {
+    const c = coverage(x + 0.5, y + 0.5)
+    const i = (y * SIZE + x) << 2
+    if (c <= 0) {
+      data[i] = data[i + 1] = data[i + 2] = 0
+      data[i + 3] = 0
+    } else if (c < 1) {
+      data[i + 3] = Math.round(data[i + 3] * c)
+    }
   }
 }
-writeFileSync(join(root, 'brand/og.png'), PNG.sync.write(og))
 
-console.log('wrote brand/app-icon.png, brand/og.png, and tauri png sizes')
-
-try {
-  execFileSync('iconutil', ['-h'], { stdio: 'ignore' })
-} catch {
-  console.log('iconutil not available; skip icns (run `tauri icon brand/app-icon.png`)')
+for (let y = 0; y < SIZE; y++) {
+  for (let x = 0; x < SIZE; x++) {
+    const i = (y * SIZE + x) << 2
+    if (data[i + 3] < 8) continue
+    const nx = (x / SIZE) * 2 - 1
+    const ny = (y / SIZE) * 2 - 1
+    const r = Math.pow(Math.abs(nx), N) + Math.pow(Math.abs(ny), N)
+    if (r > 0.86 && r <= 1 && ny < -0.15) {
+      const k = (1 - (r - 0.86) / 0.14) * 0.22 * (0.5 - ny)
+      data[i] = Math.min(255, Math.round(data[i] + 40 * k))
+      data[i + 1] = Math.min(255, Math.round(data[i + 1] + 44 * k))
+      data[i + 2] = Math.min(255, Math.round(data[i + 2] + 50 * k))
+    }
+  }
 }
+
+writeFileSync(join(root, 'brand/app-icon.png'), PNG.sync.write(png))
+console.log('wrote brand/app-icon.png')
