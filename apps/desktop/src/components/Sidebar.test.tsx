@@ -13,6 +13,7 @@ vi.mock('@tauri-apps/plugin-opener', () => ({
 
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { Sidebar } from '@/components/Sidebar'
+import type { NewSessionDraft } from '@/lib/newSessionDraft'
 import { VIEWED_SESSIONS_KEY } from '@/lib/viewedSessions'
 
 const project: ProjectSummary = {
@@ -599,5 +600,83 @@ describe('Sidebar', () => {
 
     await userEvent.unhover(row)
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+})
+
+const draft: NewSessionDraft = {
+  id: 'draft-1',
+  projectId: project.id,
+  repoFullName: project.repoFullName,
+  prompt: 'finish the parser',
+  baseBranch: 'main',
+  environmentId: '',
+  agentId: 'claude-code',
+  model: 'claude-sonnet-5',
+  providerId: '',
+  permissionMode: 'bypass',
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+}
+
+describe('Sidebar draft cards', () => {
+  function renderWithDraft(
+    extra: {
+      onSelectDraft?: ReturnType<typeof vi.fn>
+      onDeleteDraft?: ReturnType<typeof vi.fn>
+      selectedId?: string | null
+    } = {},
+  ) {
+    const onSelectDraft = extra.onSelectDraft ?? vi.fn()
+    const onDeleteDraft = extra.onDeleteDraft ?? vi.fn()
+    render(
+      <Sidebar
+        projects={[project]}
+        sessions={[session]}
+        drafts={[draft]}
+        selectedId={extra.selectedId === undefined ? session.id : extra.selectedId}
+        identity={DEFAULT_COMMIT_IDENTITY}
+        serverName="debian-01"
+        role="owner"
+        onOpenSettings={vi.fn()}
+        onSelect={vi.fn()}
+        onSelectDraft={onSelectDraft}
+        onDeleteDraft={onDeleteDraft}
+        onNewSession={vi.fn()}
+        onSearch={vi.fn()}
+        onConfigureEnvironment={vi.fn()}
+        onManageEnvironments={vi.fn()}
+        onArchive={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveProject={vi.fn()}
+      />,
+    )
+    return { onSelectDraft, onDeleteDraft }
+  }
+
+  it('lists an unstarted draft under its project', () => {
+    renderWithDraft()
+
+    expect(screen.getByRole('button', { name: 'Draft, Finish the parser' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /done, fix the demux bug/i })).toBeInTheDocument()
+  })
+
+  it('selects a draft card', async () => {
+    const { onSelectDraft } = renderWithDraft({ selectedId: null })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Draft, Finish the parser' }))
+    expect(onSelectDraft).toHaveBeenCalledWith('draft-1')
+  })
+
+  it('deletes a draft from its row menu without asking to archive', async () => {
+    const { onDeleteDraft } = renderWithDraft()
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Draft actions for Finish the parser' }),
+    )
+    expect(screen.getByRole('menu', { name: 'Draft' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Archive' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+    expect(onDeleteDraft).toHaveBeenCalledWith('draft-1')
   })
 })

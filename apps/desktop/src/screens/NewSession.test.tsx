@@ -1,7 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { NEW_SESSION_DRAFT_KEY } from '@/lib/newSessionDraft'
 import type { LastNewSession } from '@/lib/settings'
 import { NewSession } from '@/screens/NewSession'
 
@@ -76,6 +75,8 @@ function renderScreen(
   extra: {
     onConfigureProviders?: () => void
     onRemember?: ReturnType<typeof vi.fn>
+    onDraftChange?: ReturnType<typeof vi.fn>
+    initialPrompt?: string
     preferAgentId?: string | null
     preferProjectId?: string | null
     lastNewSession?: LastNewSession | null
@@ -92,6 +93,8 @@ function renderScreen(
       onCreated={vi.fn()}
       onConfigureProviders={extra.onConfigureProviders ?? vi.fn()}
       onRemember={extra.onRemember}
+      onDraftChange={extra.onDraftChange}
+      initialPrompt={extra.initialPrompt}
       preferAgentId={extra.preferAgentId}
       preferProjectId={extra.preferProjectId}
       lastNewSession={extra.lastNewSession}
@@ -663,32 +666,23 @@ describe('NewSession preferProjectId', () => {
 })
 
 describe('NewSession prompt draft', () => {
-  it('restores a stored draft when the form mounts', async () => {
-    localStorage.setItem(NEW_SESSION_DRAFT_KEY, 'finish the parser')
-    renderScreen(makeClient())
+  it('restores the initial prompt when the form mounts', async () => {
+    renderScreen(makeClient(), {}, { initialPrompt: 'finish the parser' })
 
     expect(await screen.findByLabelText(/what should it do/i)).toHaveValue('finish the parser')
   })
 
-  it('persists typed text so a remount shows it', async () => {
-    const { unmount } = renderScreen(makeClient())
+  it('reports typed text so the parent can keep a sidebar card', async () => {
+    const onDraftChange = vi.fn()
+    renderScreen(makeClient(), {}, { onDraftChange })
 
     await userEvent.type(await screen.findByLabelText(/what should it do/i), 'keep this')
-    unmount()
-    renderScreen(makeClient())
 
-    expect(await screen.findByLabelText(/what should it do/i)).toHaveValue('keep this')
-  })
-
-  it('clears the draft after a session starts', async () => {
-    const client = makeClient()
-    renderScreen(client)
-
-    await userEvent.type(await screen.findByLabelText(/what should it do/i), 'do a thing')
-    await userEvent.click(screen.getByRole('button', { name: /start session/i }))
-
-    await waitFor(() => expect(client.startSession).toHaveBeenCalled())
-    expect(localStorage.getItem(NEW_SESSION_DRAFT_KEY)).toBeNull()
+    await waitFor(() =>
+      expect(onDraftChange).toHaveBeenCalledWith(
+        expect.objectContaining({ prompt: 'keep this', repoFullName: 'acme/app' }),
+      ),
+    )
   })
 })
 

@@ -52,6 +52,13 @@ vi.mock('@/lib/useSession', () => ({
   }),
 }))
 
+const listRepositories = vi.fn()
+const listBranches = vi.fn()
+const agentCredentialsConfigured = vi.fn()
+const grokCredentialsConfigured = vi.fn()
+const listOpencodeProviders = vi.fn()
+const startSession = vi.fn()
+
 vi.mock('@/lib/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/client')>()
   return {
@@ -65,6 +72,12 @@ vi.mock('@/lib/client', async (importOriginal) => {
       deleteProject = deleteProject
       getPullRequest = getPullRequest
       listEnvironments = vi.fn().mockResolvedValue([])
+      listRepositories = listRepositories
+      listBranches = listBranches
+      agentCredentialsConfigured = agentCredentialsConfigured
+      grokCredentialsConfigured = grokCredentialsConfigured
+      listOpencodeProviders = listOpencodeProviders
+      startSession = startSession
     },
   }
 })
@@ -150,10 +163,22 @@ beforeEach(() => {
   })
   archiveSession.mockResolvedValue(undefined)
   removeConnection.mockResolvedValue(undefined)
+  listRepositories.mockResolvedValue([])
+  listBranches.mockResolvedValue(['main'])
+  agentCredentialsConfigured.mockResolvedValue(true)
+  grokCredentialsConfigured.mockResolvedValue(false)
+  listOpencodeProviders.mockResolvedValue([])
+  startSession.mockResolvedValue({
+    ...session,
+    id: '00000000-0000-4000-8000-000000000099',
+    title: 'Do a thing',
+    status: 'provisioning',
+  })
 })
 
 afterEach(() => {
   vi.clearAllMocks()
+  localStorage.clear()
 })
 
 describe('Session', () => {
@@ -250,5 +275,53 @@ describe('Session', () => {
     expect(await screen.findByText(/This pull request was merged/)).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Merged pull request' })).toBeInTheDocument()
     expect(getPullRequest).toHaveBeenCalledWith(session.id)
+  })
+
+  async function typeNewSessionPrompt(text: string) {
+    await userEvent.click(screen.getByRole('button', { name: 'New session' }))
+    const field = await screen.findByLabelText(/what should it do/i)
+    await waitFor(() => expect(field).toBeEnabled())
+    await userEvent.type(field, text)
+  }
+
+  it('adds a draft card under the project when typing in New session', async () => {
+    renderSession()
+
+    await screen.findByRole('button', { name: 'Done, Fix the demux bug' })
+    await typeNewSessionPrompt('finish the parser')
+
+    expect(
+      await screen.findByRole('button', { name: 'Draft, Finish the parser' }),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the draft card when starting another New session', async () => {
+    renderSession()
+
+    await screen.findByRole('button', { name: 'Done, Fix the demux bug' })
+    await typeNewSessionPrompt('finish the parser')
+    await screen.findByRole('button', { name: 'Draft, Finish the parser' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'New session' }))
+
+    expect(await screen.findByLabelText(/what should it do/i)).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Draft, Finish the parser' })).toBeInTheDocument()
+  })
+
+  it('restores a draft card into the form', async () => {
+    renderSession()
+
+    await screen.findByRole('button', { name: 'Done, Fix the demux bug' })
+    await typeNewSessionPrompt('finish the parser')
+    await userEvent.click(screen.getByRole('button', { name: 'New session' }))
+    expect(await screen.findByLabelText(/what should it do/i)).toHaveValue('')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Draft, Finish the parser' }))
+
+    expect(await screen.findByLabelText(/what should it do/i)).toHaveValue('finish the parser')
+    expect(screen.getByRole('button', { name: 'Draft, Finish the parser' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
   })
 })

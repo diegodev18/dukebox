@@ -23,6 +23,7 @@ import {
   renameTab,
   type TerminalState,
 } from '@/lib/useTerminals'
+import { draftTitle } from '@/lib/newSessionDraft'
 import { NewSession } from '@/screens/NewSession'
 import './styles.css'
 
@@ -551,6 +552,8 @@ function Preview() {
   const codingTranscript = applyEvents(emptyTranscript(), script)
   const setupTranscript = applyEvents(emptyTranscript(), setupScript)
   const [view, setView] = useState<'new' | 'coding' | 'setup'>('setup')
+  const [drafts, setDrafts] = useState<{ id: string; prompt: string }[]>([])
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [composerDraft, setComposerDraft] = useState<{ text: string; key: number } | null>(null)
   const [codingPullRequest, setCodingPullRequest] = useState<SessionSummary['pullRequest']>({
@@ -655,7 +658,10 @@ function Preview() {
         </div>
         <button
           type="button"
-          onClick={() => setView('new')}
+          onClick={() => {
+            setActiveDraftId(crypto.randomUUID())
+            setView('new')
+          }}
           className="w-full rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left font-medium hover:bg-muted"
         >
           New session
@@ -667,6 +673,19 @@ function Preview() {
         >
           Search
         </button>
+        {drafts.map((draft) => (
+          <button
+            key={draft.id}
+            type="button"
+            onClick={() => {
+              setActiveDraftId(draft.id)
+              setView('new')
+            }}
+            className="mt-1 w-full rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            {draftTitle(draft.prompt)}
+          </button>
+        ))}
         <button
           type="button"
           onClick={() => setView('coding')}
@@ -712,6 +731,7 @@ function Preview() {
 
       {view === 'new' ? (
         <NewSession
+          key={activeDraftId ?? 'new'}
           client={fakeClient}
           identity={null}
           connection={{
@@ -733,6 +753,19 @@ function Preview() {
           ]}
           onCreated={() => setView('coding')}
           onConfigureProviders={() => undefined}
+          initialPrompt={drafts.find((draft) => draft.id === activeDraftId)?.prompt ?? ''}
+          onDraftChange={(fields) => {
+            const id = activeDraftId
+            if (!id) return
+            if (!fields.prompt.trim()) {
+              setDrafts((current) => current.filter((draft) => draft.id !== id))
+              return
+            }
+            setDrafts((current) => [
+              { id, prompt: fields.prompt },
+              ...current.filter((draft) => draft.id !== id),
+            ])
+          }}
         />
       ) : (
         <>

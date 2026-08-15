@@ -18,6 +18,14 @@ import {
 } from 'react'
 import { DukeboxClient, isAuthFailure } from '@/lib/client'
 import { removeConnection, type Connection } from '@/lib/connection'
+import {
+  lastNewSessionFromDraft,
+  loadNewSessionDrafts,
+  removeNewSessionDraft,
+  removeNewSessionDraftsForProject,
+  upsertNewSessionDraft,
+  type NewSessionDraftFields,
+} from '@/lib/newSessionDraft'
 import { lastNewSessionFromSummary, type LastNewSession, type Settings } from '@/lib/settings'
 import type { SettingsCategory } from '@/lib/settingsCategories'
 import { INITIAL_RETRY_MS, MAX_RETRY_MS, isStreamConnected } from '@/lib/stream'
@@ -107,6 +115,9 @@ export function Session({
   const [searchOpen, setSearchOpen] = useState(false)
   // Prefill New Session from a merged PR, even before settings persist.
   const [continueFrom, setContinueFrom] = useState<LastNewSession | null>(null)
+  const [drafts, setDrafts] = useState(loadNewSessionDrafts)
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null)
+  const activeDraftIdRef = useRef<string | null>(null)
 
   const refreshProjects = async () => {
     try {
@@ -245,6 +256,8 @@ export function Session({
     }
   }, [client, reviewProjectId])
 
+  const activeDraft = drafts.find((draft) => draft.id === activeDraftId) ?? null
+
   // New session has no diffs to show — drop the workspace column so the
   // composer centres in the whole main pane rather than in a squeezed middle.
   // The environments panel and settings are forms too, and want the same width.
@@ -261,6 +274,71 @@ export function Session({
     setWorkspaceWidth,
   } = useColumnWidths(composing)
 
+  const beginDraft = (projectId?: string | null) => {
+    const id = crypto.randomUUID()
+    activeDraftIdRef.current = id
+    setActiveDraftId(id)
+    setSetupProjectId(null)
+    setPreferProjectId(projectId ?? null)
+    setManagingProjectId(null)
+    setPreferAgentId(null)
+    setSettingsOpen(false)
+    setSearchOpen(false)
+    setContinueFrom(null)
+    setCreating(true)
+  }
+
+  const persistDraft = (fields: NewSessionDraftFields) => {
+    const id = activeDraftIdRef.current
+    if (!id) return
+
+    const project = projects.find((candidate) => candidate.repoFullName === fields.repoFullName)
+    if (!project || fields.prompt.trim() === '') {
+      setDrafts((current) => {
+        if (!current.some((draft) => draft.id === id)) return current
+        return removeNewSessionDraft(id)
+      })
+      return
+    }
+
+    const previous = loadNewSessionDrafts().find((draft) => draft.id === id)
+    setDrafts(
+      upsertNewSessionDraft({
+        id,
+        projectId: project.id,
+        repoFullName: fields.repoFullName,
+        prompt: fields.prompt,
+        baseBranch: fields.baseBranch,
+        environmentId: fields.environmentId,
+        agentId: fields.agentId,
+        model: fields.model,
+        providerId: fields.providerId,
+        permissionMode: fields.permissionMode,
+        createdAt: previous?.createdAt ?? Date.now(),
+        updatedAt: Date.now(),
+      }),
+    )
+  }
+
+  const selectDraft = (draftId: string) => {
+    activeDraftIdRef.current = draftId
+    setActiveDraftId(draftId)
+    setCreating(true)
+    setSettingsOpen(false)
+    setSetupProjectId(null)
+    setPreferProjectId(null)
+    setManagingProjectId(null)
+    setPreferAgentId(null)
+    setSearchOpen(false)
+    setContinueFrom(null)
+  }
+
+  const deleteDraft = (draftId: string) => {
+    setDrafts(removeNewSessionDraft(draftId))
+    if (activeDraftIdRef.current !== draftId) return
+    beginDraft()
+  }
+
   const onSessionCreated = (session: SessionSummary, project: ProjectSummary | null) => {
     // Added locally rather than refetched: the session exists but its
     // container is still building, and a list that only updates on the
@@ -268,6 +346,10 @@ export function Session({
     if (project) setProjects((current) => [project, ...current])
     setSessions((current) => [session, ...current])
     setSelected(session.id)
+    const draftId = activeDraftIdRef.current
+    if (draftId) setDrafts(removeNewSessionDraft(draftId))
+    activeDraftIdRef.current = null
+    setActiveDraftId(null)
     setCreating(false)
     setSetupProjectId(null)
     setPreferProjectId(null)
@@ -302,26 +384,14 @@ export function Session({
   }
 
   const startNewSession = (projectId?: string) => {
-    setSetupProjectId(null)
-    setPreferProjectId(projectId ?? null)
-    setManagingProjectId(null)
-    setPreferAgentId(null)
-    setSettingsOpen(false)
-    setSearchOpen(false)
-    setContinueFrom(null)
-    setCreating(true)
+    beginDraft(projectId)
   }
 
   const continueAfterMerge = (session: SessionSummary) => {
     const last = lastNewSessionFromSummary(session, projects)
-    setSetupProjectId(null)
-    setPreferProjectId(session.projectId)
-    setManagingProjectId(null)
+    beginDraft(session.projectId)
     setPreferAgentId(session.agentId)
-    setSettingsOpen(false)
-    setSearchOpen(false)
     setContinueFrom(last)
-    setCreating(true)
   }
 
   useEffect(() => {
@@ -372,7 +442,7 @@ export function Session({
             <Sidebar
               projects={projects}
               sessions={sessions}
-              selectedId={creating ? null : selected}
+              selectedId={creating ? (activeDraft?.id ?? null) : selected}
               identity={settings.commitIdentity ?? DEFAULT_COMMIT_IDENTITY}
               serverName={connection.serverName}
               role={role}
@@ -380,6 +450,9 @@ export function Session({
               onOpenSettings={openSettings}
               onSelect={selectSession}
               onNewSession={startNewSession}
+              drafts={drafts}
+              onSelectDraft={selectDraft}
+              onDeleteDraft={deleteDraft}
               onSearch={() => setSearchOpen(true)}
               onConfigureEnvironment={(projectId) => {
                 setSetupProjectId(projectId)
@@ -454,6 +527,7 @@ export function Session({
                     setPreferProjectId(null)
                     setCreating(false)
                   }
+                  setDrafts(removeNewSessionDraftsForProject(projectId))
                 })()
               }}
               onArchive={(sessionId) => {
@@ -524,6 +598,7 @@ export function Session({
         ) : creating ? (
           <Suspense fallback={<PaneFallback />}>
             <NewSession
+              key={setupProjectId ? `setup-${setupProjectId}` : (activeDraftId ?? 'new-session')}
               client={client}
               connection={connection}
               projects={projects}
@@ -531,13 +606,17 @@ export function Session({
               gitPreferences={settings.git}
               onCreated={onSessionCreated}
               preferSetupProjectId={setupProjectId}
-              preferProjectId={preferProjectId}
+              preferProjectId={activeDraft?.projectId ?? preferProjectId}
               preferAgentId={preferAgentId}
               lastNewSession={
-                continueFrom ??
-                settings.lastNewSession ??
-                lastNewSessionFromSummary(sessions[0], projects)
+                activeDraft
+                  ? lastNewSessionFromDraft(activeDraft)
+                  : (continueFrom ??
+                    settings.lastNewSession ??
+                    lastNewSessionFromSummary(sessions[0], projects))
               }
+              initialPrompt={activeDraft?.prompt ?? ''}
+              {...(setupProjectId ? {} : { onDraftChange: persistDraft })}
               onRemember={(last) => onSaveSettings({ lastNewSession: last })}
               disabled={disconnected}
               onConfigureProviders={() => {
@@ -609,7 +688,7 @@ export function Session({
             />
           </>
         ) : (
-          <EmptySession onNewSession={() => setCreating(true)} disabled={disconnected} />
+          <EmptySession onNewSession={() => startNewSession()} disabled={disconnected} />
         )}
       </div>
 

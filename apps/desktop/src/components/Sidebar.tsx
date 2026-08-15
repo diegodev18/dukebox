@@ -25,10 +25,12 @@ import {
   BookOpenIcon,
   BranchIcon,
   CloseIcon,
+  EditIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
 } from '@/components/icons'
+import { draftTitle, type NewSessionDraft } from '@/lib/newSessionDraft'
 import { UserMenu } from '@/components/UserMenu'
 
 /** Pause before the truncated row shows its full name, branch, agent, and server. */
@@ -60,6 +62,10 @@ interface Props {
   onDelete: (sessionId: string) => void
   onRemoveProject: (projectId: string) => void
   onSearch: () => void
+  /** Unstarted New Session prompts, listed as cards under their project. */
+  drafts?: NewSessionDraft[]
+  onSelectDraft?: (draftId: string) => void
+  onDeleteDraft?: (draftId: string) => void
   /** Set when an archive or remove request failed; the row stays put. */
   archiveError?: string | null
   /** Creating, archiving, and environment setup talk to the server. */
@@ -82,6 +88,9 @@ export function Sidebar({
   onDelete,
   onRemoveProject,
   onSearch,
+  drafts = [],
+  onSelectDraft,
+  onDeleteDraft,
   archiveError,
   disabled = false,
 }: Props) {
@@ -143,16 +152,22 @@ export function Sidebar({
                 key={project.id}
                 project={project}
                 sessions={sessions.filter((session) => session.projectId === project.id)}
+                drafts={drafts.filter((draft) => draft.projectId === project.id)}
                 selectedId={selectedId}
                 viewed={viewed}
                 serverName={serverName}
                 onSelect={onSelect}
+                onSelectDraft={(draftId) => onSelectDraft?.(draftId)}
                 onConfigureEnvironment={() => onConfigureEnvironment(project.id)}
                 onManageEnvironments={() => onManageEnvironments(project.id)}
                 disabled={disabled}
                 onOpenSessionMenu={(sessionId, x, y) => {
                   if (disabled) return
                   setMenu({ kind: 'session', sessionId, x, y })
+                }}
+                onOpenDraftMenu={(draftId, x, y) => {
+                  if (disabled) return
+                  setMenu({ kind: 'draft', draftId, x, y })
                 }}
                 onOpenProjectMenu={(x, y) => {
                   if (disabled) return
@@ -199,6 +214,18 @@ export function Sidebar({
             const session = sessions.find((candidate) => candidate.id === menu.sessionId)
             setMenu(null)
             if (session) setDeleting(session)
+          }}
+          onDismiss={() => setMenu(null)}
+        />
+      )}
+
+      {menu?.kind === 'draft' && (
+        <DraftContextMenu
+          x={menu.x}
+          y={menu.y}
+          onDelete={() => {
+            onDeleteDraft?.(menu.draftId)
+            setMenu(null)
           }}
           onDismiss={() => setMenu(null)}
         />
@@ -268,6 +295,7 @@ export function Sidebar({
 
 type ContextMenuState =
   | { kind: 'session'; sessionId: string; x: number; y: number }
+  | { kind: 'draft'; draftId: string; x: number; y: number }
   | { kind: 'project'; projectId: string; x: number; y: number }
 
 function openGitHub(repoFullName: string) {
@@ -286,25 +314,31 @@ const SIDEBAR_SESSION_LIMIT = 5
 function ProjectGroup({
   project,
   sessions,
+  drafts,
   selectedId,
   viewed,
   serverName,
   onSelect,
+  onSelectDraft,
   onConfigureEnvironment,
   onManageEnvironments,
   onOpenSessionMenu,
+  onOpenDraftMenu,
   onOpenProjectMenu,
   disabled = false,
 }: {
   project: ProjectSummary
   sessions: SessionSummary[]
+  drafts: NewSessionDraft[]
   selectedId: string | null
   viewed: ViewedSessions
   serverName: string
   onSelect: (sessionId: string) => void
+  onSelectDraft: (draftId: string) => void
   onConfigureEnvironment: () => void
   onManageEnvironments: () => void
   onOpenSessionMenu: (sessionId: string, x: number, y: number) => void
+  onOpenDraftMenu: (draftId: string, x: number, y: number) => void
   onOpenProjectMenu: (x: number, y: number) => void
   disabled?: boolean
 }) {
@@ -356,6 +390,17 @@ function ProjectGroup({
         )}
       </div>
 
+      {drafts.map((draft) => (
+        <DraftRow
+          key={draft.id}
+          draft={draft}
+          selected={draft.id === selectedId}
+          serverName={serverName}
+          disabled={disabled}
+          onSelect={() => onSelectDraft(draft.id)}
+          onOpenMenu={(x, y) => onOpenDraftMenu(draft.id, x, y)}
+        />
+      ))}
       {visible.map((session) => (
         <SessionRow
           key={session.id}
@@ -509,6 +554,156 @@ function SessionRow({
         />
       )}
     </div>
+  )
+}
+
+/**
+ * An unstarted New Session, listed like a session so another form can be
+ * opened without losing the typed prompt.
+ */
+function DraftRow({
+  draft,
+  selected,
+  serverName,
+  disabled,
+  onSelect,
+  onOpenMenu,
+}: {
+  draft: NewSessionDraft
+  selected: boolean
+  serverName: string
+  disabled: boolean
+  onSelect: () => void
+  onOpenMenu: (x: number, y: number) => void
+}) {
+  const [tooltip, setTooltip] = useState<{ top: number; left: number } | null>(null)
+  const showTimer = useRef(0)
+  const title = draftTitle(draft.prompt)
+  const tooltipId = `session-nav-tooltip-${draft.id}`
+
+  const hideTooltip = () => {
+    window.clearTimeout(showTimer.current)
+    setTooltip(null)
+  }
+
+  const scheduleTooltip = (node: HTMLElement) => {
+    window.clearTimeout(showTimer.current)
+    showTimer.current = window.setTimeout(() => {
+      const rect = node.getBoundingClientRect()
+      setTooltip({ top: rect.top, left: rect.right + 8 })
+    }, SESSION_NAV_TOOLTIP_DELAY_MS)
+  }
+
+  useEffect(() => () => window.clearTimeout(showTimer.current), [])
+
+  useEffect(() => {
+    if (!tooltip) return
+    const hide = () => hideTooltip()
+    window.addEventListener('scroll', hide, true)
+    window.addEventListener('resize', hide)
+    return () => {
+      window.removeEventListener('scroll', hide, true)
+      window.removeEventListener('resize', hide)
+    }
+  }, [tooltip])
+
+  return (
+    <div
+      className="group relative"
+      onMouseEnter={(event) => scheduleTooltip(event.currentTarget)}
+      onMouseLeave={hideTooltip}
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        onFocus={(event) =>
+          scheduleTooltip(event.currentTarget.parentElement ?? event.currentTarget)
+        }
+        onBlur={hideTooltip}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          hideTooltip()
+          onOpenMenu(event.clientX, event.clientY)
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== 'Delete' && event.key !== 'Backspace') return
+          event.preventDefault()
+          hideTooltip()
+          const rect = event.currentTarget.getBoundingClientRect()
+          onOpenMenu(rect.left, rect.bottom)
+        }}
+        aria-current={selected}
+        aria-label={`Draft, ${title}`}
+        aria-describedby={tooltip ? tooltipId : undefined}
+        className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2.5 py-1.5 pr-8 pl-7.5 text-left text-[13.5px] text-muted-foreground hover:bg-muted hover:text-foreground aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
+      >
+        <span className="grid size-5 flex-none place-items-center overflow-visible">
+          <span role="img" aria-label="Draft" className="text-muted-foreground">
+            <EditIcon size={15} />
+          </span>
+        </span>
+        <span className="truncate">{title}</span>
+        <span className="text-[11.5px] tabular-nums opacity-75">
+          {relativeAge(draft.updatedAt)}
+        </span>
+      </button>
+      <button
+        type="button"
+        aria-label={`Draft actions for ${title}`}
+        aria-haspopup="menu"
+        disabled={disabled}
+        onClick={(event) => {
+          event.stopPropagation()
+          hideTooltip()
+          const rect = event.currentTarget.getBoundingClientRect()
+          onOpenMenu(rect.right, rect.bottom)
+        }}
+        className={`absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-[calc(var(--radius)*0.5)] text-[13px] text-muted-foreground hover:bg-border hover:text-foreground disabled:opacity-40 ${
+          selected
+            ? 'opacity-100'
+            : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+        }`}
+      >
+        ⋯
+      </button>
+      {tooltip && (
+        <DraftNavTooltip id={tooltipId} draft={draft} serverName={serverName} anchor={tooltip} />
+      )}
+    </div>
+  )
+}
+
+function DraftNavTooltip({
+  id,
+  draft,
+  serverName,
+  anchor,
+}: {
+  id: string
+  draft: NewSessionDraft
+  serverName: string
+  anchor: { top: number; left: number }
+}) {
+  return createPortal(
+    <div
+      id={id}
+      role="tooltip"
+      style={{ top: anchor.top, left: anchor.left }}
+      className="pointer-events-none fixed z-50 w-64 rounded-[calc(var(--radius)*0.7)] border border-border bg-background px-3 py-2.5 shadow-md"
+    >
+      <p className="text-[13px] leading-snug font-medium break-words">{draftTitle(draft.prompt)}</p>
+      <dl className="mt-2 grid grid-cols-[3.75rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1 text-[12px]">
+        <dt className="text-muted-foreground">Status</dt>
+        <dd className="min-w-0">Draft</dd>
+        <dt className="text-muted-foreground">Branch</dt>
+        <dd className="min-w-0 font-mono text-[11.5px] break-all">{draft.baseBranch || '—'}</dd>
+        <dt className="text-muted-foreground">Agent</dt>
+        <dd className="min-w-0">{agentLabel(draft.agentId) ?? draft.agentId}</dd>
+        <dt className="text-muted-foreground">Server</dt>
+        <dd className="min-w-0 break-all">{serverName}</dd>
+      </dl>
+    </div>,
+    document.body,
   )
 }
 
@@ -677,6 +872,104 @@ function SessionContextMenu({
           </button>
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * Right-click menu for an unstarted draft.
+ *
+ * Archive does not apply: there is no server row to hide. Delete is the only
+ * action, and it does not ask again — the prompt is still on this device
+ * until they type it away.
+ */
+function DraftContextMenu({
+  x,
+  y,
+  onDelete,
+  onDismiss,
+}: {
+  x: number
+  y: number
+  onDelete: () => void
+  onDismiss: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const dismiss = useRef(onDismiss)
+  const del = useRef(onDelete)
+  dismiss.current = onDismiss
+  del.current = onDelete
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) dismiss.current()
+    }
+
+    const items = () =>
+      Array.from(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])
+
+    const highlight = (index: number) => {
+      const list = items()
+      list.forEach((item, i) => {
+        if (i === index) item.setAttribute('data-highlighted', '')
+        else item.removeAttribute('data-highlighted')
+      })
+      list[index]?.focus()
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        dismiss.current()
+        return
+      }
+
+      const list = items()
+      if (list.length === 0) return
+
+      const current = list.findIndex((item) => item.hasAttribute('data-highlighted'))
+      const from =
+        current >= 0 ? current : list.findIndex((item) => item === document.activeElement)
+
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        const start = from >= 0 ? from : event.key === 'ArrowDown' ? -1 : 0
+        const delta = event.key === 'ArrowDown' ? 1 : -1
+        highlight((start + delta + list.length) % list.length)
+      } else if (event.key === 'Home') {
+        event.preventDefault()
+        highlight(0)
+      } else if (event.key === 'End') {
+        event.preventDefault()
+        highlight(list.length - 1)
+      }
+    }
+
+    document.addEventListener('pointerdown', onPointerDown, true)
+    document.addEventListener('keydown', onKeyDown)
+    highlight(0)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
+
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      aria-label="Draft"
+      style={{ left: x, top: y }}
+      className="fixed z-50 min-w-36 rounded-[calc(var(--radius)*0.7)] border border-border bg-background py-1 shadow-md"
+    >
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => del.current()}
+        className="flex w-full items-center px-3 py-1.5 text-left text-[13px] text-destructive hover:bg-muted data-[highlighted]:bg-muted"
+      >
+        Delete
+      </button>
     </div>
   )
 }

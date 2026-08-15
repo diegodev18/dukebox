@@ -42,11 +42,7 @@ import {
 } from '@/components/RepoBranchPickers'
 import type { DukeboxClient } from '@/lib/client'
 import type { Connection } from '@/lib/connection'
-import {
-  clearNewSessionDraft,
-  loadNewSessionDraft,
-  saveNewSessionDraft,
-} from '@/lib/newSessionDraft'
+import { takeLegacyNewSessionDraft, type NewSessionDraftFields } from '@/lib/newSessionDraft'
 import type { LastNewSession } from '@/lib/settings'
 
 /**
@@ -86,6 +82,15 @@ interface Props {
   lastNewSession?: LastNewSession | null
   /** Persist the pickers after a session starts, so the next form matches. */
   onRemember?: (last: LastNewSession) => void
+  /** Prompt to restore when this form is a sidebar draft card. */
+  initialPrompt?: string
+  /**
+   * Persist the in-progress form as an unstarted session card.
+   *
+   * Fired as the prompt and pickers change. The parent decides whether that
+   * is enough to show a sidebar row (a project and some text).
+   */
+  onDraftChange?: (draft: NewSessionDraftFields) => void
   /** Open Settings → Agents to add or edit OpenCode providers. */
   onConfigureProviders: () => void
   /** Starting a session needs the server. */
@@ -114,6 +119,8 @@ export function NewSession({
   preferAgentId,
   lastNewSession = null,
   onRemember,
+  initialPrompt = '',
+  onDraftChange,
   onConfigureProviders,
   disabled = false,
 }: Props) {
@@ -146,7 +153,7 @@ export function NewSession({
   const [grokConfigured, setGrokConfigured] = useState(false)
   const [agentsStatus, setAgentsStatus] = useState<'loading' | 'loaded'>('loading')
   const [providerId, setProviderId] = useState(initialProviderId(lastNewSession, initialAgent))
-  const [prompt, setPrompt] = useState(loadNewSessionDraft)
+  const [prompt, setPrompt] = useState(() => initialPrompt || takeLegacyNewSessionDraft())
   const [files, setFiles] = useState<ComposerFile[]>([])
   const [forceSetup, setForceSetup] = useState(Boolean(preferSetupProjectId))
   const [newEnvironmentName, setNewEnvironmentName] = useState('Default')
@@ -154,6 +161,8 @@ export function NewSession({
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const field = useRef<HTMLTextAreaElement>(null)
   const picker = useRef<HTMLInputElement>(null)
+  const onDraftChangeRef = useRef(onDraftChange)
+  onDraftChangeRef.current = onDraftChange
 
   // Setup is offered, not required: a branch with no environment runs on the
   // base image rather than being blocked.
@@ -278,11 +287,20 @@ export function NewSession({
     element.style.height = `${Math.min(element.scrollHeight, 200)}px`
   }, [prompt])
 
-  // New Session unmounts when the person leaves, so the prompt has to live
-  // outside the component. An empty field clears the stored draft.
+  // The parent owns the sidebar cards. Report every change so leaving the
+  // form, or starting another one, can keep this prompt as an unstarted row.
   useEffect(() => {
-    saveNewSessionDraft(prompt)
-  }, [prompt])
+    onDraftChangeRef.current?.({
+      prompt,
+      repoFullName: target,
+      baseBranch,
+      environmentId,
+      agentId,
+      model,
+      providerId,
+      permissionMode,
+    })
+  }, [prompt, target, baseBranch, environmentId, agentId, model, providerId, permissionMode])
 
   // `refact/auth` suggests `refact/*` — the family, not the one branch. A
   // branch with no slash suggests the catch-all instead.
@@ -542,7 +560,6 @@ export function NewSession({
         }
 
         remember(environment.id)
-        clearNewSessionDraft()
         onCreated(session, created)
         return
       }
@@ -562,7 +579,6 @@ export function NewSession({
       })
 
       remember(environmentId)
-      clearNewSessionDraft()
       onCreated(session, created)
     } catch (error) {
       setStatus({
