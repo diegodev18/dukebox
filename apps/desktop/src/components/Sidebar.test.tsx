@@ -13,6 +13,7 @@ vi.mock('@tauri-apps/plugin-opener', () => ({
 
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { Sidebar } from '@/components/Sidebar'
+import { saveNewSessionDraft } from '@/lib/newSessionDraft'
 import { VIEWED_SESSIONS_KEY } from '@/lib/viewedSessions'
 
 const project: ProjectSummary = {
@@ -58,6 +59,7 @@ function renderSidebar({
   sessionOverride = {},
   selectedId,
   disabled = false,
+  draftSelected = false,
 }: {
   onArchive?: ReturnType<typeof vi.fn>
   onDelete?: ReturnType<typeof vi.fn>
@@ -69,6 +71,7 @@ function renderSidebar({
   sessionOverride?: Partial<SessionSummary>
   selectedId?: string | null
   disabled?: boolean
+  draftSelected?: boolean
 } = {}) {
   const row = { ...session, ...sessionOverride }
   render(
@@ -89,6 +92,7 @@ function renderSidebar({
       onDelete={onDelete}
       onRemoveProject={onRemoveProject}
       disabled={disabled}
+      draftSelected={draftSelected}
     />,
   )
   return {
@@ -273,6 +277,31 @@ describe('Sidebar', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'New session' }))
     expect(onNewSession).toHaveBeenCalledWith()
+  })
+
+  it('lists a stored New Session prompt as a draft', async () => {
+    saveNewSessionDraft('finish the parser')
+    const { onNewSession } = renderSidebar()
+
+    expect(screen.getByRole('button', { name: 'Draft, finish the parser' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Draft, finish the parser' }))
+    expect(onNewSession).toHaveBeenCalledWith()
+  })
+
+  it('marks the draft current while New Session is open', () => {
+    saveNewSessionDraft('keep this')
+    renderSidebar({ selectedId: null, draftSelected: true })
+
+    expect(screen.getByRole('button', { name: 'Draft, keep this' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+  })
+
+  it('hides the draft row when nothing is stored', () => {
+    renderSidebar()
+
+    expect(screen.queryByRole('button', { name: /^Draft,/ })).not.toBeInTheDocument()
   })
 
   it('opens search without hiding New session', async () => {

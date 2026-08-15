@@ -14,6 +14,7 @@ import { SearchPalette } from '@/components/SearchPalette'
 import { Transcript } from '@/components/Transcript'
 import { Workspace } from '@/components/Workspace'
 import { NAV_DEFAULT, NAV_MIN, WORKSPACE_MIN } from '@/lib/columnWidths'
+import { hasNewSessionDraft, newSessionDraftTitle, useNewSessionDraft } from '@/lib/newSessionDraft'
 import { useColumnWidths } from '@/lib/useColumnWidths'
 import {
   applyTerminalMessage,
@@ -560,6 +561,7 @@ function Preview() {
     state: 'open',
   })
   const terminals = usePreviewTerminals()
+  const newSessionDraft = useNewSessionDraft()
   const composing = view === 'new'
   const {
     containerRef,
@@ -667,6 +669,18 @@ function Preview() {
         >
           Search
         </button>
+        {hasNewSessionDraft(newSessionDraft) && (
+          <button
+            type="button"
+            onClick={() => setView('new')}
+            aria-current={view === 'new'}
+            aria-label={`Draft, ${newSessionDraftTitle(newSessionDraft)}`}
+            className="mt-2 grid w-full grid-cols-[1fr_auto] items-center gap-2 rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
+          >
+            <span className="truncate italic">{newSessionDraftTitle(newSessionDraft)}</span>
+            <span className="text-[11.5px] opacity-75">Draft</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setView('coding')}

@@ -65,6 +65,11 @@ vi.mock('@/lib/client', async (importOriginal) => {
       deleteProject = deleteProject
       getPullRequest = getPullRequest
       listEnvironments = vi.fn().mockResolvedValue([])
+      listRepositories = vi.fn().mockResolvedValue([])
+      listBranches = vi.fn().mockResolvedValue(['main'])
+      listOpencodeProviders = vi.fn().mockResolvedValue([])
+      agentCredentialsConfigured = vi.fn().mockResolvedValue(true)
+      grokCredentialsConfigured = vi.fn().mockResolvedValue(false)
     },
   }
 })
@@ -154,6 +159,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks()
+  localStorage.clear()
 })
 
 describe('Session', () => {
@@ -219,6 +225,28 @@ describe('Session', () => {
       'aria-current',
       'true',
     )
+  })
+
+  it('saves New Session typing as a sidebar draft', async () => {
+    renderSession()
+
+    await screen.findByRole('button', { name: 'Done, Fix the demux bug' })
+    await userEvent.click(screen.getByRole('button', { name: 'New session' }))
+
+    await userEvent.type(await screen.findByLabelText(/what should it do/i), 'finish the parser')
+
+    expect(await screen.findByRole('button', { name: 'Draft, finish the parser' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Done, Fix the demux bug' }))
+    expect(screen.getByRole('button', { name: 'Draft, finish the parser' })).not.toHaveAttribute(
+      'aria-current',
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Draft, finish the parser' }))
+    expect(await screen.findByLabelText(/what should it do/i)).toHaveValue('finish the parser')
   })
 
   it('shows the empty chrome when there are no sessions', async () => {

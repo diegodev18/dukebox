@@ -377,6 +377,7 @@ export function Session({
               serverName={connection.serverName}
               role={role}
               disabled={disconnected}
+              draftSelected={creating}
               onOpenSettings={openSettings}
               onSelect={selectSession}
               onNewSession={startNewSession}

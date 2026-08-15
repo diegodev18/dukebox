@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { pullRequestStatus, pullRequestStatusAriaLabel } from '@/lib/pullRequest'
 import { relativeAge } from '@/lib/relativeTime'
+import { hasNewSessionDraft, newSessionDraftTitle, useNewSessionDraft } from '@/lib/newSessionDraft'
 import {
   loadViewedSessions,
   markViewed,
@@ -64,6 +65,8 @@ interface Props {
   archiveError?: string | null
   /** Creating, archiving, and environment setup talk to the server. */
   disabled?: boolean
+  /** The New Session form is open — highlight the Draft row if there is one. */
+  draftSelected?: boolean
 }
 
 export function Sidebar({
@@ -84,7 +87,10 @@ export function Sidebar({
   onSearch,
   archiveError,
   disabled = false,
+  draftSelected = false,
 }: Props) {
+  const newSessionDraft = useNewSessionDraft()
+  const draft = hasNewSessionDraft(newSessionDraft) ? newSessionDraft : null
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [removing, setRemoving] = useState<ProjectSummary | null>(null)
   const [deleting, setDeleting] = useState<SessionSummary | null>(null)
@@ -125,6 +131,14 @@ export function Sidebar({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto py-2">
+        {draft && (
+          <DraftRow
+            title={newSessionDraftTitle(draft)}
+            selected={draftSelected}
+            disabled={disabled}
+            onSelect={() => onNewSession()}
+          />
+        )}
         {projects.length === 0 ? (
           <div className="px-4 py-6 text-center">
             <DukeMark size={48} className="mx-auto opacity-90" />
@@ -379,6 +393,39 @@ function ProjectGroup({
         </button>
       )}
     </>
+  )
+}
+
+/**
+ * The unsent New Session prompt, listed like a session so leaving the form
+ * does not hide that work is still sitting there.
+ */
+function DraftRow({
+  title,
+  selected,
+  disabled,
+  onSelect,
+}: {
+  title: string
+  selected: boolean
+  disabled: boolean
+  onSelect: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      disabled={disabled}
+      aria-current={selected}
+      aria-label={`Draft, ${title}`}
+      className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2.5 py-1.5 pr-8 pl-7.5 text-left text-[13.5px] text-muted-foreground hover:bg-muted hover:text-foreground aria-[current=true]:bg-muted aria-[current=true]:text-foreground disabled:opacity-40"
+    >
+      <span className="grid size-5 flex-none place-items-center">
+        <span className="size-1.5 rounded-full bg-muted-foreground/50" />
+      </span>
+      <span className="truncate italic">{title}</span>
+      <span className="text-[11.5px] tabular-nums opacity-75">Draft</span>
+    </button>
   )
 }
 

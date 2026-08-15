@@ -146,8 +146,8 @@ export function NewSession({
   const [grokConfigured, setGrokConfigured] = useState(false)
   const [agentsStatus, setAgentsStatus] = useState<'loading' | 'loaded'>('loading')
   const [providerId, setProviderId] = useState(initialProviderId(lastNewSession, initialAgent))
-  const [prompt, setPrompt] = useState(loadNewSessionDraft)
-  const [files, setFiles] = useState<ComposerFile[]>([])
+  const [prompt, setPrompt] = useState(() => loadNewSessionDraft().prompt)
+  const [files, setFiles] = useState<ComposerFile[]>(() => loadNewSessionDraft().files)
   const [forceSetup, setForceSetup] = useState(Boolean(preferSetupProjectId))
   const [newEnvironmentName, setNewEnvironmentName] = useState('Default')
   const [newEnvironmentPattern, setNewEnvironmentPattern] = useState('**')
@@ -278,11 +278,12 @@ export function NewSession({
     element.style.height = `${Math.min(element.scrollHeight, 200)}px`
   }, [prompt])
 
-  // New Session unmounts when the person leaves, so the prompt has to live
-  // outside the component. An empty field clears the stored draft.
+  // New Session unmounts when the person leaves, so the prompt and its
+  // attachments have to live outside the component. An empty field with no
+  // files clears the stored draft.
   useEffect(() => {
-    saveNewSessionDraft(prompt)
-  }, [prompt])
+    saveNewSessionDraft(prompt, files)
+  }, [prompt, files])
 
   // `refact/auth` suggests `refact/*` — the family, not the one branch. A
   // branch with no slash suggests the catch-all instead.

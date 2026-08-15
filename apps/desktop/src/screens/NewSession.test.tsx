@@ -690,6 +690,20 @@ describe('NewSession prompt draft', () => {
     await waitFor(() => expect(client.startSession).toHaveBeenCalled())
     expect(localStorage.getItem(NEW_SESSION_DRAFT_KEY)).toBeNull()
   })
+
+  it('restores attached files from a stored draft', async () => {
+    localStorage.setItem(
+      NEW_SESSION_DRAFT_KEY,
+      JSON.stringify({
+        prompt: 'read this',
+        files: [{ name: 'notes.txt', data: 'data:text/plain;base64,aGVsbG8=' }],
+      }),
+    )
+    renderScreen(makeClient())
+
+    expect(await screen.findByLabelText(/what should it do/i)).toHaveValue('read this')
+    expect(screen.getByText('notes.txt')).toBeInTheDocument()
+  })
 })
 
 describe('NewSession last session', () => {
