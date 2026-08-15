@@ -42,6 +42,11 @@ import {
 } from '@/components/RepoBranchPickers'
 import type { DukeboxClient } from '@/lib/client'
 import type { Connection } from '@/lib/connection'
+import {
+  clearNewSessionDraft,
+  loadNewSessionDraft,
+  saveNewSessionDraft,
+} from '@/lib/newSessionDraft'
 import type { LastNewSession } from '@/lib/settings'
 
 /**
@@ -141,7 +146,7 @@ export function NewSession({
   const [grokConfigured, setGrokConfigured] = useState(false)
   const [agentsStatus, setAgentsStatus] = useState<'loading' | 'loaded'>('loading')
   const [providerId, setProviderId] = useState(initialProviderId(lastNewSession, initialAgent))
-  const [prompt, setPrompt] = useState('')
+  const [prompt, setPrompt] = useState(loadNewSessionDraft)
   const [files, setFiles] = useState<ComposerFile[]>([])
   const [forceSetup, setForceSetup] = useState(Boolean(preferSetupProjectId))
   const [newEnvironmentName, setNewEnvironmentName] = useState('Default')
@@ -271,6 +276,12 @@ export function NewSession({
 
     element.style.height = 'auto'
     element.style.height = `${Math.min(element.scrollHeight, 200)}px`
+  }, [prompt])
+
+  // New Session unmounts when the person leaves, so the prompt has to live
+  // outside the component. An empty field clears the stored draft.
+  useEffect(() => {
+    saveNewSessionDraft(prompt)
   }, [prompt])
 
   // `refact/auth` suggests `refact/*` — the family, not the one branch. A
@@ -531,6 +542,7 @@ export function NewSession({
         }
 
         remember(environment.id)
+        clearNewSessionDraft()
         onCreated(session, created)
         return
       }
@@ -550,6 +562,7 @@ export function NewSession({
       })
 
       remember(environmentId)
+      clearNewSessionDraft()
       onCreated(session, created)
     } catch (error) {
       setStatus({
