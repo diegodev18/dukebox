@@ -1,5 +1,9 @@
 # Dukebox
 
+<p align="center">
+  <img src="brand/duke-hero.svg" alt="Duke" width="180" />
+</p>
+
 Self-hosted cloud agents manager. Run coding agents on your own VPS, drive them from a native desktop app.
 
 > Named after Duke, a very good dog.

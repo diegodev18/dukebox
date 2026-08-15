@@ -8,6 +8,7 @@ import {
   type PairingInvite,
 } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
+import { DukeMark } from '@/components/Duke'
 import { ChevronLeftIcon } from '@/components/icons'
 import { OpenCodeProviders, opencodeModelOptions } from '@/components/OpenCodeProviders'
 import { PairingForm } from '@/components/PairingForm'
@@ -479,6 +480,11 @@ function AccountSection({
         </button>
         {saved && <span className="text-[12px] text-muted-foreground">Saved</span>}
       </div>
+
+      <p className="mt-10 flex items-center gap-2 text-[12px] text-muted-foreground">
+        <DukeMark size={16} decorative />
+        Named after Duke, a very good dog.
+      </p>
     </section>
   )
 }

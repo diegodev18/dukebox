@@ -199,6 +199,7 @@ describe('Settings', () => {
     renderSettings()
 
     expect(screen.getByRole('heading', { name: 'Account' })).toBeInTheDocument()
+    expect(screen.getByText('Named after Duke, a very good dog.')).toBeInTheDocument()
     const nav = screen.getByRole('navigation', { name: 'Settings' })
     const buttons = [...nav.querySelectorAll('button')].map((button) => button.textContent?.trim())
     expect(buttons).toEqual([

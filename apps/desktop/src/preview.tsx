@@ -7,6 +7,7 @@ import {
 import { StrictMode, useState, type CSSProperties } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AgentIcon } from '@/components/AgentIcon'
+import { DukeWordmark } from '@/components/Duke'
 import { Composer } from '@/components/Composer'
 import { ResizeHandle } from '@/components/ResizeHandle'
 import { SearchPalette } from '@/components/SearchPalette'
@@ -614,6 +615,9 @@ function Preview() {
       }
     >
       <div className="relative z-10 flex min-h-0 min-w-0 flex-col border-r border-border bg-surface p-2">
+        <div className="px-2 pt-1 pb-2">
+          <DukeWordmark />
+        </div>
         <button
           type="button"
           onClick={() => setView('new')}

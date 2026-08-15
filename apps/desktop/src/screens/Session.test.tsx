@@ -230,5 +230,6 @@ describe('Session', () => {
     renderSession()
 
     expect(await screen.findByText('No session selected')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Duke' })).toBeInTheDocument()
   })
 })
