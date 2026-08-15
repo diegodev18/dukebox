@@ -19,12 +19,14 @@
     "build": "tsc -b && node ../../scripts/rewrite-dist-aliases.mjs",
     "typecheck": "tsc -b --pretty && node ../../scripts/rewrite-dist-aliases.mjs",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest"
   },
   "dependencies": {
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.8",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }

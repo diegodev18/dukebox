@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { defineConfig } from 'vitest/config'
+import { coverage } from '../../scripts/vitest-coverage.mjs'
 
 export default defineConfig({
   resolve: {
@@ -7,5 +8,6 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.ts'],
+    coverage,
   },
 })
