@@ -46,6 +46,7 @@ import {
   Sandbox,
   Workspace,
   WorkspaceError,
+  nextSessionBranch,
   resolveWorkspacePath,
   type CredentialProxy,
   type SessionContainer,
@@ -1111,6 +1112,19 @@ export class SessionManager {
       state: 'merged',
     }
     await this.persistPullRequest(sessionId, next)
+
+    try {
+      const running = await this.ensureRunning(sessionId)
+      await this.cutNextSessionBranch(session, running)
+    } catch (error) {
+      // The merge already landed. The next prompt or turn retries the branch
+      // cut so a fetch failure here does not look like a failed merge.
+      console.error(
+        `next branch after merge for session ${sessionId}:`,
+        error instanceof Error ? error.message : error,
+      )
+    }
+
     return next
   }
 
@@ -1163,25 +1177,19 @@ export class SessionManager {
    *
    * `turn_end` honours the session's git preferences and is silent when there
    * is nothing to do. `open` is the explicit user action and always tries.
+   *
+   * After a merge the session moves to a new branch from the updated base;
+   * the next change opens a new pull request instead of reusing the merged one.
    */
   private async syncPullRequest(
     sessionId: string,
     options: { reason: 'turn_end' | 'open'; title?: string },
   ): Promise<PullRequestSummary | null> {
-    const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
+    let [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
     if (!session) throw new SessionError('no such session')
 
     const prefs = parseGitPreferences(session.gitPreferences)
     const userAsked = options.reason === 'open'
-    const knownState = pullRequestState.safeParse(session.prState)
-    const prState = knownState.success ? knownState.data : undefined
-
-    if (!sessionOpensPullRequests(prState)) {
-      if (userAsked) {
-        throw new SessionError("this session's pull request is already merged")
-      }
-      return toSummary(session).pullRequest
-    }
 
     if (session.purpose === 'environment_setup') {
       if (userAsked) throw new SessionError('environment setup sessions do not open pull requests')
@@ -1205,6 +1213,11 @@ export class SessionManager {
       }
       return toSummary(session).pullRequest
     }
+
+    // Move off a merged head before committing this turn's work, so the new
+    // commits land on a branch GitHub can still open a pull request from.
+    const afterMerge = await this.beginNextPullRequestBranch(session, running)
+    session = afterMerge.session
 
     const dirty = await running.workspace.isDirty()
     const changed = await running.workspace.changedFiles(running.baseCommit)
@@ -1233,18 +1246,24 @@ export class SessionManager {
     }
 
     const stillChanged = await running.workspace.changedFiles(running.baseCommit)
-    if (stillChanged.length === 0 && !session.prUrl) {
-      if (userAsked) throw new SessionError('there is nothing to open a pull request for')
-      return null
+    const recorded = toSummary(session).pullRequest
+    if (stillChanged.length === 0) {
+      if (!session.prUrl || recorded?.state === 'merged' || recorded?.state === 'closed') {
+        if (userAsked) throw new SessionError('there is nothing to open a pull request for')
+        return recorded
+      }
     }
 
     // Push whenever we will open a PR, or when one already exists so GitHub
     // sees the new commits even if auto-open is off.
     if (!shouldOpen && !session.prUrl) return null
+    if (!shouldOpen && recorded?.state === 'merged') return recorded
 
     await this.ensurePush(sessionId, running, session.branch, github)
 
-    const existing = await github.findPullRequest(running.repoFullName, session.branch)
+    const existing = afterMerge.switched
+      ? null
+      : await github.findPullRequest(running.repoFullName, session.branch)
     if (existing && reuseExistingPullRequest(existing.state)) {
       const summary: PullRequestSummary = {
         url: existing.url,
@@ -1292,17 +1311,20 @@ export class SessionManager {
     }
 
     if (existing?.state === 'merged') {
-      const summary: PullRequestSummary = {
-        url: existing.url,
-        title: existing.title,
-        isDraft: existing.isDraft,
-        state: existing.state,
+      const moved = await this.cutNextSessionBranch(session, running)
+      session = moved
+      const leftover = await running.workspace.changedFiles(running.baseCommit)
+      if (leftover.length === 0) {
+        const summary: PullRequestSummary = {
+          url: existing.url,
+          title: existing.title,
+          isDraft: existing.isDraft,
+          state: existing.state,
+        }
+        await this.persistPullRequest(sessionId, summary)
+        if (userAsked) throw new SessionError('there is nothing to open a pull request for')
+        return summary
       }
-      await this.persistPullRequest(sessionId, summary)
-      if (userAsked) {
-        throw new SessionError("this session's pull request is already merged")
-      }
-      return summary
     }
 
     if (!shouldOpen) return toSummary(session).pullRequest
@@ -1383,6 +1405,102 @@ export class SessionManager {
       .returning()
 
     if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
+  }
+
+  /**
+   * Cut a new branch from the updated base when this session's current head
+   * already has a merged pull request.
+   *
+   * No-op when the current branch is already free (no PR, or an open one).
+   */
+  private async beginNextPullRequestBranch(
+    session: Session,
+    running: RunningSession,
+  ): Promise<{ session: Session; switched: boolean }> {
+    const github = this.deps.github
+    if (!github) return { session, switched: false }
+
+    const existing = await github
+      .findPullRequest(running.repoFullName, session.branch)
+      .catch(() => null)
+    if (existing?.state !== 'merged') return { session, switched: false }
+
+    const known = pullRequestState.safeParse(session.prState)
+    if (!known.success || known.data !== 'merged') {
+      await this.persistPullRequest(session.id, {
+        url: existing.url,
+        title: existing.title,
+        isDraft: existing.isDraft,
+        state: existing.state,
+      })
+    }
+
+    return { session: await this.cutNextSessionBranch(session, running), switched: true }
+  }
+
+  /**
+   * Move the workspace onto `duke/<id>-N` from the current base tip.
+   *
+   * Uncommitted work is stashed and replayed. Commits that were already in the
+   * merged pull request stay behind — they belong on the base now.
+   */
+  private async cutNextSessionBranch(session: Session, running: RunningSession): Promise<Session> {
+    const nextBranch = nextSessionBranch(session.id, session.branch)
+    if (nextBranch === session.branch) return session
+
+    const previousFiles = await running.workspace.changedFiles(running.baseCommit).catch(() => [])
+    const dirty = await running.workspace.isDirty()
+    if (dirty) await running.workspace.stashAll()
+
+    await running.workspace.fetchBranch(session.baseBranch)
+    await running.workspace.checkoutNewBranch(nextBranch, `origin/${session.baseBranch}`)
+
+    if (dirty) {
+      const replayed = await running.workspace.stashPop()
+      if (!replayed.ok) {
+        await this.deps.bus
+          .append(session.id, {
+            type: 'error',
+            message:
+              'Uncommitted work from before the merge left conflict markers on the new branch.',
+            fatal: false,
+          })
+          .catch(() => undefined)
+      }
+    }
+
+    const baseCommit = await running.workspace.headCommit()
+    running.baseCommit = baseCommit
+
+    const diffs = await running.workspace.diffEvents(baseCommit).catch(() => [])
+    const currentPaths = new Set(
+      diffs.flatMap((event) => (event.type === 'file_diff' ? [event.path] : [])),
+    )
+
+    for (const path of previousFiles) {
+      if (currentPaths.has(path)) continue
+      const contents = await running.workspace.currentFile(path).catch(() => null)
+      await this.deps.bus
+        .append(session.id, { type: 'file_diff', path, before: contents, after: contents })
+        .catch(() => undefined)
+    }
+    for (const diff of diffs) {
+      await this.deps.bus.append(session.id, diff).catch(() => undefined)
+    }
+
+    const [updated] = await this.deps.db
+      .update(sessions)
+      .set({
+        branch: nextBranch,
+        baseCommit,
+        changedFileCount: diffs.length,
+        updatedAt: new Date(),
+      })
+      .where(eq(sessions.id, session.id))
+      .returning()
+
+    if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
+    return updated ?? { ...session, branch: nextBranch, baseCommit }
   }
 
   private async repoFullName(projectId: string): Promise<string | null> {
@@ -1544,6 +1662,16 @@ export class SessionManager {
 
     const [row] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
     const prState = pullRequestState.safeParse(row?.prState)
+    if (row && prState.success && !sessionOpensPullRequests(prState.data)) {
+      try {
+        await this.beginNextPullRequestBranch(row, running)
+      } catch (error) {
+        console.error(
+          `next branch before prompt for session ${sessionId}:`,
+          error instanceof Error ? error.message : error,
+        )
+      }
+    }
     const agentText =
       prState.success && !sessionOpensPullRequests(prState.data)
         ? `${MERGED_SESSION_AGENT_NOTICE}\n\n${text}`

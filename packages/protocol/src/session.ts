@@ -197,10 +197,11 @@ export function parseGitPreferences(raw: unknown): GitPreferences {
 }
 
 /**
- * Whether this session should still commit, push, or open a pull request.
+ * Whether the session's recorded pull request is still a destination for new
+ * commits on the current branch.
  *
- * A merged session keeps its transcript and workspace, but the branch is no
- * longer a review destination — further work starts a new session.
+ * A merged pull request is not: the session moves to a new branch and the
+ * next change opens a new pull request.
  */
 export function sessionOpensPullRequests(state: PullRequestState | null | undefined): boolean {
   return state !== 'merged'
@@ -223,7 +224,7 @@ export function reuseExistingPullRequest(state: PullRequestState): boolean {
  * without this it keeps treating the (possibly deleted) branch as live.
  */
 export const MERGED_SESSION_AGENT_NOTICE =
-  'The pull request for this session was merged. Do not push this branch or open another pull request from it. For new work, start a new session from the base branch.'
+  'The pull request for this session was merged. You are now on a new branch from the updated base. Continue the work here; new changes will open a new pull request.'
 
 /** GitHub's view of a pull request opened from a session. */
 export const pullRequestState = z.enum(['open', 'merged', 'closed'])
@@ -376,8 +377,7 @@ export const sessionSummary = z.object({
    * The pull request opened from this session's branch, once there is one.
    *
    * Carried on the summary so the app can offer to open the pull request or to
-   * visit it, rather than offering to open a second one that the server would
-   * refuse.
+   * visit it. After a merge, the next change on this session opens a new one.
    */
   pullRequestUrl: z.string().url().nullable(),
   /**

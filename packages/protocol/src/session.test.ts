@@ -180,7 +180,7 @@ describe('session pull request destination', () => {
     expect(reuseExistingPullRequest('closed')).toBe(false)
   })
 
-  it('stops treating a merged session as a pull request destination', () => {
+  it('treats a merged pull request as no longer the destination on this branch', () => {
     expect(sessionOpensPullRequests(undefined)).toBe(true)
     expect(sessionOpensPullRequests('open')).toBe(true)
     expect(sessionOpensPullRequests('closed')).toBe(true)

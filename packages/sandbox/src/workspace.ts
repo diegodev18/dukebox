@@ -62,6 +62,25 @@ export function sessionBranch(sessionId: string): string {
   return `duke/${sessionId.slice(0, 8)}`
 }
 
+/**
+ * The next branch after a pull request on `current` merges.
+ *
+ * The first branch is `duke/<id>`; later ones append `-2`, `-3`, … so GitHub
+ * can open a new pull request instead of attaching commits to a merged one.
+ */
+export function nextSessionBranch(sessionId: string, current: string): string {
+  const prefix = sessionBranch(sessionId)
+  if (current === prefix) return `${prefix}-2`
+  if (current.startsWith(`${prefix}-`)) {
+    const suffix = current.slice(prefix.length + 1)
+    const generation = Number(suffix)
+    if (Number.isInteger(generation) && generation >= 2 && suffix === String(generation)) {
+      return `${prefix}-${generation + 1}`
+    }
+  }
+  return `${prefix}-2`
+}
+
 export class WorkspaceError extends Error {
   constructor(
     message: string,
@@ -446,6 +465,47 @@ export class Workspace {
   /** Push the session branch. Credentials come from the credential proxy. */
   async push(branch: string): Promise<void> {
     await this.run(['git', 'push', '--set-upstream', 'origin', branch])
+  }
+
+  /**
+   * Check out `name` at `startPoint`, creating or resetting it.
+   *
+   * Used after a merge so the next change starts from the updated base rather
+   * than accumulating on a branch GitHub has already merged.
+   */
+  async checkoutNewBranch(name: string, startPoint: string): Promise<void> {
+    await this.run(['git', 'checkout', '-B', name, startPoint])
+  }
+
+  /**
+   * Stash tracked and untracked changes so a branch switch can carry them.
+   *
+   * Returns false when the tree was already clean.
+   */
+  async stashAll(message = 'dukebox: continue after merge'): Promise<boolean> {
+    if (!(await this.isDirty())) return false
+    await this.run(['git', 'stash', 'push', '--include-untracked', '-m', message])
+    return true
+  }
+
+  /**
+   * Replay the latest stash.
+   *
+   * A conflict is not a thrown error: markers stay in the tree so the agent
+   * can resolve them. Other failures throw.
+   */
+  async stashPop(): Promise<{ ok: true } | { ok: false; conflicted: string[] }> {
+    const result = await this.container.exec(['git', 'stash', 'pop'], { cwd: WORKSPACE_DIR })
+    if (result.exitCode === 0) return { ok: true }
+
+    const conflicted = await this.conflictedFiles()
+    if (conflicted.length > 0) return { ok: false, conflicted }
+
+    throw new WorkspaceError(
+      'command failed: git stash pop',
+      result.stderr || result.stdout,
+      result.exitCode,
+    )
   }
 
   /**

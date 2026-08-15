@@ -232,17 +232,21 @@ function fold(draft: Transcript, event: AgentEvent, seq: number): void {
 
     case 'file_diff': {
       // Latest state per path wins. An agent that edits a file three times
-      // produces three events but one entry in the review panel.
-      const { added, removed } = countLineChanges(event.before, event.after)
+      // produces three events but one entry in the review panel. A later
+      // event with no difference (the file matches the new base after a
+      // merge) removes it so the panel does not keep already-landed work.
       const files = draft.files.filter((file) => file.path !== event.path)
-      files.push({
-        path: event.path,
-        before: event.before,
-        after: event.after,
-        added,
-        removed,
-      })
-      files.sort((a, b) => a.path.localeCompare(b.path))
+      if (event.before !== event.after) {
+        const { added, removed } = countLineChanges(event.before, event.after)
+        files.push({
+          path: event.path,
+          before: event.before,
+          after: event.after,
+          added,
+          removed,
+        })
+        files.sort((a, b) => a.path.localeCompare(b.path))
+      }
       draft.files = files
       return
     }

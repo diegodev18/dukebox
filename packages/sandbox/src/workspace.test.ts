@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Sandbox, type SessionContainer } from '@/container'
 import {
+  nextSessionBranch,
   sessionBranch,
   Workspace,
   WorkspaceError,
@@ -18,6 +19,23 @@ describe('sessionBranch', () => {
   it('is stable for a given session', () => {
     const id = randomUUID()
     expect(sessionBranch(id)).toBe(sessionBranch(id))
+  })
+})
+
+describe('nextSessionBranch', () => {
+  const id = '3f9a2b1c-0000-4000-8000-000000000000'
+
+  it('appends -2 after the first session branch', () => {
+    expect(nextSessionBranch(id, 'duke/3f9a2b1c')).toBe('duke/3f9a2b1c-2')
+  })
+
+  it('increments later generations', () => {
+    expect(nextSessionBranch(id, 'duke/3f9a2b1c-2')).toBe('duke/3f9a2b1c-3')
+    expect(nextSessionBranch(id, 'duke/3f9a2b1c-11')).toBe('duke/3f9a2b1c-12')
+  })
+
+  it('falls back when the current name is not this session’s series', () => {
+    expect(nextSessionBranch(id, 'feature/other')).toBe('duke/3f9a2b1c-2')
   })
 })
 
@@ -482,6 +500,30 @@ describe('Workspace', () => {
         conflicted: ['README.md'],
       })
       expect(await ws.conflictedFiles()).toEqual(['README.md'])
+    })
+  })
+
+  describe('checkoutNewBranch', () => {
+    it('starts a new branch from the updated base and keeps uncommitted work', async () => {
+      const { workspace: ws, container: target, sessionId } = await freshWorkspace()
+      await target.exec(['sh', '-c', 'echo session > README.md'], { cwd: WORKSPACE_DIR })
+      await ws.commitAll('session work')
+      await target.exec(['sh', '-c', 'echo leftover > EXTRA.md'], { cwd: WORKSPACE_DIR })
+
+      expect(await ws.stashAll()).toBe(true)
+      await ws.fetchBranch('main')
+      const next = nextSessionBranch(sessionId, sessionBranch(sessionId))
+      await ws.checkoutNewBranch(next, 'origin/main')
+      expect(await ws.stashPop()).toEqual({ ok: true })
+
+      const branch = await target.exec(['git', 'branch', '--show-current'], { cwd: WORKSPACE_DIR })
+      expect(branch.stdout.trim()).toBe(`duke/${sessionId.slice(0, 8)}-2`)
+
+      const extra = await target.exec(['cat', 'EXTRA.md'], { cwd: WORKSPACE_DIR })
+      expect(extra.stdout.trim()).toBe('leftover')
+
+      const readme = await target.exec(['cat', 'README.md'], { cwd: WORKSPACE_DIR })
+      expect(readme.stdout.trim()).toBe('original')
     })
   })
 })

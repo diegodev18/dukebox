@@ -162,6 +162,15 @@ describe('files', () => {
 
     expect(transcript.files[0]).toMatchObject({ added: 1, removed: 1 })
   })
+
+  it('drops a path that later matches the base', () => {
+    const transcript = fold(
+      at(1, { type: 'file_diff', path: 'a.ts', before: null, after: 'v1' }),
+      at(2, { type: 'file_diff', path: 'a.ts', before: 'v1', after: 'v1' }),
+    )
+
+    expect(transcript.files).toEqual([])
+  })
 })
 
 describe('usage', () => {

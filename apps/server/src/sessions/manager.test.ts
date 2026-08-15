@@ -986,7 +986,7 @@ describe('pull requests', () => {
       defaultBranch: async () => 'main',
       createPullRequest: async (options: Parameters<GitHubClient['createPullRequest']>[0]) => {
         created.push(options)
-        return 'https://github.com/diego/dukebox/pull/1'
+        return `https://github.com/diego/dukebox/pull/${created.length}`
       },
       markReady: async () => {},
       mergePullRequest: async () => {},
@@ -1349,10 +1349,48 @@ describe('pull requests', () => {
     expect(result.state).toBe('merged')
     expect(merged).toHaveLength(1)
 
+    const [row] = await db
+      .select({ branch: sessions.branch })
+      .from(sessions)
+      .where(eq(sessions.id, session.id))
+    expect(row?.branch).toBe(`duke/${session.id.slice(0, 8)}-2`)
+
     await withGitHub.stopAll()
   })
 
-  it('does not open another pull request after this one is merged', async () => {
+  it('opens a new pull request after this one is merged and there is another change', async () => {
+    const { manager: withGitHub, created } = managerWithGitHub()
+    const session = await startOn(withGitHub)
+
+    const container = await sandbox.get(session.id)
+    await container?.exec(['sh', '-c', 'echo changed > README.md'], { cwd: '/workspace/repo' })
+    await withGitHub.openPullRequest(session.id)
+    expect(created).toHaveLength(1)
+    expect(created[0]?.head).toBe(`duke/${session.id.slice(0, 8)}`)
+
+    await db.update(sessions).set({ status: 'done' }).where(eq(sessions.id, session.id))
+    await withGitHub.mergePullRequest(session.id)
+
+    await container?.exec(['sh', '-c', 'echo more > EXTRA.md'], { cwd: '/workspace/repo' })
+    adapter.emit({ type: 'done', reason: 'completed' })
+    await waitForStatus(session.id, 'done')
+
+    expect(created).toHaveLength(2)
+    expect(created[1]?.head).toBe(`duke/${session.id.slice(0, 8)}-2`)
+    expect(created[1]?.base).toBe('main')
+
+    const [row] = await db
+      .select({ prUrl: sessions.prUrl, prState: sessions.prState, branch: sessions.branch })
+      .from(sessions)
+      .where(eq(sessions.id, session.id))
+    expect(row?.prUrl).toContain('/pull/2')
+    expect(row?.prState).toBe('open')
+    expect(row?.branch).toBe(`duke/${session.id.slice(0, 8)}-2`)
+
+    await withGitHub.stopAll()
+  })
+
+  it('does not open a new pull request after merge when nothing else changed', async () => {
     const { manager: withGitHub, created } = managerWithGitHub()
     const session = await startOn(withGitHub)
 
@@ -1364,12 +1402,11 @@ describe('pull requests', () => {
     await db.update(sessions).set({ status: 'done' }).where(eq(sessions.id, session.id))
     await withGitHub.mergePullRequest(session.id)
 
-    await container?.exec(['sh', '-c', 'echo more > EXTRA.md'], { cwd: '/workspace/repo' })
     adapter.emit({ type: 'done', reason: 'completed' })
     await waitForStatus(session.id, 'done')
 
     expect(created).toHaveLength(1)
-    await expect(withGitHub.openPullRequest(session.id)).rejects.toThrow(/already merged/)
+    await expect(withGitHub.openPullRequest(session.id)).rejects.toThrow(/nothing to open/)
 
     await withGitHub.stopAll()
   })
@@ -1392,16 +1429,19 @@ describe('pull requests', () => {
     await withGitHub.stopAll()
   })
 
-  it('does not treat a merged GitHub pull request as a destination', async () => {
+  it('opens a new pull request when GitHub already merged the session branch', async () => {
     const { manager: withGitHub, created } = managerWithGitHub({
-      findPullRequest: async () => ({
-        url: 'https://github.com/diego/dukebox/pull/7',
-        title: 'Already landed',
-        body: '',
-        isDraft: false,
-        state: 'merged' as const,
-        mergeable: 'MERGEABLE' as const,
-      }),
+      findPullRequest: async (_repo, head) => {
+        if (/-\d+$/.test(head)) return null
+        return {
+          url: 'https://github.com/diego/dukebox/pull/7',
+          title: 'Already landed',
+          body: '',
+          isDraft: false,
+          state: 'merged' as const,
+          mergeable: 'MERGEABLE' as const,
+        }
+      },
     })
 
     const session = await startOn(withGitHub)
@@ -1411,14 +1451,15 @@ describe('pull requests', () => {
     adapter.emit({ type: 'done', reason: 'completed' })
     await waitForStatus(session.id, 'done')
 
-    expect(created).toHaveLength(0)
+    expect(created).toHaveLength(1)
+    expect(created[0]?.head).toBe(`duke/${session.id.slice(0, 8)}-2`)
 
     const [row] = await db
-      .select({ prState: sessions.prState })
+      .select({ prState: sessions.prState, branch: sessions.branch })
       .from(sessions)
       .where(eq(sessions.id, session.id))
-    expect(row?.prState).toBe('merged')
-    await expect(withGitHub.openPullRequest(session.id)).rejects.toThrow(/already merged/)
+    expect(row?.prState).toBe('open')
+    expect(row?.branch).toBe(`duke/${session.id.slice(0, 8)}-2`)
 
     await withGitHub.stopAll()
   })

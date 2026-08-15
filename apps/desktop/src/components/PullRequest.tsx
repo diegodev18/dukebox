@@ -350,6 +350,19 @@ export function PullRequestPanel({
                 View on GitHub
               </button>
 
+              {pr.state === 'merged' && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void run('open', () => client.openPullRequest(session.id))}
+                  className="rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12.5px] font-medium hover:bg-muted disabled:opacity-50"
+                >
+                  {action.kind === 'working' && action.verb === 'open'
+                    ? 'Opening…'
+                    : 'Open new pull request'}
+                </button>
+              )}
+
               {pr.state === 'merged' && onContinue && (
                 <button
                   type="button"
@@ -364,8 +377,8 @@ export function PullRequestPanel({
 
             {pr.state === 'merged' && (
               <p className="mt-2 text-[12px] text-muted-foreground">
-                This pull request was merged. A message here stays on this branch. For new work,
-                start from {session.baseBranch}.
+                This pull request was merged. Keep working here and the next change will open a new
+                pull request from {session.baseBranch}.
               </p>
             )}
 

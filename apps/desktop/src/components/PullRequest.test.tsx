@@ -308,10 +308,46 @@ describe('PullRequestPanel', () => {
     expect(screen.queryByRole('button', { name: 'Merge' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Ready for review' })).not.toBeInTheDocument()
     expect(screen.getByText(/This pull request was merged/, { exact: false })).toBeInTheDocument()
-    expect(screen.getByText(/start from develop/, { exact: false })).toBeInTheDocument()
+    expect(
+      screen.getByText(/next change will open a new pull request from develop/, {
+        exact: false,
+      }),
+    ).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'New session from develop' }))
     expect(onContinue).toHaveBeenCalledOnce()
+  })
+
+  it('can open a new pull request after this one is merged', async () => {
+    const next = {
+      url: 'https://github.com/diego/dukebox/pull/2',
+      title: 'Follow-up',
+      isDraft: true,
+      state: 'open' as const,
+    }
+    const client = {
+      getPullRequest: vi
+        .fn()
+        .mockResolvedValueOnce({ ...openPr, state: 'merged' as const })
+        .mockResolvedValue(next),
+      openPullRequest: vi.fn().mockResolvedValue(next),
+    }
+    const onUpdated = vi.fn()
+
+    render(
+      <PullRequestPanel
+        client={client as never}
+        session={sessionWithPr({
+          pullRequest: { ...openPr, state: 'merged' },
+        })}
+        files={[]}
+        onUpdated={onUpdated}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open new pull request' }))
+    expect(client.openPullRequest).toHaveBeenCalledWith(session.id)
+    expect(onUpdated).toHaveBeenCalledWith({ pullRequestUrl: next.url, pullRequest: next })
   })
 
   it('keeps the pull request chrome still and scrolls only the diff', async () => {

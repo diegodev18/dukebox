@@ -696,8 +696,8 @@ function SessionColumn({
       {session.pullRequest?.state === 'merged' && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-surface px-4.5 py-2 text-[12.5px] text-muted-foreground">
           <p>
-            This pull request was merged. A message here stays on this branch. For new work, start
-            from {session.baseBranch}.
+            This pull request was merged. Keep working here and the next change will open a new pull
+            request from {session.baseBranch}.
           </p>
           <button
             type="button"
