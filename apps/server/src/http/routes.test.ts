@@ -1433,9 +1433,7 @@ describe('OpenCode providers', () => {
     const deepseek = body.providers.find((provider) => provider.kind === 'deepseek')
     expect(deepseek?.models.map((model) => model.id)).toEqual([
       'deepseek-v4-flash',
-      'deepseek-reasoner',
       'deepseek-v4-pro',
-      'deepseek-chat',
     ])
   })
 
@@ -1465,9 +1463,9 @@ describe('OpenCode providers', () => {
         id: 'deepseek',
         models: [
           { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
-          { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
           { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
           { id: 'deepseek-chat', label: 'DeepSeek Chat' },
+          { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
         ],
       }),
     ])

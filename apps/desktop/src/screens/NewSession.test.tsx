@@ -466,11 +466,11 @@ describe('NewSession permission mode', () => {
     await userEvent.click(within(agents).getByRole('option', { name: /Grok Build/ }))
 
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Model' })).toHaveTextContent('Grok Build'),
+      expect(screen.getByRole('button', { name: 'Model' })).toHaveTextContent('Grok 4.6'),
     )
 
     const models = await openPicker('Model')
-    expect(within(models).getByRole('option', { name: /Grok 4.6/ })).toBeInTheDocument()
+    expect(within(models).getByRole('option', { name: /Grok Build 0.1/ })).toBeInTheDocument()
 
     await userEvent.type(screen.getByLabelText(/what should it do/i), 'do a thing')
     await userEvent.click(screen.getByRole('button', { name: /start session/i }))
@@ -479,7 +479,7 @@ describe('NewSession permission mode', () => {
       expect(client.startSession).toHaveBeenCalledWith(
         expect.objectContaining({
           agentId: 'grok-build',
-          model: 'grok-build',
+          model: 'grok-4.6',
           permissionMode: 'bypass',
         }),
       ),

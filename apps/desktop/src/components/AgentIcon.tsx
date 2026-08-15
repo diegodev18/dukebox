@@ -32,8 +32,8 @@ export type AvailableAgentId = (typeof AVAILABLE_AGENTS)[number]['id']
 export const AVAILABLE_MODELS = [
   { id: 'claude-opus-5', label: 'Opus 5' },
   { id: 'claude-sonnet-5', label: 'Sonnet 5' },
-  { id: 'claude-haiku-5', label: 'Haiku 5' },
-  { id: 'claude-fable-2', label: 'Fable 2' },
+  { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
+  { id: 'claude-fable-5', label: 'Fable 5' },
 ] as const
 
 export type AvailableModelId = (typeof AVAILABLE_MODELS)[number]['id']
@@ -47,13 +47,13 @@ export const DEFAULT_MODEL: AvailableModelId = 'claude-sonnet-5'
  * the model the caller picked.
  */
 export const GROK_BUILD_MODELS = [
-  { id: 'grok-build', label: 'Grok Build' },
   { id: 'grok-4.6', label: 'Grok 4.6' },
+  { id: 'grok-build-0.1', label: 'Grok Build 0.1' },
 ] as const
 
 export type GrokBuildModelId = (typeof GROK_BUILD_MODELS)[number]['id']
 
-export const DEFAULT_GROK_BUILD_MODEL: GrokBuildModelId = 'grok-build'
+export const DEFAULT_GROK_BUILD_MODEL: GrokBuildModelId = 'grok-4.6'
 
 export const AVAILABLE_PERMISSION_MODES = [
   { id: 'plan', label: 'Plan' },

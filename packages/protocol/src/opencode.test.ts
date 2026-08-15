@@ -119,9 +119,30 @@ describe('OPENCODE_CATALOG', () => {
   it('offers the DeepSeek models OpenCode addresses as deepseek/<id>', () => {
     expect(catalogEntry('deepseek')?.models).toEqual([
       { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
-      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
       { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
-      { id: 'deepseek-chat', label: 'DeepSeek Chat' },
+    ])
+  })
+
+  it('lists current official slugs for each catalog provider', () => {
+    expect(catalogEntry('anthropic')?.models.map((model) => model.id)).toEqual([
+      'claude-sonnet-5',
+      'claude-opus-5',
+      'claude-haiku-4-5',
+      'claude-fable-5',
+    ])
+    expect(catalogEntry('openai')?.models.map((model) => model.id)).toEqual([
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
+    ])
+    expect(catalogEntry('google')?.models.map((model) => model.id)).toEqual([
+      'gemini-3.1-pro-preview',
+      'gemini-3.7-flash',
+    ])
+    expect(catalogEntry('xai')?.models.map((model) => model.id)).toEqual([
+      'grok-4.6',
+      'grok-4.5',
+      'grok-build-0.1',
     ])
   })
 })
