@@ -19,6 +19,13 @@
       // against a different database is not served from cache.
       "env": ["DUKEBOX_DATABASE_URL", "DUKEBOX_REDIS_URL"]
     },
+    "test:coverage": {
+      // Same contract as `test` — it is the same suite, instrumented — plus
+      // the report directory as an output so a cached run still restores it.
+      "dependsOn": ["^build"],
+      "env": ["DUKEBOX_DATABASE_URL", "DUKEBOX_REDIS_URL"],
+      "outputs": ["coverage/**"]
+    },
     "dev": {
       "cache": false,
       "persistent": true
