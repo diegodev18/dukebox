@@ -88,7 +88,9 @@ and uploads them to a GitHub Release — which is also the feed the app's update
 check reads. To publish:
 
 1. Bump the version to match in `apps/desktop/src-tauri/tauri.conf.json`,
-   `apps/desktop/src-tauri/Cargo.toml`, and `apps/desktop/package.json`.
+   `apps/desktop/src-tauri/Cargo.toml`, and `apps/desktop/package.json`. CI
+   fails if the three disagree; check them yourself with
+   `./scripts/check-desktop-version.sh`.
 2. Commit, then tag and push:
    ```bash
    git tag desktop-v0.1.0
