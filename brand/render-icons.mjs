@@ -64,7 +64,7 @@ for (let y = 0; y < SIZE; y++) {
   }
 }
 
-const lift = -18
+const lift = -4
 for (let y = 0; y < inner; y++) {
   for (let x = 0; x < inner; x++) {
     const si = (y * inner + x) << 2
