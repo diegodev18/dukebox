@@ -1,6 +1,7 @@
 import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react'
 import { cn } from '@/lib/utils'
 import {
+  AlertCircleIcon,
   ArrowDown01Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
@@ -80,6 +81,8 @@ export const DownloadIcon = icon(Download01Icon)
 export const SendIcon = icon(ArrowUp01Icon)
 /** A finished session the person has not opened yet. */
 export const BookOpenIcon = icon(BookOpen01Icon)
+/** A session that failed, shown in the sidebar nav. */
+export const AlertIcon = icon(AlertCircleIcon)
 /** Copy a transcript message to the clipboard. */
 export const CopyIcon = icon(Copy01Icon)
 /** Load a user prompt into the composer to edit and resend. */

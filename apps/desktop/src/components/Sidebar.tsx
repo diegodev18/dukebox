@@ -22,6 +22,7 @@ import { agentLabel } from '@/components/AgentIcon'
 import { DukeMark, DukeWordmark } from '@/components/Duke'
 import { PullRequestStatusIcon } from '@/components/PullRequestStatusIcon'
 import {
+  AlertIcon,
   BookOpenIcon,
   BranchIcon,
   CloseIcon,
@@ -1008,6 +1009,10 @@ function SessionNavIndicator({
       ) : kind === 'unread' ? (
         <span role="img" aria-label="Unread">
           <BookOpenIcon size={16} />
+        </span>
+      ) : kind === 'failed' ? (
+        <span role="img" aria-label={statusLabel(status)} className="text-destructive">
+          <AlertIcon size={16} />
         </span>
       ) : null}
     </span>

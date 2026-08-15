@@ -19,13 +19,16 @@ describe('sessionNavIndicator', () => {
 
   it('marks a finished session unread until this device has opened it', () => {
     expect(sessionNavIndicator('done', 4, undefined)).toBe('unread')
-    expect(sessionNavIndicator('failed', 1, undefined)).toBe('unread')
     expect(sessionNavIndicator('stopped', 8, 7)).toBe('unread')
+  })
+
+  it('keeps an error mark on a failed session regardless of read state', () => {
+    expect(sessionNavIndicator('failed', 1, undefined)).toBe('failed')
+    expect(sessionNavIndicator('failed', 2, 9)).toBe('failed')
   })
 
   it('hides the mark once the current seq has been viewed', () => {
     expect(sessionNavIndicator('done', 4, 4)).toBe('none')
-    expect(sessionNavIndicator('failed', 2, 9)).toBe('none')
     expect(sessionNavIndicator('stopped', 0, 0)).toBe('none')
   })
 })
