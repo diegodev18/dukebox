@@ -65,12 +65,47 @@ jobs:
             --draft
 
           # The desktop app polls releases/latest/download/latest.json, which
-          # follows whichever release was published last. Publishing a server
-          # release would otherwise 404 that feed until the next desktop
-          # release, so carry the newest desktop manifest forward.
-          feed_tag="$(curl -fsSL "https://api.github.com/repos/$GITHUB_REPOSITORY/releases?per_page=30" \
-            | jq -r '[.[] | select(.draft == false and any(.assets[]; .name == "latest.json"))][0].tag_name')"
-          if [ -n "$feed_tag" ]; then
-            gh release download "$feed_tag" --pattern latest.json --repo "$GITHUB_REPOSITORY"
-            gh release upload "server-v$version" latest.json --repo "$GITHUB_REPOSITORY"
+          # follows whichever release was published last. A server release is
+          # published after the desktop one, so it becomes that `latest` and
+          # must carry the desktop update manifest forward or the feed 404s.
+          #
+          # Which manifest gets carried is the whole game: shipping an older
+          # one here tells every installed app to "update" backwards. Prefer
+          # the desktop release cut from this same version — it is the one
+          # this server release ships alongside, and it is still a draft while
+          # this job runs, so a published-only lookup would miss it and reach
+          # for a stale manifest instead.
+          feed_tag="desktop-v$version"
+          if ! gh release view "$feed_tag" --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq 'any(.assets[]; .name == "latest.json")' 2>/dev/null | grep -qx true; then
+            # No desktop release at this version: this is a server-only
+            # release, so hold the feed steady by repeating whatever manifest
+            # is live right now. Newest published desktop release wins.
+            feed_tag="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              --jq '[.[] | select(.draft == false and (.tag_name | startswith("desktop-v"))
+                     and any(.assets[]; .name == "latest.json"))][0].tag_name')"
           fi
+
+          [ -n "$feed_tag" ] && [ "$feed_tag" != "null" ] || {
+            echo "::error::No desktop release carries a latest.json. Publishing this" \
+                 "server release would 404 the desktop update feed." >&2
+            exit 1
+          }
+
+          gh release download "$feed_tag" --pattern latest.json --repo "$GITHUB_REPOSITORY"
+
+          # Last guard: never move the feed backwards. Compare against the
+          # manifest the apps are being served today; a lower version here
+          # means the lookup above picked up something stale.
+          carried="$(jq -r '.version' latest.json)"
+          live="$(curl -fsSL "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/latest.json" \
+            | jq -r '.version' || true)"
+          if [ -n "$live" ] && [ "$live" != "null" ] \
+            && [ "$(printf '%s\n%s\n' "$live" "$carried" | sort -V | tail -1)" != "$carried" ]; then
+            echo "::error::Refusing to move the desktop update feed from $live back to" \
+                 "$carried (source: $feed_tag)." >&2
+            exit 1
+          fi
+
+          echo "Carrying desktop update manifest $carried forward from $feed_tag"
+          gh release upload "server-v$version" latest.json --repo "$GITHUB_REPOSITORY"
