@@ -1,12 +1,13 @@
 import { cn } from '@/lib/utils'
 import type { DukeMood } from '@/lib/orbState'
+import { DukeMarkLiveArt } from '@/components/DukeMarkLiveArt'
 
 /**
  * Duke, the Schnauzer the product is named after.
  *
  * One drawing everywhere: the hero for pairing and empty screens, a square
- * mark for chrome and the wordmark, and the same mark as a live indicator
- * in the session list and the transcript.
+ * mark for chrome and the wordmark, and that same mark layered as a live
+ * indicator in the session list and the transcript.
  */
 
 const HERO_SRC = '/duke-hero.svg'
@@ -86,8 +87,8 @@ export function DukeWordmark({ className }: { className?: string }) {
 }
 
 /**
- * Duke as a live indicator — the same mark as the wordmark, with a little
- * motion so it still reads as the slot that used to hold the thinking orb.
+ * Duke as a live indicator — the same mark as the wordmark, layered so the
+ * ears, brows, and eyelids can move on their own.
  */
 export function DukeLive({
   size = 20,
@@ -105,17 +106,19 @@ export function DukeLive({
   const name = decorative ? undefined : (label ?? 'Duke is working')
 
   return (
-    <img
-      src={MARK_SRC}
-      alt={name ?? ''}
+    <svg
+      viewBox="275 268 707 707"
       width={size}
       height={size}
-      draggable={false}
-      aria-hidden={decorative || undefined}
+      role={decorative ? undefined : 'img'}
       aria-label={name}
+      aria-hidden={decorative || undefined}
       data-mood={mood}
+      overflow="visible"
       className={cn('duke-live pointer-events-none select-none', className)}
-    />
+    >
+      <DukeMarkLiveArt />
+    </svg>
   )
 }
 

@@ -33,7 +33,7 @@ describe('Duke', () => {
     const { rerender } = render(<DukeLive mood="searching" label="Grep running" />)
     const live = screen.getByRole('img', { name: 'Grep running' })
     expect(live).toHaveAttribute('data-mood', 'searching')
-    expect(live).toHaveAttribute('src', '/duke-mark.svg')
+    expect(live).toHaveAttribute('viewBox', '275 268 707 707')
 
     rerender(<DukeLive decorative />)
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
@@ -47,7 +47,7 @@ describe('Duke', () => {
       </>,
     )
     expect(screen.getByRole('img', { name: 'Mark' })).toHaveAttribute('src', '/duke-mark.svg')
-    expect(screen.getByRole('img', { name: 'Live' })).toHaveAttribute('src', '/duke-mark.svg')
+    expect(screen.getByRole('img', { name: 'Live' })).toHaveAttribute('viewBox', '275 268 707 707')
   })
 
   it('maps session status onto Duke presence', () => {
