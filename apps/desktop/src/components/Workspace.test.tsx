@@ -52,48 +52,47 @@ const terminalHandlers = {
   onDrainTerminal: vi.fn(),
 }
 
-async function openTerminalPanel() {
-  render(<Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />)
-
-  await userEvent.click(screen.getByRole('tab', { name: 'Terminal' }))
-}
-
 describe('Workspace terminal tabs', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('turns the tab name into an input when clicked', async () => {
-    await openTerminalPanel()
+  it('gives each open shell its own tab', () => {
+    render(
+      <Workspace
+        session={session}
+        files={[]}
+        terminals={{
+          tabs: [
+            { terminalId: 't1', title: '047', exited: false, pending: [] },
+            { terminalId: 't2', title: 'build', exited: false, pending: [] },
+          ],
+        }}
+        {...terminalHandlers}
+      />,
+    )
 
-    await userEvent.click(screen.getByRole('button', { name: '047' }))
-
-    expect(screen.getByRole('textbox', { name: 'Terminal name' })).toHaveValue('047')
+    expect(screen.getByRole('tab', { name: '047' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'build' })).toBeInTheDocument()
   })
 
-  it('renames the tab when the input is submitted', async () => {
-    await openTerminalPanel()
+  it('closes the shell when its tab is closed', async () => {
+    render(<Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />)
 
-    await userEvent.click(screen.getByRole('button', { name: '047' }))
-    const input = screen.getByRole('textbox', { name: 'Terminal name' })
-    await userEvent.clear(input)
-    await userEvent.type(input, 'build')
-    await userEvent.keyboard('{Enter}')
+    await userEvent.click(screen.getByRole('button', { name: 'Close 047' }))
 
-    expect(terminalHandlers.onRenameTerminal).toHaveBeenCalledWith('t1', 'build')
+    expect(terminalHandlers.onCloseTerminal).toHaveBeenCalledWith('t1')
   })
 
-  it('keeps the original name when editing is cancelled', async () => {
-    await openTerminalPanel()
+  it('opens a new shell from the + menu', async () => {
+    render(
+      <Workspace session={session} files={[]} terminals={{ tabs: [] }} {...terminalHandlers} />,
+    )
 
-    await userEvent.click(screen.getByRole('button', { name: '047' }))
-    const input = screen.getByRole('textbox', { name: 'Terminal name' })
-    await userEvent.clear(input)
-    await userEvent.type(input, 'build')
-    await userEvent.keyboard('{Escape}')
+    await userEvent.click(screen.getByRole('button', { name: 'Add panel' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Terminal' }))
 
-    expect(terminalHandlers.onRenameTerminal).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: '047' })).toBeInTheDocument()
+    expect(terminalHandlers.onOpenTerminal).toHaveBeenCalledWith(80, 24)
   })
 
   it('does not open a terminal while disconnected', async () => {
@@ -107,10 +106,97 @@ describe('Workspace terminal tabs', () => {
       />,
     )
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Terminal' }))
-    expect(screen.getByRole('button', { name: 'New terminal' })).toBeDisabled()
-    await userEvent.click(screen.getByRole('button', { name: 'New terminal' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add panel' }))
+    const item = screen.getByRole('menuitem', { name: 'Terminal' })
+    expect(item).toBeDisabled()
+    await userEvent.click(item)
     expect(terminalHandlers.onOpenTerminal).not.toHaveBeenCalled()
+  })
+
+  it('turns the tab name into an input when double-clicked', async () => {
+    render(<Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />)
+
+    await userEvent.dblClick(screen.getByRole('button', { name: '047' }))
+
+    expect(screen.getByRole('textbox', { name: 'Terminal name' })).toHaveValue('047')
+  })
+
+  it('renames the tab when the input is submitted', async () => {
+    render(<Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />)
+
+    await userEvent.dblClick(screen.getByRole('button', { name: '047' }))
+    const input = screen.getByRole('textbox', { name: 'Terminal name' })
+    await userEvent.clear(input)
+    await userEvent.type(input, 'build')
+    await userEvent.keyboard('{Enter}')
+
+    expect(terminalHandlers.onRenameTerminal).toHaveBeenCalledWith('t1', 'build')
+  })
+
+  it('keeps the original name when editing is cancelled', async () => {
+    render(<Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />)
+
+    await userEvent.dblClick(screen.getByRole('button', { name: '047' }))
+    const input = screen.getByRole('textbox', { name: 'Terminal name' })
+    await userEvent.clear(input)
+    await userEvent.type(input, 'build')
+    await userEvent.keyboard('{Escape}')
+
+    expect(terminalHandlers.onRenameTerminal).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: '047' })).toBeInTheDocument()
+  })
+})
+
+describe('Workspace tabs', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('closes a tab and keeps the rest', async () => {
+    render(<Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close Files' }))
+
+    expect(screen.queryByRole('tab', { name: 'Files' })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Changes' })).toBeInTheDocument()
+  })
+
+  it('switches to the tab beside a closed one', async () => {
+    render(<Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close Changes' }))
+
+    expect(screen.getByRole('tab', { name: 'Files', selected: true })).toBeInTheDocument()
+  })
+
+  it('reopens a closed tab from the + menu', async () => {
+    render(<Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close Files' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add panel' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Files' }))
+
+    expect(screen.getByRole('tab', { name: 'Files', selected: true })).toBeInTheDocument()
+  })
+
+  it('never stacks a singleton tab', async () => {
+    render(<Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add panel' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Changes' }))
+
+    expect(screen.getAllByRole('tab', { name: 'Changes' })).toHaveLength(1)
+  })
+
+  it('shows an empty panel when every tab is closed', async () => {
+    render(
+      <Workspace session={session} files={[]} terminals={{ tabs: [] }} {...terminalHandlers} />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close Files' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Close Changes' }))
+
+    expect(screen.getByText('No panel is open. Use + to open one.')).toBeInTheDocument()
   })
 })
 
@@ -127,7 +213,7 @@ const pullRequestTab = {
 }
 
 describe('Workspace pull request tab', () => {
-  it('names the tab Pull request when none is open', () => {
+  it('names the tab Pull request when none is open', async () => {
     render(
       <Workspace
         session={{ ...session, changedFileCount: 1, pullRequest: null }}
@@ -137,6 +223,9 @@ describe('Workspace pull request tab', () => {
         {...terminalHandlers}
       />,
     )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add panel' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Pull request' }))
 
     expect(screen.getByRole('tab', { name: 'Pull request' })).toBeInTheDocument()
   })
