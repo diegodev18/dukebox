@@ -232,11 +232,4 @@ describe('Session', () => {
     expect(await screen.findByText('No session selected')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Duke' })).toBeInTheDocument()
   })
-
-  it('shows Duke in the session header', async () => {
-    renderSession()
-
-    await screen.findByRole('heading', { name: 'Fix the demux bug' })
-    expect(screen.getByRole('img', { name: 'Duke' })).toBeInTheDocument()
-  })
 })

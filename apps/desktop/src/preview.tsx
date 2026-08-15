@@ -7,7 +7,7 @@ import {
 import { StrictMode, useState, type CSSProperties } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AgentIcon } from '@/components/AgentIcon'
-import { DukeMark, DukeWordmark } from '@/components/Duke'
+import { DukeWordmark } from '@/components/Duke'
 import { Composer } from '@/components/Composer'
 import { ResizeHandle } from '@/components/ResizeHandle'
 import { SearchPalette } from '@/components/SearchPalette'
@@ -703,7 +703,6 @@ function Preview() {
         <>
           <div className="flex min-h-0 min-w-0 flex-col">
             <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
-              <DukeMark size={22} presence={view === 'coding' ? 'working' : 'idle'} />
               <h1 className="truncate font-medium">{activeSession.title}</h1>
               <span className="flex-1" />
 

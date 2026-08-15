@@ -26,7 +26,7 @@ import { useColumnWidths } from '@/lib/useColumnWidths'
 import { useLiveSession } from '@/lib/liveSession'
 import type { UseUpdate } from '@/lib/useUpdate'
 import { AgentIcon, hasAgentIcon } from '@/components/AgentIcon'
-import { DukeHero, DukeMark, presenceForStatus } from '@/components/Duke'
+import { DukeHero } from '@/components/Duke'
 import { Composer, type ComposerHandle } from '@/components/Composer'
 import { AttachIcon } from '@/components/icons'
 import { useFileDrop } from '@/lib/useFileDrop'
@@ -660,7 +660,6 @@ function SessionColumn({
       onDrop={onDrop}
     >
       <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
-        <DukeMark size={22} presence={presenceForStatus(session.status)} />
         <h1 className="truncate font-medium">{session.title}</h1>
         <SessionInfo session={session} connection={connection} />
         <span className="flex-1" />
