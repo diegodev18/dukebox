@@ -138,26 +138,27 @@ export const OPENCODE_CATALOG: readonly {
     kind: 'anthropic',
     name: 'Anthropic',
     models: [
-      { id: 'claude-sonnet-4-5', label: 'Sonnet 4.5' },
-      { id: 'claude-opus-4-6', label: 'Opus 4.6' },
+      { id: 'claude-sonnet-5', label: 'Sonnet 5' },
+      { id: 'claude-opus-5', label: 'Opus 5' },
       { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
+      { id: 'claude-fable-5', label: 'Fable 5' },
     ],
   },
   {
     kind: 'openai',
     name: 'OpenAI',
     models: [
-      { id: 'gpt-5.2', label: 'GPT-5.2' },
-      { id: 'gpt-4.1', label: 'GPT-4.1' },
-      { id: 'o3', label: 'o3' },
+      { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+      { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
+      { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' },
     ],
   },
   {
     kind: 'google',
     name: 'Google',
     models: [
-      { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+      { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro' },
+      { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash' },
     ],
   },
   {
@@ -172,9 +173,10 @@ export const OPENCODE_CATALOG: readonly {
     kind: 'openrouter',
     name: 'OpenRouter',
     models: [
-      { id: 'anthropic/claude-sonnet-4.5', label: 'Claude Sonnet 4.5' },
-      { id: 'openai/gpt-5.2', label: 'GPT-5.2' },
-      { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+      { id: 'anthropic/claude-sonnet-5', label: 'Claude Sonnet 5' },
+      { id: 'openai/gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+      { id: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro' },
+      { id: 'x-ai/grok-4.6', label: 'Grok 4.6' },
     ],
   },
   {
@@ -182,9 +184,7 @@ export const OPENCODE_CATALOG: readonly {
     name: 'DeepSeek',
     models: [
       { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
-      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
       { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
-      { id: 'deepseek-chat', label: 'DeepSeek Chat' },
     ],
   },
   {
@@ -192,6 +192,7 @@ export const OPENCODE_CATALOG: readonly {
     name: 'Mistral',
     models: [
       { id: 'mistral-large-latest', label: 'Mistral Large' },
+      { id: 'devstral-medium-latest', label: 'Devstral' },
       { id: 'codestral-latest', label: 'Codestral' },
     ],
   },
@@ -199,8 +200,9 @@ export const OPENCODE_CATALOG: readonly {
     kind: 'xai',
     name: 'xAI',
     models: [
-      { id: 'grok-3', label: 'Grok 3' },
-      { id: 'grok-3-mini', label: 'Grok 3 Mini' },
+      { id: 'grok-4.6', label: 'Grok 4.6' },
+      { id: 'grok-4.5', label: 'Grok 4.5' },
+      { id: 'grok-build-0.1', label: 'Grok Build 0.1' },
     ],
   },
 ]
