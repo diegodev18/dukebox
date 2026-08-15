@@ -31,13 +31,23 @@ describe('Duke', () => {
 
   it('names a live mood and hides a decorative face', () => {
     const { rerender } = render(<DukeLive mood="searching" label="Grep running" />)
-    expect(screen.getByRole('img', { name: 'Grep running' })).toHaveAttribute(
-      'data-mood',
-      'searching',
-    )
+    const live = screen.getByRole('img', { name: 'Grep running' })
+    expect(live).toHaveAttribute('data-mood', 'searching')
+    expect(live).toHaveAttribute('src', '/duke-mark.svg')
 
     rerender(<DukeLive decorative />)
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('uses the same drawing as the chrome mark', () => {
+    render(
+      <>
+        <DukeMark label="Mark" />
+        <DukeLive label="Live" />
+      </>,
+    )
+    expect(screen.getByRole('img', { name: 'Mark' })).toHaveAttribute('src', '/duke-mark.svg')
+    expect(screen.getByRole('img', { name: 'Live' })).toHaveAttribute('src', '/duke-mark.svg')
   })
 
   it('maps session status onto Duke presence', () => {
