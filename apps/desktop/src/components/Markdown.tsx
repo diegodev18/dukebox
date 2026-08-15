@@ -3,7 +3,8 @@ import type { Components } from 'react-markdown'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { MouseEvent, ReactNode } from 'react'
-import { memo } from 'react'
+import { memo, useState } from 'react'
+import { ImageLightbox } from '@/components/ImageLightbox'
 
 /**
  * Assistant prose, rendered as Markdown.
@@ -22,6 +23,7 @@ const components: Components = {
   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
   em: ({ children }) => <em>{children}</em>,
   a: ({ href, children }) => <MarkdownLink href={href}>{children}</MarkdownLink>,
+  img: ({ src, alt }) => <MarkdownImage src={src} alt={alt} />,
   ul: ({ children }) => <ul className="list-disc space-y-1 pl-5">{children}</ul>,
   ol: ({ children }) => <ol className="list-decimal space-y-1 pl-5">{children}</ol>,
   li: ({ children }) => <li className="whitespace-pre-wrap">{children}</li>,
@@ -77,6 +79,30 @@ export const Markdown = memo(function Markdown({ children, className }: Props) {
     </div>
   )
 })
+
+function MarkdownImage({ src, alt }: { src?: string | undefined; alt?: string | undefined }) {
+  const [open, setOpen] = useState(false)
+  if (!src) return null
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={alt ? `View ${alt}` : 'View image'}
+        title="View image"
+        className="block max-w-full cursor-zoom-in"
+      >
+        <img
+          src={src}
+          alt={alt}
+          className="max-h-96 max-w-full rounded-[var(--radius)] border border-border object-contain"
+        />
+      </button>
+      {open && <ImageLightbox src={src} alt={alt} onDismiss={() => setOpen(false)} />}
+    </>
+  )
+}
 
 function Heading({ level, children }: { level: 1 | 2 | 3 | 4 | 5 | 6; children: ReactNode }) {
   const Tag = `h${level}` as const
