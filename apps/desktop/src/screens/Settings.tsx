@@ -1037,8 +1037,16 @@ function DevicesSection({ client, thisDeviceId }: { client: DukeboxClient; thisD
 
   const copyInvite = async () => {
     if (!inviteUrl) return
-    await navigator.clipboard.writeText(inviteUrl).catch(() => undefined)
-    setMessage({ tone: 'ok', text: 'Invite link copied.' })
+    try {
+      await navigator.clipboard.writeText(inviteUrl)
+      setMessage({ tone: 'ok', text: 'Invite link copied.' })
+    } catch {
+      // A denied clipboard is not a successful copy — leave the URL selectable.
+      setMessage({
+        tone: 'error',
+        text: 'Couldn’t copy the invite link. Select it and copy.',
+      })
+    }
   }
 
   const dropInvite = async (id: string) => {
@@ -1164,7 +1172,9 @@ function DevicesSection({ client, thisDeviceId }: { client: DukeboxClient; thisD
           <p className="text-[12.5px] text-muted-foreground">
             This link expires in 15 minutes and creates a member device.
           </p>
-          <p className="mt-2 break-all font-mono text-[11.5px]">{inviteUrl}</p>
+          <p data-selectable className="mt-2 break-all font-mono text-[11.5px]">
+            {inviteUrl}
+          </p>
           <button
             type="button"
             onClick={() => void copyInvite()}

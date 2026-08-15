@@ -553,4 +553,23 @@ describe('Settings', () => {
     await waitFor(() => expect(client.createInvite).toHaveBeenCalled())
     expect(screen.getByText(/dukebox:\/\/pair/)).toBeInTheDocument()
   })
+
+  it('tells the truth when copying an invite link fails', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'))
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    const client = clientMock()
+    renderSettings({ client, category: 'devices' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Invite a device…' }))
+    const url = await screen.findByText(/dukebox:\/\/pair/)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Copy link' }))
+
+    expect(
+      await screen.findByText('Couldn’t copy the invite link. Select it and copy.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Invite link copied.')).not.toBeInTheDocument()
+    expect(url).toBeInTheDocument()
+    expect(url).toHaveAttribute('data-selectable')
+  })
 })
