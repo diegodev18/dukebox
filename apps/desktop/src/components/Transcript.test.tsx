@@ -4,11 +4,6 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { Transcript } from '@/components/Transcript'
 
-vi.mock('thinking-orbs', () => ({
-  ThinkingOrb: ({ 'aria-label': label }: { 'aria-label'?: string }) =>
-    label ? <span aria-label={label} /> : null,
-}))
-
 vi.mock('@tauri-apps/plugin-opener', () => ({
   openUrl: vi.fn(),
 }))

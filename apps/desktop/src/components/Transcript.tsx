@@ -7,9 +7,9 @@ import type {
 } from '@dukebox/protocol'
 import { EXIT_PLAN_MODE_ACTION, isTerminal, planFromDetail } from '@dukebox/protocol'
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ThinkingOrb } from 'thinking-orbs'
 import type { StreamStatus } from '@/lib/stream'
 import { activityBlock, mapOrbState, orbStateForTool, toolCategory } from '@/lib/orbState'
+import { DukeLive } from '@/components/Duke'
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -516,12 +516,11 @@ function ToolGroup({ entries, settled = false }: { entries: RunEntry[]; settled?
         )}
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {live && running && (
-          <ThinkingOrb
-            state={orbStateForTool(running.name)}
+          <DukeLive
+            mood={orbStateForTool(running.name)}
             size={20}
-            theme="auto"
             className="flex-none"
-            aria-label={`${running.name} running`}
+            label={`${running.name} running`}
           />
         )}
         {failed && <span className="flex-none text-[12px] text-destructive">failed</span>}
@@ -577,12 +576,11 @@ function Tool({ block, settled }: { block: ToolBlock; settled?: boolean }) {
         )}
 
         {running && (
-          <ThinkingOrb
-            state={orbStateForTool(block.name)}
+          <DukeLive
+            mood={orbStateForTool(block.name)}
             size={20}
-            theme="auto"
             className="flex-none"
-            aria-label={`${block.name} running`}
+            label={`${block.name} running`}
           />
         )}
         {failed && <span className="flex-none text-[12px] text-destructive">failed</span>}
@@ -720,7 +718,7 @@ function Working({ blocks }: { blocks: Block[] }) {
 
   return (
     <div className="flex items-center" aria-label="Working" role="status">
-      <ThinkingOrb state={state} size={20} theme="auto" />
+      <DukeLive mood={state} size={28} decorative />
     </div>
   )
 }

@@ -181,3 +181,279 @@
   width: clamp(min(100%, 620px), 74%, 860px);
   margin-inline: auto;
 }
+
+/* DukeLive — layered face that replaced the thinking orb. Origins are in
+   viewBox units so the ears pivot from where they meet the head. */
+.duke-live-head,
+.duke-live-ear-l,
+.duke-live-ear-r,
+.duke-live-brow-l,
+.duke-live-brow-r,
+.duke-live-eyes {
+  transform-box: view-box;
+}
+
+.duke-live-head {
+  transform-origin: 32px 40px;
+  animation: duke-live-bob 3.2s ease-in-out infinite;
+}
+
+.duke-live-ear-l {
+  transform-origin: 22px 20px;
+  animation: duke-live-ear-l 3.8s ease-in-out infinite;
+}
+
+.duke-live-ear-r {
+  transform-origin: 42px 20px;
+  animation: duke-live-ear-r 3.4s ease-in-out 0.35s infinite;
+}
+
+.duke-live-brow-l {
+  transform-origin: 23px 27px;
+  animation: duke-live-brow-l 4.6s ease-in-out infinite;
+}
+
+.duke-live-brow-r {
+  transform-origin: 41px 27px;
+  animation: duke-live-brow-r 4.6s ease-in-out 0.12s infinite;
+}
+
+.duke-live-eyes {
+  transform-origin: 32px 34px;
+  animation: duke-live-look 6s ease-in-out infinite;
+}
+
+.duke-live-eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: duke-live-blink 4.8s ease-in-out infinite;
+}
+
+.duke-live[data-mood='listening'] .duke-live-ear-l {
+  animation-name: duke-live-ear-perk-l;
+  animation-duration: 4.4s;
+}
+
+.duke-live[data-mood='listening'] .duke-live-ear-r {
+  animation-name: duke-live-ear-perk-r;
+  animation-duration: 4.4s;
+}
+
+.duke-live[data-mood='listening'] .duke-live-head {
+  animation-name: duke-live-tilt;
+  animation-duration: 4s;
+}
+
+.duke-live[data-mood='listening'] .duke-live-eyes,
+.duke-live[data-mood='composing'] .duke-live-eyes {
+  animation-name: none;
+}
+
+.duke-live[data-mood='searching'] .duke-live-eyes {
+  animation-duration: 3.4s;
+}
+
+.duke-live[data-mood='searching'] .duke-live-ear-l,
+.duke-live[data-mood='searching'] .duke-live-ear-r {
+  animation-duration: 2.6s;
+}
+
+.duke-live[data-mood='solving'] .duke-live-brow-l {
+  animation-name: duke-live-brow-furrow-l;
+}
+
+.duke-live[data-mood='solving'] .duke-live-brow-r {
+  animation-name: duke-live-brow-furrow-r;
+}
+
+.duke-live[data-mood='connecting'] .duke-live-head {
+  animation-name: duke-live-tilt;
+  animation-duration: 2.4s;
+}
+
+.duke-live[data-mood='shaping'] .duke-live-brow-l,
+.duke-live[data-mood='shaping'] .duke-live-brow-r {
+  animation-duration: 3.2s;
+}
+
+.duke-live[data-mood='weaving'] .duke-live-ear-l,
+.duke-live[data-mood='weaving'] .duke-live-ear-r {
+  animation-duration: 2.2s;
+}
+
+.duke-live[data-mood='composing'] .duke-live-head {
+  animation-duration: 4.4s;
+}
+
+@keyframes duke-live-blink {
+  0%,
+  86%,
+  100% {
+    transform: scaleY(1);
+  }
+  88% {
+    transform: scaleY(0.08);
+  }
+  90% {
+    transform: scaleY(1);
+  }
+  92%,
+  94% {
+    transform: scaleY(0.08);
+  }
+}
+
+@keyframes duke-live-ear-l {
+  0%,
+  62%,
+  100% {
+    transform: rotate(0deg);
+  }
+  68% {
+    transform: rotate(-14deg);
+  }
+  74% {
+    transform: rotate(5deg);
+  }
+  80% {
+    transform: rotate(-6deg);
+  }
+}
+
+@keyframes duke-live-ear-r {
+  0%,
+  48%,
+  100% {
+    transform: rotate(0deg);
+  }
+  54% {
+    transform: rotate(12deg);
+  }
+  60% {
+    transform: rotate(-4deg);
+  }
+  66% {
+    transform: rotate(6deg);
+  }
+}
+
+@keyframes duke-live-ear-perk-l {
+  0%,
+  100% {
+    transform: rotate(16deg);
+  }
+  40% {
+    transform: rotate(10deg);
+  }
+  55% {
+    transform: rotate(20deg);
+  }
+}
+
+@keyframes duke-live-ear-perk-r {
+  0%,
+  100% {
+    transform: rotate(-16deg);
+  }
+  40% {
+    transform: rotate(-10deg);
+  }
+  55% {
+    transform: rotate(-20deg);
+  }
+}
+
+@keyframes duke-live-brow-l {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  35% {
+    transform: translate(0, -1.1px) rotate(-4deg);
+  }
+  55% {
+    transform: translate(0, 0.6px) rotate(2deg);
+  }
+}
+
+@keyframes duke-live-brow-r {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  35% {
+    transform: translate(0, -1.1px) rotate(4deg);
+  }
+  55% {
+    transform: translate(0, 0.6px) rotate(-2deg);
+  }
+}
+
+@keyframes duke-live-brow-furrow-l {
+  0%,
+  100% {
+    transform: translate(0.8px, 0.8px) rotate(6deg);
+  }
+  45% {
+    transform: translate(1.2px, 1.3px) rotate(9deg);
+  }
+}
+
+@keyframes duke-live-brow-furrow-r {
+  0%,
+  100% {
+    transform: translate(-0.8px, 0.8px) rotate(-6deg);
+  }
+  45% {
+    transform: translate(-1.2px, 1.3px) rotate(-9deg);
+  }
+}
+
+@keyframes duke-live-look {
+  0%,
+  18%,
+  100% {
+    transform: translate(0, 0);
+  }
+  30% {
+    transform: translate(-1.6px, 0.2px);
+  }
+  48% {
+    transform: translate(1.5px, -0.2px);
+  }
+  64% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes duke-live-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(0.7px) rotate(-1.4deg);
+  }
+}
+
+@keyframes duke-live-tilt {
+  0%,
+  100% {
+    transform: rotate(-7deg);
+  }
+  50% {
+    transform: rotate(-3deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .duke-live-head,
+  .duke-live-ear-l,
+  .duke-live-ear-r,
+  .duke-live-brow-l,
+  .duke-live-brow-r,
+  .duke-live-eyes,
+  .duke-live-eye {
+    animation: none;
+  }
+}

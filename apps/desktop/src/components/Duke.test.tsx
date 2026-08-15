@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { DukeHero, DukeMark, DukeWordmark, presenceForStatus } from '@/components/Duke'
+import { DukeHero, DukeLive, DukeMark, DukeWordmark, presenceForStatus } from '@/components/Duke'
 
 describe('Duke', () => {
   it('renders the hero illustration as Duke', () => {
@@ -26,6 +26,17 @@ describe('Duke', () => {
   it('shows the Dukebox wordmark with a decorative mark', () => {
     render(<DukeWordmark />)
     expect(screen.getByText('Dukebox')).toBeInTheDocument()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('names a live mood and hides a decorative face', () => {
+    const { rerender } = render(<DukeLive mood="searching" label="Grep running" />)
+    expect(screen.getByRole('img', { name: 'Grep running' })).toHaveAttribute(
+      'data-mood',
+      'searching',
+    )
+
+    rerender(<DukeLive decorative />)
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
 

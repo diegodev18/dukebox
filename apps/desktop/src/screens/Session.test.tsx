@@ -19,12 +19,6 @@ vi.mock('@tauri-apps/plugin-opener', () => ({
   openUrl: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('thinking-orbs', () => ({
-  ThinkingOrb: ({ 'aria-label': label }: { 'aria-label'?: string }) => (
-    <span role="img" aria-label={label} />
-  ),
-}))
-
 vi.mock('@/lib/connection', () => ({
   removeConnection: (...args: unknown[]) => removeConnection(...args),
 }))

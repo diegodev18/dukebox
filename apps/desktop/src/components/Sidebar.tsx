@@ -7,7 +7,6 @@ import {
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ThinkingOrb } from 'thinking-orbs'
 import { pullRequestStatus, pullRequestStatusAriaLabel } from '@/lib/pullRequest'
 import { relativeAge } from '@/lib/relativeTime'
 import {
@@ -19,7 +18,7 @@ import {
 import { statusLabel } from '@/screens/Session'
 import type { SettingsCategory } from '@/screens/Settings'
 import { agentLabel } from '@/components/AgentIcon'
-import { DukeMark, DukeWordmark } from '@/components/Duke'
+import { DukeLive, DukeMark, DukeWordmark } from '@/components/Duke'
 import { PullRequestStatusIcon } from '@/components/PullRequestStatusIcon'
 import {
   AlertIcon,
@@ -1000,11 +999,10 @@ function SessionNavIndicator({
   return (
     <span className="grid size-5 flex-none place-items-center">
       {kind === 'orb' ? (
-        <ThinkingOrb
-          state={status === 'waiting_input' ? 'listening' : 'working'}
+        <DukeLive
+          mood={status === 'waiting_input' ? 'listening' : 'working'}
           size={20}
-          theme="auto"
-          aria-label={statusLabel(status)}
+          label={statusLabel(status)}
         />
       ) : kind === 'unread' ? (
         <span role="img" aria-label="Unread">

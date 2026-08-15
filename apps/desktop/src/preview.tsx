@@ -256,7 +256,7 @@ const script: EnvelopedEvent[] = [
   ),
 
   // Last call in the exploration group stays open so the group auto-expands
-  // with a thinking-orb; another orb sits at the tail while `running` is true.
+  // with a live Duke; another Duke sits at the tail while `running` is true.
   event({
     type: 'tool_call',
     id: 'grep-live',
