@@ -26,6 +26,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Cheap and host-only, so it runs before the container work: a version
+      # mismatch should not wait on a 45-minute verify to be reported.
+      - name: Check the desktop version declarations agree
+        run: ./scripts/check-desktop-version.sh
+
       - name: Build dukebox/base-node
         run: docker build -t dukebox/base-node:latest images/base-node
 
