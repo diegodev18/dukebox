@@ -125,11 +125,46 @@ const script: EnvelopedEvent[] = [
     before: Array.from({ length: 140 }, (_, i) => `const before${i} = ${i}`).join('\n'),
     after: Array.from({ length: 140 }, (_, i) => `const after${i} = ${i}`).join('\n'),
   }),
+  // A plan opens its own workspace tab and is answered from there. Two of
+  // them, so the numbering and the tab bar's scroll are visible. Replanning
+  // in place needs a denial, which only a real click produces: press "Keep
+  // planning" on the second and the next plan takes over its tab.
+  event({
+    type: 'permission_request',
+    id: 'perm-plan-denied',
+    action: 'exit_plan_mode',
+    detail: {
+      plan: [
+        '# Strip the demux frame headers',
+        '',
+        'Rewrite `execStream` to unwrap Docker frames before they reach the caller.',
+      ].join('\n'),
+    },
+  }),
   event({
     type: 'permission_request',
     id: 'perm-plan',
     action: 'exit_plan_mode',
-    detail: {},
+    detail: {
+      plan: [
+        '# Strip the demux frame headers',
+        '',
+        'Docker multiplexes stdout and stderr into one stream with an 8-byte',
+        'header per frame. The sandbox hands that stream straight to the agent,',
+        'so every read starts with binary noise.',
+        '',
+        '## Steps',
+        '',
+        '1. Add `demux.ts` with a `PassThrough` that parses the frame header.',
+        '2. Use it from `Container.execStream`, keeping the `Duplex` shape.',
+        '3. Cover a split frame — a header can arrive across two chunks.',
+        '',
+        '| File | Change |',
+        '| --- | --- |',
+        '| `packages/sandbox/src/demux.ts` | New |',
+        '| `packages/sandbox/src/container.ts` | Use the parser |',
+      ].join('\n'),
+    },
   }),
   event({
     type: 'permission_request',

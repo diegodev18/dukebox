@@ -5,7 +5,7 @@ import type {
   ToolBlock,
   Transcript as TranscriptData,
 } from '@dukebox/protocol'
-import { EXIT_PLAN_MODE_ACTION, isTerminal } from '@dukebox/protocol'
+import { EXIT_PLAN_MODE_ACTION, isTerminal, planFromDetail } from '@dukebox/protocol'
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ThinkingOrb } from 'thinking-orbs'
 import type { StreamStatus } from '@/lib/stream'
@@ -642,11 +642,16 @@ function Permission({
   const answered = block.answered || decision !== null
 
   const isPlanExit = block.action === EXIT_PLAN_MODE_ACTION
+  // A plan with a body is answered from its workspace tab, where it can be
+  // read. Two sets of buttons for one answer would only drift apart, so the
+  // transcript keeps the record and points at the panel. A plan that arrived
+  // without a body has nothing to show there, and keeps its card.
+  const inWorkspace = isPlanExit && planFromDetail(block.detail) !== null
 
   useEffect(() => {
-    if (answered || disabled) return
+    if (answered || disabled || inWorkspace) return
     allow.current?.focus()
-  }, [answered, disabled])
+  }, [answered, disabled, inWorkspace])
 
   if (answered) {
     if (decision === 'allow') {
@@ -664,6 +669,10 @@ function Permission({
       )
     }
     return <p className="text-[13px] text-muted-foreground">Answered: {block.action}</p>
+  }
+
+  if (inWorkspace) {
+    return <p className="text-[13px] text-muted-foreground">The plan is ready in the workspace.</p>
   }
 
   const respond = (allow: boolean) => {

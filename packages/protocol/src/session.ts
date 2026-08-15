@@ -71,6 +71,27 @@ export const DEFAULT_PERMISSION_MODE: PermissionMode = 'bypass'
  */
 export const EXIT_PLAN_MODE_ACTION = 'exit_plan_mode'
 
+/**
+ * The `ExitPlanMode` tool input: the plan the agent wants approved.
+ *
+ * Carried through `permission_request.detail`, which is `unknown` because every
+ * other tool puts its own arguments there.
+ */
+export const exitPlanDetail = z.object({ plan: z.string() })
+
+/**
+ * Read the plan markdown off a permission block's detail.
+ *
+ * Null rather than throwing: an agent may call `ExitPlanMode` with no plan at
+ * all, and a session that cannot render the plan still has to be answerable.
+ */
+export function planFromDetail(detail: unknown): string | null {
+  const parsed = exitPlanDetail.safeParse(detail)
+  if (!parsed.success) return null
+  const plan = parsed.data.plan.trim()
+  return plan === '' ? null : plan
+}
+
 export const agentCapabilities = z.object({
   /** Emits permission_request and waits for an answer. */
   permissions: z.boolean(),

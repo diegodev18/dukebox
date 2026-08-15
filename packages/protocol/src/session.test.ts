@@ -6,6 +6,7 @@ import {
   EXIT_PLAN_MODE_ACTION,
   parseGitPreferences,
   permissionMode,
+  planFromDetail,
   resolvePermissionMode,
   pullRequestMergeBlock,
   pullRequestMergeBlockPanel,
@@ -71,6 +72,23 @@ describe('permissionMode', () => {
 
   it('names the plan-approval action distinctly from a tool', () => {
     expect(EXIT_PLAN_MODE_ACTION).toBe('exit_plan_mode')
+  })
+})
+
+describe('planFromDetail', () => {
+  it('reads the plan out of an ExitPlanMode input', () => {
+    expect(planFromDetail({ plan: '# Plan\n\n1. Do the thing' })).toBe('# Plan\n\n1. Do the thing')
+  })
+
+  it('returns null for details that carry no plan', () => {
+    expect(planFromDetail(null)).toBeNull()
+    expect(planFromDetail({})).toBeNull()
+    expect(planFromDetail({ plan: 42 })).toBeNull()
+    expect(planFromDetail('a plan')).toBeNull()
+  })
+
+  it('treats a blank plan as no plan, so the card keeps its buttons', () => {
+    expect(planFromDetail({ plan: '   \n  ' })).toBeNull()
   })
 })
 

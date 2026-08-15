@@ -61,6 +61,42 @@ describe('Transcript', () => {
     expect(screen.queryByRole('button', { name: 'Allow' })).not.toBeInTheDocument()
   })
 
+  it('sends a readable plan to the workspace instead of answering it inline', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [
+            {
+              kind: 'permission',
+              id: 'p1',
+              action: 'exit_plan_mode',
+              detail: { plan: '# Ship it' },
+            },
+          ],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('The plan is ready in the workspace.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Build' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Implement' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the card for a plan that arrived without a body', () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [{ kind: 'permission', id: 'p1', action: 'exit_plan_mode', detail: {} }],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Implement' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Keep planning' })).toBeInTheDocument()
+  })
+
   it('focuses Allow when a permission prompt appears', () => {
     render(
       <Transcript
