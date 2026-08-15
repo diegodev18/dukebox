@@ -29,9 +29,7 @@ export function PlanPanel({ tab, onRespond, disabled = false }: Props) {
           <p className="mb-2.5 text-[12.5px] text-done">Building this plan.</p>
         )}
         {tab.status === 'closed' && (
-          <p className="mb-2.5 text-[12.5px] text-muted-foreground">
-            This plan was not built.
-          </p>
+          <p className="mb-2.5 text-[12.5px] text-muted-foreground">This plan was not built.</p>
         )}
         <Markdown>{tab.plan}</Markdown>
       </div>
@@ -57,8 +55,7 @@ export function PlanPanel({ tab, onRespond, disabled = false }: Props) {
             </button>
           </div>
           <p className="mt-2 text-[12px] text-muted-foreground">
-            Building switches the session to Bypass, so the work runs without
-            asking again.
+            Building switches the session to Bypass, so the work runs without asking again.
           </p>
         </div>
       )}

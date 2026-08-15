@@ -148,11 +148,7 @@ export function applyEvents(transcript: Transcript, events: readonly EnvelopedEv
  * `allowed` is kept as well as `answered`: an approved plan and a rejected one
  * both stop asking, but only the rejected one gets replanned in place.
  */
-export function answerPermission(
-  transcript: Transcript,
-  id: string,
-  allowed: boolean,
-): Transcript {
+export function answerPermission(transcript: Transcript, id: string, allowed: boolean): Transcript {
   const index = transcript.blocks.findIndex(
     (block) => block.kind === 'permission' && block.id === id,
   )

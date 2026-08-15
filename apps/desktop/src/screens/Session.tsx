@@ -772,9 +772,7 @@ function ConnectedWorkspace(
   // Folded here rather than in the panel: blocks change on every token, and
   // the tabs only change when a plan is asked for or answered.
   const plans = useMemo(() => planTabs(blocks), [blocks])
-  return (
-    <Workspace files={files} terminals={terminals} error={error} plans={plans} {...props} />
-  )
+  return <Workspace files={files} terminals={terminals} error={error} plans={plans} {...props} />
 }
 
 function PaneFallback() {
