@@ -559,10 +559,11 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
   return (
     <div className="mt-5">
       <h3 className="text-[12px] font-semibold tracking-wide text-muted-foreground uppercase">
-        Agent API
+        Claude Code
       </h3>
       <p className="mt-1 text-[12.5px] text-muted-foreground">
-        Shared token for agents that talk to a single provider endpoint.
+        The token Claude Code uses to reach Anthropic, from <code>claude setup-token</code>.
+        Injected as <code>CLAUDE_CODE_OAUTH_TOKEN</code>.
       </p>
 
       <div className="mt-3 flex items-center gap-2">
@@ -574,7 +575,7 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
           spellCheck={false}
           autoComplete="off"
           disabled={working}
-          aria-label="Agent API token"
+          aria-label="Claude Code token"
           className="min-w-0 flex-1 rounded-[calc(var(--radius)*0.6)] border border-border-strong bg-background px-2.5 py-1.5 font-mono text-[13px] outline-none placeholder:text-muted-foreground disabled:opacity-60"
         />
         <button

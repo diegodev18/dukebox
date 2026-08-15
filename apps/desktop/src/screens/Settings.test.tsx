@@ -390,10 +390,10 @@ describe('Settings', () => {
     expect(await screen.findByRole('heading', { name: 'Appearance' })).toBeInTheDocument()
   })
 
-  it('labels the agent API token field', async () => {
+  it('labels the Claude Code token field', async () => {
     renderSettings({ category: 'agents' })
 
-    expect(await screen.findByLabelText('Agent API token')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Claude Code token')).toBeInTheDocument()
   })
 
   it('lists paired servers and switches to another one', async () => {
