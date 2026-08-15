@@ -13,7 +13,7 @@ export const VIEWED_SESSIONS_KEY = 'dukebox.viewedSessions'
 
 export type ViewedSessions = Record<string, number>
 
-export type SessionNavIndicatorKind = 'orb' | 'unread' | 'none'
+export type SessionNavIndicatorKind = 'orb' | 'unread' | 'failed' | 'none'
 
 export function loadViewedSessions(): ViewedSessions {
   try {
@@ -57,14 +57,17 @@ export function markViewed(
 /**
  * What the nav row shows to the left of the title.
  *
- * In-progress sessions always get the orb. A terminal session is unread until
- * this device has opened it at its current `lastSeq` (or later).
+ * In-progress sessions always get the orb. A failed session keeps an error
+ * mark no matter how far it was read — the failure is the thing worth
+ * noticing. Any other terminal session is unread until this device has opened
+ * it at its current `lastSeq` (or later).
  */
 export function sessionNavIndicator(
   status: SessionStatus,
   lastSeq: number,
   viewedSeq: number | undefined,
 ): SessionNavIndicatorKind {
+  if (status === 'failed') return 'failed'
   if (!isTerminal(status)) return 'orb'
   if (viewedSeq === undefined || lastSeq > viewedSeq) return 'unread'
   return 'none'

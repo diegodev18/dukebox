@@ -487,6 +487,14 @@ describe('Sidebar', () => {
     expect(screen.queryByRole('img', { name: 'Unread' })).not.toBeInTheDocument()
   })
 
+  it('shows an error mark on a failed session, even after it was read', () => {
+    localStorage.setItem(VIEWED_SESSIONS_KEY, JSON.stringify({ [session.id]: session.lastSeq }))
+    renderSidebar({ sessionOverride: { status: 'failed' }, selectedId: null })
+
+    expect(screen.getByRole('img', { name: 'Failed' })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'Unread' })).not.toBeInTheDocument()
+  })
+
   it('does not offer More when a repository has five or fewer sessions', () => {
     renderRepoSessions(5)
 
