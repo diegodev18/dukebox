@@ -1,6 +1,6 @@
 import type { Session } from '@dukebox/db'
 import { describe, expect, it } from 'vitest'
-import { toSummary } from '@/sessions/summarize'
+import { pullRequestRecordUnchanged, toSummary } from '@/sessions/summarize'
 
 function row(overrides: Partial<Session> = {}): Session {
   return {
@@ -75,6 +75,32 @@ describe('toSummary', () => {
       isDraft: false,
       state: 'open',
     })
+  })
+
+  it('does not treat an identical GitHub snapshot as a change', () => {
+    const stored = row({
+      prUrl: 'https://github.com/diego/dukebox/pull/1',
+      prTitle: 'Add a thing',
+      prDraft: false,
+      prState: 'open',
+    })
+
+    expect(
+      pullRequestRecordUnchanged(stored, {
+        url: 'https://github.com/diego/dukebox/pull/1',
+        title: 'Add a thing',
+        isDraft: false,
+        state: 'open',
+      }),
+    ).toBe(true)
+    expect(
+      pullRequestRecordUnchanged(stored, {
+        url: 'https://github.com/diego/dukebox/pull/1',
+        title: 'Add a thing',
+        isDraft: false,
+        state: 'merged',
+      }),
+    ).toBe(false)
   })
 
   it('carries the base commit', () => {

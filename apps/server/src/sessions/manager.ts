@@ -73,7 +73,7 @@ import {
 } from '@/sessions/environmentSetup'
 import { writePullRequestContent } from '@/sessions/pr-writer'
 import { dukeboxOwnsPullRequestBody } from '@/sessions/summary'
-import { toSummary } from '@/sessions/summarize'
+import { pullRequestRecordUnchanged, toSummary } from '@/sessions/summarize'
 import { titleFromPrompt, writeSessionTitle } from '@/sessions/title'
 
 /**
@@ -1357,6 +1357,9 @@ export class SessionManager {
   }
 
   private async persistPullRequest(sessionId: string, pr: PullRequestSummary): Promise<void> {
+    const [current] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
+    if (current && pullRequestRecordUnchanged(current, pr)) return
+
     const [updated] = await this.deps.db
       .update(sessions)
       .set({

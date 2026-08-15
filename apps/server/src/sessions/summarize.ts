@@ -39,7 +39,9 @@ export function toSummary(session: Session): SessionSummary {
   }
 }
 
-function toPullRequest(session: Session): PullRequestSummary | null {
+function toPullRequest(
+  session: Pick<Session, 'prUrl' | 'prTitle' | 'prDraft' | 'prState'>,
+): PullRequestSummary | null {
   if (!session.prUrl) return null
 
   const parsed = pullRequestState.safeParse(session.prState)
@@ -50,6 +52,21 @@ function toPullRequest(session: Session): PullRequestSummary | null {
     isDraft: session.prDraft ?? true,
     state: parsed.success ? parsed.data : 'open',
   }
+}
+
+/** True when writing `pr` would not change the stored snapshot. */
+export function pullRequestRecordUnchanged(
+  session: Pick<Session, 'prUrl' | 'prTitle' | 'prDraft' | 'prState'>,
+  pr: PullRequestSummary,
+): boolean {
+  const current = toPullRequest(session)
+  return (
+    current !== null &&
+    current.url === pr.url &&
+    current.title === pr.title &&
+    current.isDraft === pr.isDraft &&
+    current.state === pr.state
+  )
 }
 
 function parsePermissionMode(raw: string | null, agentId: string): PermissionMode | null {

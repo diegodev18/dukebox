@@ -37,6 +37,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { Transcript } from '@/components/Transcript'
 import { Workspace } from '@/components/Workspace'
 import { useSession, type LiveSession } from '@/lib/useSession'
+import { useOpenPullRequestRefresh } from '@/lib/usePullRequestRefresh'
 
 /**
  * The session view.
@@ -208,6 +209,14 @@ export function Session({
   }, [disconnected, streamStatus])
 
   const current = sessions.find((session) => session.id === selected) ?? null
+
+  // A merge or close on GitHub does not arrive over the socket. Refresh the
+  // selected session, and every open PR when the window is focused again.
+  useOpenPullRequestRefresh(client, sessions, selected, !disconnected, (sessionId, patch) => {
+    setSessions((rows) =>
+      rows.map((session) => (session.id === sessionId ? { ...session, ...patch } : session)),
+    )
+  })
 
   // Names for the environment a review session belongs to. Fetched only when a
   // review is on screen, and best-effort: failing to name an environment must
