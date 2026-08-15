@@ -3,7 +3,7 @@ import type { Block } from '@dukebox/protocol'
 import { activityBlock, mapOrbState, orbStateForTool, toolCategory } from '@/lib/orbState'
 
 describe('toolCategory', () => {
-  it('matches the orb verb for each tool name', () => {
+  it('matches Duke mood for each tool name', () => {
     expect(toolCategory('Grep')).toBe(orbStateForTool('Grep'))
     expect(toolCategory('Edit')).toBe(orbStateForTool('Edit'))
     expect(toolCategory('Bash')).toBe(orbStateForTool('Bash'))

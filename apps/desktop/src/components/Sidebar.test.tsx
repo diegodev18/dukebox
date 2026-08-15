@@ -11,12 +11,6 @@ vi.mock('@tauri-apps/plugin-opener', () => ({
   openUrl: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('thinking-orbs', () => ({
-  ThinkingOrb: ({ state, 'aria-label': label }: { state?: string; 'aria-label'?: string }) => (
-    <span role="img" aria-label={label} data-orb-state={state} />
-  ),
-}))
-
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { Sidebar } from '@/components/Sidebar'
 import { VIEWED_SESSIONS_KEY } from '@/lib/viewedSessions'
@@ -444,21 +438,18 @@ describe('Sidebar', () => {
     }
   })
 
-  it('shows an orb while a session is in progress', () => {
+  it('shows Duke while a session is in progress', () => {
     renderSidebar({ sessionOverride: { status: 'running' } })
 
-    expect(screen.getByRole('img', { name: 'Running' })).toHaveAttribute(
-      'data-orb-state',
-      'working',
-    )
+    expect(screen.getByRole('img', { name: 'Running' })).toHaveAttribute('data-mood', 'working')
     expect(screen.queryByRole('img', { name: 'Unread' })).not.toBeInTheDocument()
   })
 
-  it('uses the listening orb while the agent is waiting', () => {
+  it('uses the listening mood while the agent is waiting', () => {
     renderSidebar({ sessionOverride: { status: 'waiting_input' } })
 
     expect(screen.getByRole('img', { name: 'Waiting for you' })).toHaveAttribute(
-      'data-orb-state',
+      'data-mood',
       'listening',
     )
   })
