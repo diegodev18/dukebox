@@ -156,6 +156,56 @@ describe('GrokBuildMapper', () => {
 
       expect(events).toEqual([])
     })
+
+    it('unwraps Grok content-block tool output to the inner text', () => {
+      const mapper = new GrokBuildMapper()
+      const events = mapper.map({
+        type: 'tool_call_update',
+        toolCallId: 'call_1',
+        status: 'failed',
+        content: [
+          {
+            type: 'content',
+            content: { type: 'text', text: 'file is locked' },
+          },
+        ],
+      })
+
+      expect(events.find((event) => event.type === 'tool_result')).toEqual({
+        type: 'tool_result',
+        id: 'call_1',
+        output: 'file is locked',
+        isError: true,
+      })
+    })
+
+    it('does not report a plan-mode denial as the user cancelling the tool', () => {
+      const mapper = new GrokBuildMapper()
+      const events = mapper.map({
+        type: 'tool_call_update',
+        toolCallId: 'call_write',
+        status: 'failed',
+        content: [
+          {
+            type: 'content',
+            content: {
+              type: 'text',
+              text: 'User cancelled the execution for tool `write`',
+            },
+          },
+        ],
+      })
+
+      const result = events.find((event) => event.type === 'tool_result')
+      expect(result).toMatchObject({
+        type: 'tool_result',
+        id: 'call_write',
+        isError: true,
+      })
+      expect(result?.type === 'tool_result' && result.output).toMatch(/plan mode/i)
+      expect(result?.type === 'tool_result' && result.output).not.toMatch(/user cancelled/i)
+      expect(result?.type === 'tool_result' && result.output).toContain('write')
+    })
   })
 
   describe('resume', () => {

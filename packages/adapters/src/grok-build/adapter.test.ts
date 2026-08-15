@@ -8,6 +8,7 @@ import {
   GrokBuildAdapter,
   GROK_AUTH_ENV,
   GROK_HOME_DIR,
+  GROK_PLAN_RULES,
 } from '@/grok-build/adapter'
 
 /**
@@ -57,6 +58,17 @@ describe('buildGrokRunArgs', () => {
 
     expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan')
     expect(args).not.toContain('--yolo')
+    expect(args[args.indexOf('--rules') + 1]).toBe(GROK_PLAN_RULES)
+  })
+
+  it('prepends the plan rule ahead of session instructions', () => {
+    const args = buildGrokRunArgs({
+      text: 'hello',
+      permissionMode: 'plan',
+      instructions: 'Always typecheck.',
+    })
+
+    expect(args[args.indexOf('--rules') + 1]).toBe(`${GROK_PLAN_RULES}\n\nAlways typecheck.`)
   })
 
   it('does not select plan for the other modes', () => {

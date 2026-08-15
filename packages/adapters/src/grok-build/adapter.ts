@@ -114,6 +114,16 @@ export const GROK_BUILD_CAPABILITIES: AgentCapabilities = {
   permissionModes: true,
 }
 
+/**
+ * Extra `--rules` for plan mode.
+ *
+ * `--permission-mode plan` is the hard block, but without this the model
+ * still tries to edit, Grok denies the tool as "User cancelled", and the
+ * turn ends looking like the person stopped the session.
+ */
+export const GROK_PLAN_RULES =
+  'You are in Plan mode. Do not call write, search_replace, or any other tool that edits files. Read and search are fine. If the user asked you to implement something, outline the plan and tell them to switch the permission mode to Bypass — do not attempt the edit.'
+
 /** Build the argument vector for one `grok -p`. */
 export function buildGrokRunArgs(options: {
   text: string
@@ -138,9 +148,10 @@ export function buildGrokRunArgs(options: {
     args.push('--resume', options.sessionId)
   }
 
-  if (options.instructions) {
-    args.push('--rules', options.instructions)
-  }
+  const rules = [options.permissionMode === 'plan' ? GROK_PLAN_RULES : '', options.instructions]
+    .filter((part): part is string => Boolean(part))
+    .join('\n\n')
+  if (rules) args.push('--rules', rules)
 
   return args
 }

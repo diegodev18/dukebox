@@ -217,8 +217,60 @@ function numberOr(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
+/**
+ * Headless `grok -p` cannot answer a permission prompt. Plan mode therefore
+ * denies mutating tools and reports it as "User cancelled", even though the
+ * person never pressed Stop. Rewrite that so the transcript and the next
+ * turn tell the truth.
+ */
+const CANCELLED_TOOL = /User cancelled the execution for tool [`']([^`']+)[`']/i
+
 function stringifyToolOutput(content: unknown): string {
+  const text = flattenToolOutput(content)
+  const cancelled = CANCELLED_TOOL.exec(text)
+  if (!cancelled) return text
+
+  const tool = cancelled[1]
+  return `Plan mode blocked \`${tool}\`. The user did not cancel. Switch to Bypass to apply changes.`
+}
+
+function flattenToolOutput(content: unknown): string {
   if (typeof content === 'string') return content
   if (content === null || content === undefined) return ''
+
+  const fromBlocks = textFromContentBlocks(content)
+  if (fromBlocks !== undefined) return fromBlocks
+
   return JSON.stringify(content)
+}
+
+/**
+ * Grok sometimes wraps tool output as `[{type:"content",content:{type:"text",text}}]`.
+ * Dumping that as JSON is what made a plan-mode denial look like a raw payload.
+ */
+function textFromContentBlocks(content: unknown): string | undefined {
+  if (!Array.isArray(content) || content.length === 0) return undefined
+
+  const parts: string[] = []
+  for (const item of content) {
+    if (!item || typeof item !== 'object') return undefined
+    const record = item as { type?: unknown; content?: unknown; text?: unknown }
+
+    if (record.type === 'text' && typeof record.text === 'string') {
+      parts.push(record.text)
+      continue
+    }
+
+    if (record.type === 'content' && record.content && typeof record.content === 'object') {
+      const inner = record.content as { type?: unknown; text?: unknown }
+      if (inner.type === 'text' && typeof inner.text === 'string') {
+        parts.push(inner.text)
+        continue
+      }
+    }
+
+    return undefined
+  }
+
+  return parts.join('\n')
 }
