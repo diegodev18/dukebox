@@ -11,6 +11,7 @@ import {
   pullRequestStatusAriaLabel,
   pullRequestStatusLabel,
   pullRequestTabLabel,
+  sessionPullRequestNeedsRefresh,
 } from '@/lib/pullRequest'
 
 const pr = (overrides: Partial<PullRequestSummary> = {}): PullRequestSummary => ({
@@ -73,6 +74,39 @@ describe('pullRequestMergeHint', () => {
     expect(pullRequestMergeHint({ reviewDecision: 'REVIEW_REQUIRED' })).toBe('Needs a review')
     expect(pullRequestMergeHint({ reviewDecision: 'CHANGES_REQUESTED' })).toBe('Changes requested')
     expect(pullRequestMergeHint({ checks: 'passing' })).toBeNull()
+  })
+})
+
+describe('sessionPullRequestNeedsRefresh', () => {
+  it('refreshes an open pull request and stops after merge or close', () => {
+    expect(
+      sessionPullRequestNeedsRefresh({
+        purpose: 'coding',
+        pullRequestUrl: pr().url,
+        pullRequest: pr({ state: 'open', isDraft: false }),
+      }),
+    ).toBe(true)
+    expect(
+      sessionPullRequestNeedsRefresh({
+        purpose: 'coding',
+        pullRequestUrl: pr().url,
+        pullRequest: pr({ state: 'merged' }),
+      }),
+    ).toBe(false)
+    expect(
+      sessionPullRequestNeedsRefresh({
+        purpose: 'coding',
+        pullRequestUrl: pr().url,
+        pullRequest: pr({ state: 'closed' }),
+      }),
+    ).toBe(false)
+    expect(
+      sessionPullRequestNeedsRefresh({
+        purpose: 'coding',
+        pullRequestUrl: null,
+        pullRequest: null,
+      }),
+    ).toBe(false)
   })
 })
 

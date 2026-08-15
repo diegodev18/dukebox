@@ -125,8 +125,18 @@ export function pullRequestChecksTabLabel(
   return `Checks · ${done}/${runs.length}`
 }
 
-/** How often to refresh GitHub while checks are still running. */
+/** How often to refresh GitHub while a pull request can still change. */
 export const PULL_REQUEST_POLL_MS = 10_000
+
+export function sessionPullRequestNeedsRefresh(session: {
+  purpose?: string | null
+  pullRequestUrl?: string | null
+  pullRequest?: Pick<PullRequestSummary, 'state'> | null
+}): boolean {
+  if (session.purpose === 'environment_setup') return false
+  if (!session.pullRequest && !session.pullRequestUrl) return false
+  return session.pullRequest?.state !== 'merged' && session.pullRequest?.state !== 'closed'
+}
 
 export function pullRequestDetailsSummary(
   details: PullRequestDetails,

@@ -12,6 +12,7 @@ const whoami = vi.fn()
 const archiveSession = vi.fn()
 const deleteSession = vi.fn()
 const deleteProject = vi.fn()
+const getPullRequest = vi.fn()
 const removeConnection = vi.fn()
 
 vi.mock('@tauri-apps/plugin-opener', () => ({
@@ -68,6 +69,7 @@ vi.mock('@/lib/client', async (importOriginal) => {
       archiveSession = archiveSession
       deleteSession = deleteSession
       deleteProject = deleteProject
+      getPullRequest = getPullRequest
       listEnvironments = vi.fn().mockResolvedValue([])
     },
   }
@@ -231,5 +233,28 @@ describe('Session', () => {
 
     expect(await screen.findByText('No session selected')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Duke' })).toBeInTheDocument()
+  })
+
+  it('reflects a pull request that was merged on GitHub', async () => {
+    const url = 'https://github.com/acme/app/pull/8'
+    listSessions.mockResolvedValueOnce([
+      {
+        ...session,
+        pullRequestUrl: url,
+        pullRequest: { url, title: 'Fix the demux bug', isDraft: false, state: 'open' },
+      },
+    ])
+    getPullRequest.mockResolvedValue({
+      url,
+      title: 'Fix the demux bug',
+      isDraft: false,
+      state: 'merged',
+    })
+
+    renderSession()
+
+    expect(await screen.findByText(/This pull request was merged/)).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Merged pull request' })).toBeInTheDocument()
+    expect(getPullRequest).toHaveBeenCalledWith(session.id)
   })
 })
