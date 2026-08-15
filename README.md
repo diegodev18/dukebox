@@ -25,11 +25,16 @@ The app installs from a downloaded installer — no checkout, no build. Grab the
 newest one for your machine from the
 [latest release](https://github.com/diegodev18/dukebox/releases/latest):
 
-| Platform | Asset                                                                |
-| -------- | -------------------------------------------------------------------- |
-| macOS    | `Dukebox_0.1.0_aarch64.dmg` (Apple silicon) or `_x86_64.dmg` (Intel) |
-| Windows  | `Dukebox_0.1.0_x64-setup.exe`                                        |
-| Linux    | `dukebox_0.1.0_amd64.deb` (or the `.AppImage`)                       |
+| Platform | Asset                                                                 |
+| -------- | --------------------------------------------------------------------- |
+| macOS    | `Dukebox_<version>_aarch64.dmg` (Apple silicon) or `_x64.dmg` (Intel) |
+| Windows  | `Dukebox_<version>_x64-setup.exe`                                     |
+| Linux    | `Dukebox_<version>_amd64.deb` (or the `.AppImage`)                    |
+
+`<version>` is the release you are downloading from — `Dukebox_0.9.0_aarch64.dmg`
+in the 0.9.0 release. Linux builds are x86_64 only: there is no ARM64 desktop
+asset, and an ARM64 machine gets no update notifications either, because the
+update feed has no entry to offer it.
 
 The installers are not signed by Apple or Microsoft yet, so the OS will warn
 once per installation. The warning is about the developer's identity, not the
