@@ -997,7 +997,7 @@ function SessionNavIndicator({
   const kind = sessionNavIndicator(status, lastSeq, viewedSeq)
 
   return (
-    <span className="grid size-5 flex-none place-items-center">
+    <span className="grid size-5 flex-none place-items-center overflow-visible">
       {kind === 'orb' ? (
         <DukeLive
           mood={status === 'waiting_input' ? 'listening' : 'working'}

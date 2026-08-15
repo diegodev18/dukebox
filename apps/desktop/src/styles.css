@@ -182,8 +182,8 @@
   margin-inline: auto;
 }
 
-/* DukeLive — layered face that replaced the thinking orb. Origins are in
-   viewBox units so the ears pivot from where they meet the head. */
+/* DukeLive — the same mark as chrome, layered so ears, brows, and
+   eyelids can move. Origins are percentages of the mark viewBox. */
 .duke-live-head,
 .duke-live-ear-l,
 .duke-live-ear-r,
@@ -194,32 +194,32 @@
 }
 
 .duke-live-head {
-  transform-origin: 32px 40px;
-  animation: duke-live-bob 3.2s ease-in-out infinite;
+  transform-origin: 50% 68%;
+  animation: duke-live-bob 2.6s ease-in-out infinite;
 }
 
 .duke-live-ear-l {
-  transform-origin: 22px 20px;
+  transform-origin: 32% 24%;
   animation: duke-live-ear-l 3.8s ease-in-out infinite;
 }
 
 .duke-live-ear-r {
-  transform-origin: 42px 20px;
+  transform-origin: 78% 24%;
   animation: duke-live-ear-r 3.4s ease-in-out 0.35s infinite;
 }
 
 .duke-live-brow-l {
-  transform-origin: 23px 27px;
+  transform-origin: 36% 34%;
   animation: duke-live-brow-l 4.6s ease-in-out infinite;
 }
 
 .duke-live-brow-r {
-  transform-origin: 41px 27px;
+  transform-origin: 67% 34%;
   animation: duke-live-brow-r 4.6s ease-in-out 0.12s infinite;
 }
 
 .duke-live-eyes {
-  transform-origin: 32px 34px;
+  transform-origin: 50% 50%;
   animation: duke-live-look 6s ease-in-out infinite;
 }
 
@@ -369,10 +369,10 @@
     transform: translate(0, 0) rotate(0deg);
   }
   35% {
-    transform: translate(0, -1.1px) rotate(-4deg);
+    transform: translate(0, -1.5%) rotate(-4deg);
   }
   55% {
-    transform: translate(0, 0.6px) rotate(2deg);
+    transform: translate(0, 0.8%) rotate(2deg);
   }
 }
 
@@ -382,30 +382,30 @@
     transform: translate(0, 0) rotate(0deg);
   }
   35% {
-    transform: translate(0, -1.1px) rotate(4deg);
+    transform: translate(0, -1.5%) rotate(4deg);
   }
   55% {
-    transform: translate(0, 0.6px) rotate(-2deg);
+    transform: translate(0, 0.8%) rotate(-2deg);
   }
 }
 
 @keyframes duke-live-brow-furrow-l {
   0%,
   100% {
-    transform: translate(0.8px, 0.8px) rotate(6deg);
+    transform: translate(1%, 1%) rotate(6deg);
   }
   45% {
-    transform: translate(1.2px, 1.3px) rotate(9deg);
+    transform: translate(1.6%, 1.8%) rotate(9deg);
   }
 }
 
 @keyframes duke-live-brow-furrow-r {
   0%,
   100% {
-    transform: translate(-0.8px, 0.8px) rotate(-6deg);
+    transform: translate(-1%, 1%) rotate(-6deg);
   }
   45% {
-    transform: translate(-1.2px, 1.3px) rotate(-9deg);
+    transform: translate(-1.6%, 1.8%) rotate(-9deg);
   }
 }
 
@@ -416,10 +416,10 @@
     transform: translate(0, 0);
   }
   30% {
-    transform: translate(-1.6px, 0.2px);
+    transform: translate(-2.2%, 0.3%);
   }
   48% {
-    transform: translate(1.5px, -0.2px);
+    transform: translate(2.1%, -0.3%);
   }
   64% {
     transform: translate(0, 0);
@@ -432,17 +432,17 @@
     transform: translateY(0) rotate(0deg);
   }
   50% {
-    transform: translateY(0.7px) rotate(-1.4deg);
+    transform: translateY(2.2%) rotate(-4deg);
   }
 }
 
 @keyframes duke-live-tilt {
   0%,
   100% {
-    transform: rotate(-7deg);
+    transform: rotate(-10deg);
   }
   50% {
-    transform: rotate(-3deg);
+    transform: rotate(-4deg);
   }
 }
 
