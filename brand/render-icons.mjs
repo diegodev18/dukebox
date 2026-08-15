@@ -2,6 +2,10 @@
 /**
  * Rasterize Duke-in-the-box app icons from brand/duke.svg.
  *
+ * The shipped dock icon is brand/app-icon.png (space-black, padded, relief).
+ * Prefer `pnpm exec tauri icon ../../brand/app-icon.png` from apps/desktop
+ * after replacing that PNG, rather than re-running this compositor.
+ *
  * Requires @resvg/resvg-js and pngjs (dev one-off, not a repo dependency).
  * Usage: node brand/render-icons.mjs
  */
