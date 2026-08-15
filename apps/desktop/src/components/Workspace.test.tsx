@@ -331,3 +331,123 @@ describe('Workspace resize', () => {
     expect(screen.queryByRole('separator', { name: 'Resize workspace' })).not.toBeInTheDocument()
   })
 })
+
+describe('Workspace plans', () => {
+  const plan = {
+    id: 'perm-plan',
+    number: 1,
+    plan: '# Ship it\n\n- Step one',
+    status: 'pending' as const,
+  }
+
+  it('opens a pending plan without being asked', () => {
+    render(
+      <Workspace
+        session={session}
+        files={[]}
+        terminals={terminals}
+        plans={[plan]}
+        onRespond={vi.fn()}
+        {...terminalHandlers}
+      />,
+    )
+
+    expect(screen.getByRole('tab', { name: 'Plan #1', selected: true })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Ship it' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Build' })).toBeInTheDocument()
+  })
+
+  it('uncollapses the panel for a plan', async () => {
+    const { rerender } = render(
+      <Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse workspace' }))
+    rerender(
+      <Workspace
+        session={session}
+        files={[]}
+        terminals={terminals}
+        plans={[plan]}
+        onRespond={vi.fn()}
+        {...terminalHandlers}
+      />,
+    )
+
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Plan #1', selected: true })).toBeInTheDocument(),
+    )
+  })
+
+  it('gives each plan a numbered tab and keeps a built one around', () => {
+    render(
+      <Workspace
+        session={session}
+        files={[]}
+        terminals={terminals}
+        plans={[
+          { ...plan, status: 'built' },
+          { id: 'perm-plan-2', number: 2, plan: '# Again', status: 'pending' },
+        ]}
+        onRespond={vi.fn()}
+        {...terminalHandlers}
+      />,
+    )
+
+    expect(screen.getByRole('tab', { name: 'Plan #1' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Plan #2', selected: true })).toBeInTheDocument()
+  })
+
+  it('answers Build from the panel', async () => {
+    const onRespond = vi.fn()
+    render(
+      <Workspace
+        session={session}
+        files={[]}
+        terminals={terminals}
+        plans={[plan]}
+        onRespond={onRespond}
+        {...terminalHandlers}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Build' }))
+
+    expect(onRespond).toHaveBeenCalledWith('perm-plan', true)
+  })
+
+  it('falls back to Changes when the open plan tab goes away', async () => {
+    const { rerender } = render(
+      <Workspace
+        session={session}
+        files={[]}
+        terminals={terminals}
+        plans={[plan]}
+        onRespond={vi.fn()}
+        {...terminalHandlers}
+      />,
+    )
+
+    rerender(
+      <Workspace
+        session={session}
+        files={[]}
+        terminals={terminals}
+        plans={[]}
+        onRespond={vi.fn()}
+        {...terminalHandlers}
+      />,
+    )
+
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Changes', selected: true })).toBeInTheDocument(),
+    )
+  })
+
+  it('shows no plan tab when the session has none', () => {
+    render(<Workspace session={session} files={[]} terminals={terminals} {...terminalHandlers} />)
+
+    expect(screen.queryByRole('tab', { name: /^Plan #/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Changes', selected: true })).toBeInTheDocument()
+  })
+})

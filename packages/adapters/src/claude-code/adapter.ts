@@ -298,7 +298,10 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     this.write(encodePermissionResponse(id, allow))
 
     if (allow && action === EXIT_PLAN_MODE_ACTION) {
-      await this.setPermissionMode('auto')
+      // Approving the plan is the approval. Dropping to `auto` would ask again
+      // for each step of the work the user has just signed off on, so build
+      // unattended and let the sandbox be the boundary.
+      await this.setPermissionMode('bypass')
     }
   }
 

@@ -222,7 +222,7 @@ export function useSession(
 
       streamRef.current?.answerPermission(sessionId, id, allow)
       useLiveSession.setState((current) => ({
-        transcript: answerPermission(current.transcript, id),
+        transcript: answerPermission(current.transcript, id, allow),
       }))
     },
     [sessionId],

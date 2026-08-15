@@ -24,6 +24,7 @@ import { INITIAL_RETRY_MS, MAX_RETRY_MS, isStreamConnected } from '@/lib/stream'
 import { NAV_DEFAULT, NAV_MIN, WORKSPACE_MIN } from '@/lib/columnWidths'
 import { useColumnWidths } from '@/lib/useColumnWidths'
 import { useLiveSession } from '@/lib/liveSession'
+import { planTabs } from '@/lib/plans'
 import type { UseUpdate } from '@/lib/useUpdate'
 import { AgentIcon, hasAgentIcon } from '@/components/AgentIcon'
 import { DukeHero } from '@/components/Duke'
@@ -572,6 +573,7 @@ export function Session({
               onCloseTerminal={live.closeTerminal}
               onRenameTerminal={live.renameTerminal}
               onDrainTerminal={live.drainTerminal}
+              onRespond={live.respond}
               pullRequest={
                 current.purpose === 'coding'
                   ? {
@@ -761,12 +763,16 @@ function SessionColumn({
 }
 
 function ConnectedWorkspace(
-  props: Omit<ComponentProps<typeof Workspace>, 'files' | 'terminals' | 'error'>,
+  props: Omit<ComponentProps<typeof Workspace>, 'files' | 'terminals' | 'error' | 'plans'>,
 ) {
   const files = useLiveSession((state) => state.transcript.files)
   const terminals = useLiveSession((state) => state.terminals)
   const error = useLiveSession((state) => state.error)
-  return <Workspace files={files} terminals={terminals} error={error} {...props} />
+  const blocks = useLiveSession((state) => state.transcript.blocks)
+  // Folded here rather than in the panel: blocks change on every token, and
+  // the tabs only change when a plan is asked for or answered.
+  const plans = useMemo(() => planTabs(blocks), [blocks])
+  return <Workspace files={files} terminals={terminals} error={error} plans={plans} {...props} />
 }
 
 function PaneFallback() {

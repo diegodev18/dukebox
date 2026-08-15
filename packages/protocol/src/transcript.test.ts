@@ -321,14 +321,29 @@ describe('local additions', () => {
     const asked = fold(
       at(1, { type: 'permission_request', id: 'perm', action: 'write', detail: {} }),
     )
-    const answered = answerPermission(asked, 'perm')
+    const answered = answerPermission(asked, 'perm', true)
 
-    expect(answered.blocks[0]).toMatchObject({ kind: 'permission', answered: true })
+    expect(answered.blocks[0]).toMatchObject({
+      kind: 'permission',
+      answered: true,
+      allowed: true,
+    })
+  })
+
+  it('records a denial, so a rejected plan is told apart from an approved one', () => {
+    const asked = fold(
+      at(1, { type: 'permission_request', id: 'perm', action: 'exit_plan_mode', detail: {} }),
+    )
+
+    expect(answerPermission(asked, 'perm', false).blocks[0]).toMatchObject({
+      answered: true,
+      allowed: false,
+    })
   })
 
   it('ignores an answer to a permission it does not have', () => {
     const transcript = emptyTranscript()
-    expect(answerPermission(transcript, 'nope')).toBe(transcript)
+    expect(answerPermission(transcript, 'nope', true)).toBe(transcript)
   })
 })
 

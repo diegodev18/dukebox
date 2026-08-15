@@ -53,6 +53,13 @@ export interface PermissionBlock {
   action: string
   detail: unknown
   answered?: boolean
+  /**
+   * What the answer was, once there is one.
+   *
+   * Undefined on a block settled by `closeOpenWork` rather than by the user:
+   * nobody answered, so neither `true` nor `false` would be true.
+   */
+  allowed?: boolean
 }
 
 /** Something failed. Fatal errors end the session. */
@@ -135,15 +142,20 @@ export function applyEvents(transcript: Transcript, events: readonly EnvelopedEv
   return events.reduce(applyEvent, transcript)
 }
 
-/** Mark a permission request answered, so the UI stops offering the buttons. */
-export function answerPermission(transcript: Transcript, id: string): Transcript {
+/**
+ * Mark a permission request answered, so the UI stops offering the buttons.
+ *
+ * `allowed` is kept as well as `answered`: an approved plan and a rejected one
+ * both stop asking, but only the rejected one gets replanned in place.
+ */
+export function answerPermission(transcript: Transcript, id: string, allowed: boolean): Transcript {
   const index = transcript.blocks.findIndex(
     (block) => block.kind === 'permission' && block.id === id,
   )
   if (index === -1) return transcript
 
   const blocks = [...transcript.blocks]
-  blocks[index] = { ...(blocks[index] as PermissionBlock), answered: true }
+  blocks[index] = { ...(blocks[index] as PermissionBlock), answered: true, allowed }
   return { ...transcript, blocks }
 }
 

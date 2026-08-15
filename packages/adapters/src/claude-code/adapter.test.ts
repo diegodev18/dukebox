@@ -384,7 +384,7 @@ describe('ClaudeCodeAdapter', () => {
     expect(written).toEqual([encodePermissionResponse('req-plan', false)])
   })
 
-  it('switches to auto after allowing an ExitPlanMode request', async () => {
+  it('switches to bypass after allowing an ExitPlanMode request', async () => {
     const { adapter, stream } = adapterWithStream()
     const written: string[] = []
     stream.write = ((chunk: string) => {
@@ -410,9 +410,9 @@ describe('ClaudeCodeAdapter', () => {
     expect(written[0]).toBe(encodePermissionResponse('req-plan', true))
     expect(JSON.parse(written[1] ?? '{}')).toMatchObject({
       type: 'control_request',
-      request: { subtype: 'set_permission_mode', mode: 'auto' },
+      request: { subtype: 'set_permission_mode', mode: 'bypassPermissions' },
     })
-    expect(events).toContainEqual({ type: 'permission_mode', mode: 'auto' })
+    expect(events).toContainEqual({ type: 'permission_mode', mode: 'bypass' })
   })
 
   it('asks Claude to change permission mode', async () => {

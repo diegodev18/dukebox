@@ -1,9 +1,11 @@
 import type { FileChange, SessionSummary } from '@dukebox/protocol'
 import { lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
 import type { DukeboxClient } from '@/lib/client'
+import type { PlanTab } from '@/lib/plans'
 import type { TerminalState } from '@/lib/useTerminals'
 import { EnvironmentReview } from '@/components/EnvironmentReview'
 import { FileChangeList } from '@/components/FileChangeList'
+import { PlanPanel } from '@/components/PlanPanel'
 import { PullRequestPanel, type PullRequestTab } from '@/components/PullRequest'
 import { CommitIcon, ChevronLeftIcon, ChevronRightIcon, FileIcon } from '@/components/icons'
 import { SandboxFiles } from '@/components/SandboxFiles'
@@ -36,15 +38,27 @@ const COLLAPSED_KEY = 'dukebox:workspace-collapsed'
 /** How many terminals a session may have. Matches the server's own cap. */
 const MAX_TERMINALS = 4
 
-type WorkspaceTab = 'changes' | 'files' | 'terminal' | 'environment' | 'pr'
+type StaticTab = 'changes' | 'files' | 'terminal' | 'environment' | 'pr'
 
-const TAB_LABELS: Record<WorkspaceTab, string> = {
+/**
+ * A plan gets a tab of its own, keyed by the permission block it belongs to.
+ *
+ * Keyed rather than numbered so a replanned tab keeps its identity when its
+ * block id changes underneath it, and so two plans can never collide.
+ */
+type PlanTabKey = `plan:${string}`
+
+type WorkspaceTab = StaticTab | PlanTabKey
+
+const TAB_LABELS: Record<StaticTab, string> = {
   changes: 'Changes',
   files: 'Files',
   terminal: 'Terminal',
   environment: 'Environment',
   pr: 'Pull request',
 }
+
+const planTabKey = (id: string): PlanTabKey => `plan:${id}`
 
 /** Props to mount the Environment review form as a workspace tab. */
 export interface EnvironmentReviewTab {
@@ -85,6 +99,10 @@ interface Props extends TerminalProps {
   environmentReview?: EnvironmentReviewTab | null
   /** When set, the Pull request tab can open, mark ready, and merge. */
   pullRequest?: PullRequestTab | null
+  /** Plans the agent has asked to build, one tab each. */
+  plans?: PlanTab[]
+  /** Answers a plan's Build / Keep planning. */
+  onRespond?: (id: string, allow: boolean) => void
   /** Expanded column width. When omitted, the panel is not resizable. */
   width?: number
   widthMin?: number
@@ -98,6 +116,8 @@ export function Workspace({
   client,
   environmentReview,
   pullRequest,
+  plans = [],
+  onRespond,
   width,
   widthMin = WORKSPACE_MIN,
   widthMax,
@@ -130,6 +150,16 @@ export function Workspace({
     setCollapsed(false)
   }, [reviewSessionId])
 
+  // A plan waiting for an answer is what blocks the session, so it takes the
+  // panel the moment it arrives. Keyed on the pending plan's id: re-running on
+  // the array would drag the panel back every time a token lands.
+  const pendingPlanId = plans.find((plan) => plan.status === 'pending')?.id ?? null
+  useEffect(() => {
+    if (!pendingPlanId) return
+    setTab(planTabKey(pendingPlanId))
+    setCollapsed(false)
+  }, [pendingPlanId])
+
   const prUrl = session?.pullRequest?.url ?? session?.pullRequestUrl
   useEffect(() => {
     if (!prUrl || !showPr) return
@@ -147,13 +177,32 @@ export function Workspace({
     if (!showPr && tab === 'pr') setTab('changes')
   }, [showPr, tab])
 
+  // Plans come first: everything else reports on work already done, and the
+  // plan is the one panel the session is waiting on.
+  const planKeys = plans.map((plan) => planTabKey(plan.id))
+  // A replanned plan takes a new block id, so its tab key changes under the
+  // selection. Joined rather than passed as an array: a fresh array every
+  // render would re-run this on every token.
+  const planKeyList = planKeys.join('\0')
+  useEffect(() => {
+    if (!tab.startsWith('plan:')) return
+    if (!planKeyList.split('\0').includes(tab)) setTab('changes')
+  }, [planKeyList, tab])
+
   const tabs: WorkspaceTab[] = [
+    ...planKeys,
     'changes',
     'files',
     'terminal',
     ...(environmentReview ? (['environment'] as const) : []),
     ...(showPr ? (['pr'] as const) : []),
   ]
+
+  const planLabels = Object.fromEntries(
+    plans.map((plan) => [planTabKey(plan.id), `Plan #${plan.number}`]),
+  ) as Partial<Record<WorkspaceTab, string>>
+
+  const activePlan = plans.find((plan) => planTabKey(plan.id) === tab) ?? null
 
   return (
     <aside
@@ -205,9 +254,22 @@ export function Workspace({
             tabs={tabs}
             active={tab}
             onSelect={setTab}
-            labels={{ pr: pullRequestTabLabel(prUrl) }}
+            labels={{ ...planLabels, pr: pullRequestTabLabel(prUrl) }}
           />
-          {tab === 'changes' ? (
+          {activePlan && onRespond ? (
+            <div
+              role="tabpanel"
+              id={`workspace-panel-${tab}`}
+              aria-labelledby={`workspace-tab-${tab}`}
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            >
+              <PlanPanel
+                tab={activePlan}
+                onRespond={onRespond}
+                disabled={Boolean(terminalProps.disabled)}
+              />
+            </div>
+          ) : tab === 'changes' ? (
             <div
               role="tabpanel"
               id="workspace-panel-changes"
@@ -306,7 +368,7 @@ function TabBar({
       ref={list}
       role="tablist"
       aria-label="Workspace panels"
-      className="flex gap-1 border-b border-border px-2 py-1.5"
+      className="flex gap-1 overflow-x-auto border-b border-border px-2 py-1.5"
       onKeyDown={(event) => {
         if (event.key === 'ArrowRight') {
           event.preventDefault()
@@ -349,13 +411,13 @@ function TabBar({
           aria-controls={`workspace-panel-${tab}`}
           tabIndex={active === tab ? 0 : -1}
           onClick={() => onSelect(tab)}
-          className={`rounded-[calc(var(--radius)*0.6)] px-2.5 py-1 text-[12.5px] ${
+          className={`shrink-0 rounded-[calc(var(--radius)*0.6)] px-2.5 py-1 text-[12.5px] ${
             active === tab
               ? 'bg-muted font-medium text-foreground'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground'
           }`}
         >
-          {labels?.[tab] ?? TAB_LABELS[tab]}
+          {labels?.[tab] ?? (tab in TAB_LABELS ? TAB_LABELS[tab as StaticTab] : tab)}
         </button>
       ))}
     </div>
