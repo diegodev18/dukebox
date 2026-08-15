@@ -55,6 +55,10 @@ export function EnvironmentReview({
   const [instructions, setInstructions] = useState('')
   const [envRows, setEnvRows] = useState<EnvRow[]>([])
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
+  // Stays false until a fetch succeeds so a failed first load cannot offer
+  // Save on empty setup/secrets.
+  const [loaded, setLoaded] = useState(false)
+  const [loadNonce, setLoadNonce] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -96,6 +100,7 @@ export function EnvironmentReview({
             configured: environment.secretNames.includes(name),
           })),
         )
+        setLoaded(true)
         setStatus({ kind: 'ready' })
       } catch (error) {
         if (cancelled) return
@@ -111,7 +116,7 @@ export function EnvironmentReview({
     return () => {
       cancelled = true
     }
-  }, [client, projectId, sessionId, environmentId])
+  }, [client, projectId, sessionId, environmentId, loadNonce])
 
   // Saved is a moment, not a lock: after a beat, or as soon as they edit,
   // the button is a save again.
@@ -187,6 +192,29 @@ export function EnvironmentReview({
       <p role="alert" className="px-3.5 py-4 text-[12.5px] text-destructive">
         {status.kind === 'failed' ? status.message : 'This session has no environment to review.'}
       </p>
+    )
+  }
+
+  // An empty form with Save would PUT empty setup and secrets over whatever
+  // is already stored. After a successful load, a later save failure keeps
+  // the form (existing catch below).
+  if (status.kind === 'failed' && !loaded) {
+    return (
+      <div className="px-3.5 py-4">
+        <p role="alert" className="text-[12.5px] text-destructive">
+          {status.message}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setStatus({ kind: 'loading' })
+            setLoadNonce((n) => n + 1)
+          }}
+          className="mt-2.5 rounded-md bg-foreground px-3 py-1.5 text-[12.5px] font-medium text-background"
+        >
+          Retry
+        </button>
+      </div>
     )
   }
 

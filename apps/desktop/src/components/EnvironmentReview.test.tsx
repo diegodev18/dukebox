@@ -119,4 +119,26 @@ describe('EnvironmentReview', () => {
       expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument(),
     )
   })
+
+  it('does not offer save when the proposal failed to load', async () => {
+    const client = makeClient({
+      getEnvironmentProposal: vi.fn().mockRejectedValue(new Error('network down')),
+    })
+    render(
+      <EnvironmentReview
+        client={client as never}
+        projectId="p1"
+        sessionId="s1"
+        environmentId="e1"
+        environmentName="Default"
+        onSaved={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/network down/i)
+    expect(screen.queryByRole('button', { name: 'Save environment' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(client.getEnvironmentProposal).toHaveBeenCalledTimes(2))
+  })
 })
