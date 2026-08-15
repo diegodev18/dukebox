@@ -11,6 +11,7 @@ describe('Pairing', () => {
     render(<Pairing onPaired={vi.fn()} />)
 
     expect(screen.getByRole('img', { name: 'Duke' })).toBeInTheDocument()
+    expect(screen.getByText('Dukebox')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Connect to your server' })).toBeInTheDocument()
   })
 })

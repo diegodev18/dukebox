@@ -76,9 +76,9 @@ export function DukeMark({
 
 export function DukeWordmark({ className }: { className?: string }) {
   return (
-    <p className={cn('flex items-center gap-2', className)}>
-      <DukeMark size={20} decorative />
-      <span className="text-[13px] font-semibold tracking-tight text-foreground">Dukebox</span>
+    <p className={cn('flex items-center gap-2.5', className)}>
+      <DukeMark size={32} decorative />
+      <span className="text-[15px] font-semibold tracking-tight text-foreground">Dukebox</span>
     </p>
   )
 }

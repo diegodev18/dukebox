@@ -782,7 +782,7 @@ function EmptySession({
   return (
     <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
       <div className="max-w-sm text-center">
-        <DukeHero size={120} className="mx-auto" />
+        <DukeHero size={180} className="mx-auto" />
         <p className="mt-4 text-[14px] font-medium">No session selected</p>
         <p className="mt-1 text-[13px] text-muted-foreground">
           Pick one from the sidebar, or start a new one.

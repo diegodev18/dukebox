@@ -127,7 +127,7 @@ export function Sidebar({
       <div className="min-h-0 flex-1 overflow-y-auto py-2">
         {projects.length === 0 ? (
           <div className="px-4 py-6 text-center">
-            <DukeMark size={36} className="mx-auto opacity-90" />
+            <DukeMark size={48} className="mx-auto opacity-90" />
             <p className="mt-2 text-[12.5px] text-muted-foreground">
               No projects yet. Connect a repository to start.
             </p>
