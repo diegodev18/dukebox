@@ -8,6 +8,7 @@ import {
   GrokBuildAdapter,
   GROK_AUTH_ENV,
   GROK_HOME_DIR,
+  GROK_PLAN_DISALLOWED_TOOLS,
   GROK_PLAN_RULES,
 } from '@/grok-build/adapter'
 
@@ -53,11 +54,13 @@ describe('buildGrokRunArgs', () => {
     expect(args.filter((arg) => arg.includes('first'))).toEqual(['first\nsecond'])
   })
 
-  it('runs under --permission-mode plan for plan mode', () => {
+  it('keeps --yolo in plan and blocks edit tools instead of --permission-mode plan', () => {
     const args = buildGrokRunArgs({ text: 'hello', permissionMode: 'plan' })
 
-    expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan')
-    expect(args).not.toContain('--yolo')
+    expect(args).toContain('--yolo')
+    expect(args).toContain('--no-plan')
+    expect(args).not.toContain('--permission-mode')
+    expect(args[args.indexOf('--disallowed-tools') + 1]).toBe(GROK_PLAN_DISALLOWED_TOOLS)
     expect(args[args.indexOf('--rules') + 1]).toBe(GROK_PLAN_RULES)
   })
 
@@ -76,6 +79,7 @@ describe('buildGrokRunArgs', () => {
       const args = buildGrokRunArgs({ text: 'hello', permissionMode: mode })
       expect(args).toContain('--yolo')
       expect(args).not.toContain('--permission-mode')
+      expect(args).not.toContain('--disallowed-tools')
     }
   })
 
@@ -545,7 +549,7 @@ describe('GrokBuildAdapter', () => {
     await adapter.send({ text: 'hello' })
 
     expect(execStream.mock.calls[0]?.[0]).toEqual(
-      expect.arrayContaining(['--permission-mode', 'plan', 'hello']),
+      expect.arrayContaining(['--yolo', '--disallowed-tools', GROK_PLAN_DISALLOWED_TOOLS, 'hello']),
     )
   })
 
@@ -577,7 +581,9 @@ describe('GrokBuildAdapter', () => {
     await adapter.send({ text: 'second' })
 
     const [command] = execStream.mock.calls[1] as unknown as [string[], unknown]
-    expect(command).toEqual(expect.arrayContaining(['--permission-mode', 'plan']))
+    expect(command).toEqual(
+      expect.arrayContaining(['--yolo', '--disallowed-tools', GROK_PLAN_DISALLOWED_TOOLS]),
+    )
     expect(command).toContain('second')
 
     second.end()
