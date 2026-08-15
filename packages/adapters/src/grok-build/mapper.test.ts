@@ -107,6 +107,24 @@ describe('GrokBuildMapper', () => {
       expect(events).toContainEqual({ type: 'error', message: 'rate limited', fatal: false })
       expect(typesOf(events)).not.toContain('done')
     })
+
+    it('treats the headless unsigned message as a fatal re-auth error', () => {
+      const mapper = new GrokBuildMapper()
+      const events = mapper.map({
+        type: 'error',
+        message:
+          'Not signed in. To authenticate without a browser, run:\n  grok login --device-code',
+      })
+
+      expect(events).toEqual([
+        {
+          type: 'error',
+          message:
+            'Grok is not signed in. Open Settings and sign in again with the device code. The saved session expired and could not be renewed.',
+          fatal: true,
+        },
+      ])
+    })
   })
 
   describe('malformed and unknown input', () => {

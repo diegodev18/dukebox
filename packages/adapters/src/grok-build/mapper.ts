@@ -1,4 +1,5 @@
 import type { AgentEvent } from '@dukebox/protocol'
+import { GROK_REAUTH_MESSAGE, isGrokUnsignedError } from '@/grok-build/auth'
 import {
   endMessage,
   errorMessage,
@@ -182,7 +183,11 @@ export class GrokBuildMapper {
     if (!parsed.success) return []
 
     const message: ErrorMessage = parsed.data
-    return [{ type: 'error', message: message.message || 'grok error', fatal: false }]
+    const text = message.message || 'grok error'
+    if (isGrokUnsignedError(text)) {
+      return [{ type: 'error', message: GROK_REAUTH_MESSAGE, fatal: true }]
+    }
+    return [{ type: 'error', message: text, fatal: false }]
   }
 }
 

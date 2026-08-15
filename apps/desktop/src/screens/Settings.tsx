@@ -861,7 +861,9 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
       <p className="mt-4 text-[12px] font-medium text-foreground">Subscription</p>
       <p className="mt-0.5 text-[12.5px] text-muted-foreground">
         Or paste <code>~/.grok/auth.json</code> from a machine that already ran{' '}
-        <code>grok login</code>.
+        <code>grok login</code>. Prefer the device-code flow above: pasting this Mac&apos;s file
+        shares the refresh token with the desktop Grok app, and whichever refreshes first signs the
+        other out.
       </p>
       <textarea
         value={authJson}
