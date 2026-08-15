@@ -1,8 +1,13 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { NEW_SESSION_DRAFT_KEY } from '@/lib/newSessionDraft'
 import type { LastNewSession } from '@/lib/settings'
 import { NewSession } from '@/screens/NewSession'
+
+afterEach(() => {
+  localStorage.clear()
+})
 
 /**
  * The pickers are popover menus, not `<select>`s, so every assertion about the
@@ -654,6 +659,36 @@ describe('NewSession preferProjectId', () => {
     expect(field).toBeDisabled()
     expect(field).toHaveAttribute('placeholder', 'Waiting for connection…')
     expect(screen.getByRole('button', { name: 'Start session' })).toBeDisabled()
+  })
+})
+
+describe('NewSession prompt draft', () => {
+  it('restores a stored draft when the form mounts', async () => {
+    localStorage.setItem(NEW_SESSION_DRAFT_KEY, 'finish the parser')
+    renderScreen(makeClient())
+
+    expect(await screen.findByLabelText(/what should it do/i)).toHaveValue('finish the parser')
+  })
+
+  it('persists typed text so a remount shows it', async () => {
+    const { unmount } = renderScreen(makeClient())
+
+    await userEvent.type(await screen.findByLabelText(/what should it do/i), 'keep this')
+    unmount()
+    renderScreen(makeClient())
+
+    expect(await screen.findByLabelText(/what should it do/i)).toHaveValue('keep this')
+  })
+
+  it('clears the draft after a session starts', async () => {
+    const client = makeClient()
+    renderScreen(client)
+
+    await userEvent.type(await screen.findByLabelText(/what should it do/i), 'do a thing')
+    await userEvent.click(screen.getByRole('button', { name: /start session/i }))
+
+    await waitFor(() => expect(client.startSession).toHaveBeenCalled())
+    expect(localStorage.getItem(NEW_SESSION_DRAFT_KEY)).toBeNull()
   })
 })
 
