@@ -229,6 +229,20 @@ describe('Session', () => {
     expect(screen.getByRole('img', { name: 'Duke' })).toBeInTheDocument()
   })
 
+  it('shows a retrying status when the first load fails', async () => {
+    listProjects.mockRejectedValueOnce(new TypeError('network error'))
+    listSessions.mockRejectedValueOnce(new TypeError('network error'))
+    whoami.mockRejectedValueOnce(new TypeError('network error'))
+    renderSession()
+
+    expect(await screen.findByText('Couldn’t load sessions. Retrying…')).toBeInTheDocument()
+    expect(screen.queryByText('No session selected')).not.toBeInTheDocument()
+
+    expect(
+      await screen.findByRole('button', { name: 'Done, Fix the demux bug' }, { timeout: 3000 }),
+    ).toBeInTheDocument()
+  })
+
   it('reflects a pull request that was merged on GitHub', async () => {
     const url = 'https://github.com/acme/app/pull/8'
     listSessions.mockResolvedValueOnce([

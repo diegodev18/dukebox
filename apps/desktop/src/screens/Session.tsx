@@ -90,6 +90,7 @@ export function Session({
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>('account')
@@ -143,6 +144,7 @@ export function Session({
         setSessions(loadedSessions)
         setRole(me.role)
         setSelected((current) => current ?? loadedSessions[0]?.id ?? null)
+        setLoadError(null)
         setLoading(false)
         delay = INITIAL_RETRY_MS
       } catch (error) {
@@ -156,7 +158,8 @@ export function Session({
           return
         }
 
-        setLoading(false)
+        // A failed first list must not look like a first-run empty server.
+        setLoadError('Couldn’t load sessions. Retrying…')
         const jitter = Math.random() * delay * 0.3
         timer = setTimeout(() => {
           timer = null
@@ -496,7 +499,7 @@ export function Session({
 
         {loading ? (
           <p role="status" className="grid place-items-center text-[13px] text-muted-foreground">
-            Loading sessions…
+            {loadError ?? 'Loading sessions…'}
           </p>
         ) : settingsOpen ? (
           <Suspense fallback={<PaneFallback />}>
