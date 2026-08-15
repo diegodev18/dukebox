@@ -26,6 +26,7 @@ import { useColumnWidths } from '@/lib/useColumnWidths'
 import { useLiveSession } from '@/lib/liveSession'
 import type { UseUpdate } from '@/lib/useUpdate'
 import { AgentIcon, hasAgentIcon } from '@/components/AgentIcon'
+import { DukeHero, DukeMark, presenceForStatus } from '@/components/Duke'
 import { Composer, type ComposerHandle } from '@/components/Composer'
 import { AttachIcon } from '@/components/icons'
 import { useFileDrop } from '@/lib/useFileDrop'
@@ -659,6 +660,7 @@ function SessionColumn({
       onDrop={onDrop}
     >
       <header className="flex items-center gap-2.5 border-b border-border px-4.5 py-2.5">
+        <DukeMark size={22} presence={presenceForStatus(session.status)} />
         <h1 className="truncate font-medium">{session.title}</h1>
         <SessionInfo session={session} connection={connection} />
         <span className="flex-1" />
@@ -781,7 +783,8 @@ function EmptySession({
   return (
     <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
       <div className="max-w-sm text-center">
-        <p className="text-[14px] font-medium">No session selected</p>
+        <DukeHero size={120} className="mx-auto" />
+        <p className="mt-4 text-[14px] font-medium">No session selected</p>
         <p className="mt-1 text-[13px] text-muted-foreground">
           Pick one from the sidebar, or start a new one.
         </p>

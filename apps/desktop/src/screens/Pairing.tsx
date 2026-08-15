@@ -1,3 +1,4 @@
+import { DukeHero } from '@/components/Duke'
 import { PairingForm } from '@/components/PairingForm'
 import type { Connection } from '@/lib/connection'
 
@@ -18,7 +19,8 @@ export function Pairing({ onPaired }: Props) {
   return (
     <main className="grid h-full place-items-center px-6">
       <div className="w-full max-w-md">
-        <h1 className="text-xl font-semibold tracking-tight">Connect to your server</h1>
+        <DukeHero size={148} className="mx-auto" />
+        <h1 className="mt-5 text-xl font-semibold tracking-tight">Connect to your server</h1>
         <p className="mt-2 text-muted-foreground">
           Dukebox runs on a machine you own. Paste the pairing link the installer printed.
         </p>

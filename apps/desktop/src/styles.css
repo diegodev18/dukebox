@@ -42,6 +42,12 @@
   /* GitHub's merged purple — not a session state, so it sits beside them. */
   --color-pr-merged: oklch(0.54 0.19 293);
 
+  /* Duke — the Schnauzer. Brand chrome only; session states stay on the
+     functional colours above. */
+  --color-duke: #4b4848;
+  --color-duke-muzzle: #6b6562;
+  --color-duke-box: #3b52db;
+
   --radius: 0.5rem;
 
   --font-sans: 'Inter Variable', Inter, system-ui, sans-serif;
