@@ -218,10 +218,9 @@ function numberOr(value: unknown, fallback = 0): number {
 }
 
 /**
- * Headless `grok -p` cannot answer a permission prompt. Plan mode therefore
- * denies mutating tools and reports it as "User cancelled", even though the
- * person never pressed Stop. Rewrite that so the transcript and the next
- * turn tell the truth.
+ * Headless `grok -p` cannot answer an Ask prompt, so Grok reports a denied
+ * tool as "User cancelled" even when nobody pressed Stop. That is not Plan
+ * specifically — bash is cancelled the same way — so do not blame Plan.
  */
 const CANCELLED_TOOL = /User cancelled the execution for tool [`']([^`']+)[`']/i
 
@@ -231,7 +230,7 @@ function stringifyToolOutput(content: unknown): string {
   if (!cancelled) return text
 
   const tool = cancelled[1]
-  return `Plan mode blocked \`${tool}\`. The user did not cancel. Switch to Bypass to apply changes.`
+  return `Grok denied \`${tool}\`. The user did not cancel. Headless sessions cannot answer an approval prompt — switch to Bypass and send again.`
 }
 
 function flattenToolOutput(content: unknown): string {

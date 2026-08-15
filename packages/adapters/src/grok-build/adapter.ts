@@ -102,27 +102,32 @@ export async function materializeGrokHome(context: SessionContext): Promise<void
 }
 
 export const GROK_BUILD_CAPABILITIES: AgentCapabilities = {
-  // Sessions run with --yolo (or plan), so the agent acts without asking.
-  // The container is the boundary that makes that safe.
+  // Sessions always run with --yolo. The container is the boundary that
+  // makes that safe. Headless grok -p cannot answer an Ask prompt.
   permissions: false,
   thinking: true,
   resume: true,
   mcp: true,
   interrupt: true,
-  // Plan maps onto `--permission-mode plan`. The other modes keep --yolo:
-  // headless cannot answer an interactive permission prompt.
+  // Grok's real Plan is a TUI review screen (press `a` to approve). That
+  // screen does not exist headless, so Dukebox Plan is --yolo plus a
+  // disallowed-edit list and a rule — not `--permission-mode plan`, which
+  // is not a Grok permission mode (those are ask / auto / always-approve).
   permissionModes: true,
 }
 
 /**
- * Extra `--rules` for plan mode.
+ * Extra `--rules` for Dukebox Plan.
  *
- * `--permission-mode plan` is the hard block, but without this the model
- * still tries to edit, Grok denies the tool as "User cancelled", and the
- * turn ends looking like the person stopped the session.
+ * Grok Plan in the TUI writes only the session plan file and waits for
+ * approval. Headless cannot show that UI, so we tell the model to plan in
+ * the transcript instead of editing.
  */
 export const GROK_PLAN_RULES =
-  'You are in Plan mode. Do not call write, search_replace, or any other tool that edits files. Read and search are fine. If the user asked you to implement something, outline the plan and tell them to switch the permission mode to Bypass — do not attempt the edit.'
+  'You are in Plan mode. Do not call write, search_replace, or any other tool that edits files. Read, search, and shell (git log, tests) are fine. If the user asked you to implement something, outline the plan in your reply and tell them to switch the permission mode to Bypass — do not attempt the edit.'
+
+/** Edit tools Grok must not run while Dukebox is in Plan. */
+export const GROK_PLAN_DISALLOWED_TOOLS = 'write,search_replace,Edit'
 
 /** Build the argument vector for one `grok -p`. */
 export function buildGrokRunArgs(options: {
@@ -134,10 +139,13 @@ export function buildGrokRunArgs(options: {
 }): string[] {
   const args = ['-p', options.text, '--output-format', 'streaming-json', '--no-auto-update']
 
+  // Always auto-approve. Without this, default Ask cancels every tool as
+  // "User cancelled" because nobody can click Allow. `--no-plan` turns off
+  // Grok's TUI plan-review feature, which cannot run here.
+  args.push('--yolo', '--no-plan')
+
   if (options.permissionMode === 'plan') {
-    args.push('--permission-mode', 'plan')
-  } else {
-    args.push('--yolo', '--no-plan')
+    args.push('--disallowed-tools', GROK_PLAN_DISALLOWED_TOOLS)
   }
 
   if (options.model) {
@@ -380,7 +388,7 @@ export class GrokBuildAdapter implements AgentAdapter {
   }
 
   async respondToPermission(): Promise<void> {
-    // Sessions run with --yolo or plan, so the agent never asks.
+    // Sessions run with --yolo, so the agent never asks.
   }
 
   async interrupt(): Promise<void> {

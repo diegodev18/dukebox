@@ -179,7 +179,7 @@ describe('GrokBuildMapper', () => {
       })
     })
 
-    it('does not report a plan-mode denial as the user cancelling the tool', () => {
+    it('does not report a denied tool as the user cancelling it', () => {
       const mapper = new GrokBuildMapper()
       const events = mapper.map({
         type: 'tool_call_update',
@@ -202,8 +202,9 @@ describe('GrokBuildMapper', () => {
         id: 'call_write',
         isError: true,
       })
-      expect(result?.type === 'tool_result' && result.output).toMatch(/plan mode/i)
+      expect(result?.type === 'tool_result' && result.output).toMatch(/did not cancel/i)
       expect(result?.type === 'tool_result' && result.output).not.toMatch(/user cancelled/i)
+      expect(result?.type === 'tool_result' && result.output).not.toMatch(/plan mode/i)
       expect(result?.type === 'tool_result' && result.output).toContain('write')
     })
   })
