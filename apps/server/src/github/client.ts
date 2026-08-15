@@ -431,6 +431,24 @@ export class GitHubClient {
     )
   }
 
+  /**
+   * File paths in a repository at a ref (branch, tag, or commit).
+   *
+   * Blobs only — directories are inferred from the prefixes, the same way
+   * the session workspace tree is built. Submodules (`commit`) stay out.
+   */
+  async listTree(repoFullName: string, ref: string): Promise<string[]> {
+    return this.json(
+      [
+        'api',
+        `repos/${repoFullName}/git/trees/${encodeURIComponent(ref)}?recursive=1`,
+        '--jq',
+        '[.tree[]? | select(.type=="blob") | .path]',
+      ],
+      z.array(z.string()),
+    )
+  }
+
   /** Branch names in a repository. */
   async listBranches(repoFullName: string, limit = 100): Promise<string[]> {
     const branches = await this.json(

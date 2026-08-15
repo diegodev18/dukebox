@@ -378,7 +378,14 @@ const fakeClient = {
     reviewDecision: 'APPROVED' as const,
   }),
   resolvePullRequestConflicts: async () => ({ status: 'resolved' as const }),
-  listWorkspaceTree: async () => ['CLAUDE.md', 'src/app.ts'],
+  listWorkspaceTree: async () => ['CLAUDE.md', 'src/app.ts', 'docs/guide.md'],
+  listRepositoryTree: async () => [
+    'CLAUDE.md',
+    'README.md',
+    'docs/guide.md',
+    'src/app.ts',
+    'src/lib/util.ts',
+  ],
   readWorkspaceFile: async (_sessionId: string, path: string) => {
     if (path === 'CLAUDE.md') {
       return {
@@ -516,6 +523,7 @@ function Preview() {
   const setupTranscript = applyEvents(emptyTranscript(), setupScript)
   const [view, setView] = useState<'new' | 'coding' | 'setup'>('setup')
   const [searchOpen, setSearchOpen] = useState(false)
+  const [fileTreeRevision, setFileTreeRevision] = useState(0)
   const [composerDraft, setComposerDraft] = useState<{ text: string; key: number } | null>(null)
   const [codingPullRequest, setCodingPullRequest] = useState<SessionSummary['pullRequest']>({
     url: 'https://github.com/diegodev18/dukebox/pull/1',
@@ -623,6 +631,13 @@ function Preview() {
         </button>
         <button
           type="button"
+          onClick={() => setFileTreeRevision((value) => value + 1)}
+          className="mt-1 w-full rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left font-medium hover:bg-muted"
+        >
+          Sync files
+        </button>
+        <button
+          type="button"
           onClick={() => setSearchOpen(true)}
           className="mt-1 w-full rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left font-medium hover:bg-muted"
         >
@@ -694,6 +709,7 @@ function Preview() {
           ]}
           onCreated={() => setView('coding')}
           onConfigureProviders={() => undefined}
+          fileTreeRevision={fileTreeRevision}
         />
       ) : (
         <>
@@ -743,6 +759,9 @@ function Preview() {
               onSend={(text) => console.log('send', text)}
               onInterrupt={() => console.log('interrupt')}
               running={false}
+              mentionFiles={{
+                paths: ['CLAUDE.md', 'README.md', 'docs/guide.md', 'src/app.ts', 'src/lib/util.ts'],
+              }}
               {...(composerDraft ? { draft: composerDraft } : {})}
               {...(view === 'coding'
                 ? {

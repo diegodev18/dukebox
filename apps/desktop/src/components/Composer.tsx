@@ -10,9 +10,13 @@ import {
 import type { PermissionMode } from '@dukebox/protocol'
 import { availablePermissionModes, cyclePermissionMode } from '@/components/AgentIcon'
 import { AttachmentChips } from '@/components/AttachmentChips'
+import { FileMentionList } from '@/components/FileMentionList'
 import { PermissionModePicker } from '@/components/RepoBranchPickers'
 import { AttachIcon } from '@/components/icons'
+import { insertMention } from '@/lib/fileMentions'
 import { filesFromPaste, useFileDrop } from '@/lib/useFileDrop'
+import { useFileMention } from '@/lib/useFileMention'
+import type { FileTreeStatus } from '@/lib/useFileTree'
 
 /**
  * Where a person talks to the agent.
@@ -57,6 +61,11 @@ interface Props {
    * on the transcript attaches here instead of navigating away.
    */
   captureDrop?: boolean
+  /**
+   * Workspace or repository paths `@` can mention. Absent means the list
+   * never opens — `@` is just text.
+   */
+  mentionFiles?: { paths: readonly string[]; status?: FileTreeStatus }
 }
 
 export interface ComposerHandle {
@@ -77,15 +86,36 @@ export const Composer = memo(
       agentId,
       draft,
       captureDrop = true,
+      mentionFiles,
     },
     ref,
   ) {
     const [text, setText] = useState('')
     const [files, setFiles] = useState<ComposerFile[]>([])
+    const [cursor, setCursor] = useState(0)
     const field = useRef<HTMLTextAreaElement>(null)
     const picker = useRef<HTMLInputElement>(null)
     const lastSent = useRef('')
     const lastSentFiles = useRef<ComposerFile[]>([])
+    const mention = useFileMention(text, cursor, mentionFiles?.paths)
+    const mentionStatus = mentionFiles?.status ?? 'ready'
+
+    const syncCursor = (element: HTMLTextAreaElement) => {
+      setCursor(element.selectionStart)
+    }
+
+    const pickMention = (path: string) => {
+      if (!mention.mention) return
+      const next = insertMention(text, mention.mention.start, cursor, path)
+      setText(next.text)
+      setCursor(next.cursor)
+      requestAnimationFrame(() => {
+        const element = field.current
+        if (!element) return
+        element.focus()
+        element.setSelectionRange(next.cursor, next.cursor)
+      })
+    }
 
     // Grow with the content, up to a point. A composer that takes the window is
     // worse than one that scrolls.
@@ -172,10 +202,49 @@ export const Composer = memo(
             onChange={(event) => {
               const element = event.currentTarget
               setText(element.value)
+              syncCursor(element)
               element.style.height = 'auto'
               element.style.height = `${Math.min(element.scrollHeight, 200)}px`
             }}
+            onClick={(event) => syncCursor(event.currentTarget)}
+            onKeyUp={(event) => syncCursor(event.currentTarget)}
+            onSelect={(event) => syncCursor(event.currentTarget)}
             onKeyDown={(event) => {
+              if (mention.open) {
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault()
+                  if (mention.matches.length > 0) {
+                    mention.setIndex((current) => (current + 1) % mention.matches.length)
+                  }
+                  return
+                }
+                if (event.key === 'ArrowUp') {
+                  event.preventDefault()
+                  if (mention.matches.length > 0) {
+                    mention.setIndex(
+                      (current) => (current - 1 + mention.matches.length) % mention.matches.length,
+                    )
+                  }
+                  return
+                }
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  mention.dismiss()
+                  return
+                }
+                if ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey) {
+                  const path = mention.matches[mention.index]
+                  if (path) {
+                    event.preventDefault()
+                    pickMention(path)
+                    return
+                  }
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    return
+                  }
+                }
+              }
               if (
                 event.key === 'Tab' &&
                 event.shiftKey &&
@@ -235,8 +304,12 @@ export const Composer = memo(
               ) : null}
               <p className="text-[11.5px] text-muted-foreground">
                 {permissionMode && onPermissionModeChange
-                  ? '↵ Send · ⇧↵ Newline · ⇧⇥ Mode'
-                  : '↵ Send · ⇧↵ Newline'}
+                  ? mentionFiles
+                    ? '↵ Send · ⇧↵ Newline · ⇧⇥ Mode · @ File'
+                    : '↵ Send · ⇧↵ Newline · ⇧⇥ Mode'
+                  : mentionFiles
+                    ? '↵ Send · ⇧↵ Newline · @ File'
+                    : '↵ Send · ⇧↵ Newline'}
               </p>
             </div>
             {running ? (
@@ -259,6 +332,16 @@ export const Composer = memo(
               </button>
             )}
           </div>
+
+          {mention.open && (
+            <FileMentionList
+              items={mention.matches}
+              selectedIndex={mention.index}
+              status={mentionStatus}
+              onSelect={pickMention}
+              onHighlight={mention.setIndex}
+            />
+          )}
 
           {dragging && (
             <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-[var(--radius)] border-2 border-dashed border-primary/60 bg-background/85">

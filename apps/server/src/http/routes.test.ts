@@ -47,6 +47,7 @@ const github = {
   listRepositories: vi.fn(async () => REPOSITORIES),
   defaultBranch: vi.fn(async () => 'main'),
   listBranches: vi.fn(async () => ['main', 'develop']),
+  listTree: vi.fn(async () => ['README.md', 'src/app.ts']),
 } as unknown as GitHubClient
 
 const sessionManager = {
@@ -347,6 +348,40 @@ describe('GET /api/projects', () => {
     }
 
     expect(body.projects[0]?.environmentCount).toBe(0)
+  })
+})
+
+describe('GET /api/repositories/tree', () => {
+  it('lists blob paths for a repo and ref', async () => {
+    const response = await request('/api/repositories/tree?repo=diego%2Fdukebox&ref=main')
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ paths: ['README.md', 'src/app.ts'] })
+    expect(github.listTree).toHaveBeenCalledWith('diego/dukebox', 'main')
+  })
+
+  it('rejects a malformed repository name', async () => {
+    const response = await request('/api/repositories/tree?repo=not-a-repo&ref=main')
+    expect(response.status).toBe(400)
+  })
+
+  it('rejects a missing ref', async () => {
+    const response = await request('/api/repositories/tree?repo=diego%2Fdukebox')
+    expect(response.status).toBe(400)
+  })
+
+  it('returns structured JSON when GitHub fails unexpectedly', async () => {
+    vi.mocked(github.listTree).mockRejectedValueOnce(new Error('unexpected gh output'))
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const response = await request('/api/repositories/tree?repo=diego%2Fdukebox&ref=main')
+    logged.mockRestore()
+
+    expect(response.status).toBe(500)
+    expect(await response.json()).toMatchObject({
+      error: 'internal_error',
+      message: expect.stringContaining('unexpected gh output'),
+    })
   })
 })
 

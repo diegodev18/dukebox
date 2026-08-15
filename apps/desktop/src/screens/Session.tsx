@@ -36,6 +36,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { Transcript } from '@/components/Transcript'
 import { Workspace } from '@/components/Workspace'
 import { useSession, type LiveSession } from '@/lib/useSession'
+import { useFileTree } from '@/lib/useFileTree'
 
 /**
  * The session view.
@@ -104,6 +105,8 @@ export function Session({
   const [searchOpen, setSearchOpen] = useState(false)
   // Prefill New Session from a merged PR, even before settings persist.
   const [continueFrom, setContinueFrom] = useState<LastNewSession | null>(null)
+  // Bumped by Sync files so New Session and the composer refetch paths.
+  const [fileTreeRevision, setFileTreeRevision] = useState(0)
 
   const refreshProjects = async () => {
     try {
@@ -370,6 +373,7 @@ export function Session({
               onSelect={selectSession}
               onNewSession={startNewSession}
               onSearch={() => setSearchOpen(true)}
+              onSyncFiles={() => setFileTreeRevision((value) => value + 1)}
               onConfigureEnvironment={(projectId) => {
                 setSetupProjectId(projectId)
                 setPreferProjectId(null)
@@ -529,6 +533,7 @@ export function Session({
               }
               onRemember={(last) => onSaveSettings({ lastNewSession: last })}
               disabled={disconnected}
+              fileTreeRevision={fileTreeRevision}
               onConfigureProviders={() => {
                 if (role !== 'owner') return
                 setPreferAgentId('opencode')
@@ -544,6 +549,9 @@ export function Session({
               session={current}
               live={live}
               connection={connection}
+              client={client}
+              project={projects.find((project) => project.id === current.projectId) ?? null}
+              fileTreeRevision={fileTreeRevision}
               onContinueAfterMerge={() => continueAfterMerge(current)}
             />
             <ConnectedWorkspace
@@ -620,11 +628,17 @@ function SessionColumn({
   session,
   live,
   connection,
+  client,
+  project,
+  fileTreeRevision,
   onContinueAfterMerge,
 }: {
   session: SessionSummary
   live: LiveSession
   connection: Connection
+  client: DukeboxClient
+  project: ProjectSummary | null
+  fileTreeRevision: number
   onContinueAfterMerge: () => void
 }) {
   const transcript = useLiveSession((state) => state.transcript)
@@ -637,6 +651,17 @@ function SessionColumn({
   const working = transcript.running && !isTerminal(session.status)
   const [composerDraft, setComposerDraft] = useState<{ text: string; key: number } | null>(null)
   const composer = useRef<ComposerHandle>(null)
+  const fileTree = useFileTree(
+    client,
+    {
+      kind: 'session',
+      sessionId: session.id,
+      ...(project
+        ? { repoFullName: project.repoFullName, ref: session.branch || session.baseBranch }
+        : {}),
+    },
+    fileTreeRevision,
+  )
   const onEdit = useCallback((text: string) => {
     setComposerDraft({ text, key: Date.now() })
   }, [])
@@ -742,6 +767,7 @@ function SessionColumn({
               onPermissionModeChange: live.setPermissionMode,
             }
           : {})}
+        mentionFiles={{ paths: fileTree.paths, status: fileTree.status }}
         {...(session.purpose === 'environment_setup'
           ? { placeholder: 'Add context for the setup agent…' }
           : {})}

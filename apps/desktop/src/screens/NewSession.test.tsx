@@ -38,6 +38,7 @@ function makeClient(overrides = {}) {
   return {
     listRepositories: vi.fn().mockResolvedValue([]),
     listBranches: vi.fn().mockResolvedValue(['main', 'refact/auth']),
+    listRepositoryTree: vi.fn().mockResolvedValue(['README.md', 'src/app.ts', 'docs/guide.md']),
     listEnvironments: vi.fn().mockResolvedValue(environments),
     listOpencodeProviders: vi.fn().mockResolvedValue([]),
     agentCredentialsConfigured: vi.fn().mockResolvedValue(true),
@@ -76,6 +77,7 @@ function renderScreen(
     lastNewSession?: LastNewSession | null
     projects?: (typeof project)[]
     disabled?: boolean
+    fileTreeRevision?: number
   } = {},
 ) {
   return render(
@@ -91,6 +93,7 @@ function renderScreen(
       preferProjectId={extra.preferProjectId}
       lastNewSession={extra.lastNewSession}
       disabled={extra.disabled}
+      fileTreeRevision={extra.fileTreeRevision}
     />,
   )
 }
@@ -615,6 +618,7 @@ describe('NewSession loading', () => {
       listBranches: vi.fn(hang),
       listEnvironments: vi.fn(hang),
       listOpencodeProviders: vi.fn(hang),
+      listRepositoryTree: vi.fn(hang),
     })
     renderScreen(client)
 
@@ -799,6 +803,41 @@ describe('NewSession last session', () => {
         }),
       ),
     )
+  })
+})
+
+describe('NewSession file mentions', () => {
+  it('loads the repository tree and inserts a mentioned file', async () => {
+    const client = makeClient()
+    renderScreen(client)
+
+    await waitFor(() => expect(client.listRepositoryTree).toHaveBeenCalledWith('acme/app', 'main'))
+
+    await userEvent.type(screen.getByLabelText(/what should it do/i), 'look at @guide')
+    await userEvent.click(await screen.findByRole('option', { name: /guide.md/ }))
+
+    expect(screen.getByLabelText(/what should it do/i)).toHaveValue('look at @docs/guide.md ')
+  })
+
+  it('refetches the tree when fileTreeRevision changes', async () => {
+    const client = makeClient()
+    const { rerender } = renderScreen(client, {}, { fileTreeRevision: 0 })
+
+    await waitFor(() => expect(client.listRepositoryTree).toHaveBeenCalledTimes(1))
+
+    rerender(
+      <NewSession
+        client={client as never}
+        connection={connection as never}
+        projects={[project] as never}
+        identity={null}
+        onCreated={vi.fn()}
+        onConfigureProviders={vi.fn()}
+        fileTreeRevision={1}
+      />,
+    )
+
+    await waitFor(() => expect(client.listRepositoryTree).toHaveBeenCalledTimes(2))
   })
 })
 

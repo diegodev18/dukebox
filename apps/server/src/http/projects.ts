@@ -6,6 +6,7 @@ import {
   mergeProjectConfig,
   projectConfig,
   putProjectEnvironmentRequest,
+  repositoryTreeQuery,
   type ProjectConfig,
   type ProjectSummary,
   type RepositorySummary,
@@ -58,6 +59,27 @@ export function projectRoutes(deps: ProjectRoutesDeps) {
     }))
 
     return c.json({ repositories: summaries })
+  })
+
+  /**
+   * File paths in a GitHub repository at a ref.
+   *
+   * Independent of whether the repository is a project: New Session can
+   * mention files before the project row exists. The server's `gh` token
+   * is what decides visibility, same as listing repositories.
+   */
+  app.get('/repositories/tree', async (c) => {
+    const parsed = repositoryTreeQuery.safeParse({
+      repo: c.req.query('repo'),
+      ref: c.req.query('ref'),
+    })
+
+    if (!parsed.success) {
+      return c.json({ error: 'invalid_request', message: parsed.error.message }, 400)
+    }
+
+    const paths = await deps.github.listTree(parsed.data.repo, parsed.data.ref)
+    return c.json({ paths })
   })
 
   app.get('/projects', async (c) => {

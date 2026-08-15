@@ -113,6 +113,17 @@ describe('DukeboxClient', () => {
     expect(url).toContain('/api/projects/00000000-0000-4000-8000-000000000001/branches')
   })
 
+  it('lists a repository tree at a ref', async () => {
+    const fetchMock = respondWith({ paths: ['README.md', 'src/app.ts'] })
+    const paths = await client.listRepositoryTree('diego/dukebox', 'refact/auth')
+
+    expect(paths).toEqual(['README.md', 'src/app.ts'])
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toContain('/api/repositories/tree?')
+    expect(url).toContain('repo=diego%2Fdukebox')
+    expect(url).toContain('ref=refact%2Fauth')
+  })
+
   it('reports a failure with the server code a caller can branch on', async () => {
     respondWith({ error: 'already_exists', message: 'that is already a project' }, { status: 409 })
 

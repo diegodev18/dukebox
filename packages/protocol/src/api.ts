@@ -40,6 +40,25 @@ export const listRepositoriesResponse = z.object({
   repositories: z.array(repositorySummary),
 })
 
+/**
+ * Query for the file tree of a GitHub repository at a ref.
+ *
+ * Used so the desktop can offer `@` file mentions before a session exists
+ * (no sandbox yet) and as a fallback when a session container cannot resume.
+ */
+export const repositoryTreeQuery = z.object({
+  /** `owner/repo` as GitHub names it. */
+  repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/, 'expected owner/repo'),
+  /** Branch, tag, or commit SHA. */
+  ref: z
+    .string()
+    .min(1)
+    .max(255)
+    .refine((value) => !value.includes('..') && !/\s/.test(value), 'invalid ref'),
+})
+
+export type RepositoryTreeQuery = z.infer<typeof repositoryTreeQuery>
+
 // ---------------------------------------------------------------------------
 // Projects
 // ---------------------------------------------------------------------------
@@ -388,6 +407,16 @@ export const workspaceTreeResponse = z.object({
 })
 
 export type WorkspaceTreeResponse = z.infer<typeof workspaceTreeResponse>
+
+/**
+ * Paths in a GitHub repository at a ref, relative to the repository root.
+ *
+ * Same shape as the session workspace tree so the desktop can treat them
+ * interchangeably for `@` mentions.
+ */
+export const repositoryTreeResponse = workspaceTreeResponse
+
+export type RepositoryTreeResponse = WorkspaceTreeResponse
 
 /**
  * Contents of one workspace file.

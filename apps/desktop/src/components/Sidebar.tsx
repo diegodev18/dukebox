@@ -25,6 +25,7 @@ import {
   BranchIcon,
   CloseIcon,
   PlusIcon,
+  RefreshIcon,
   SearchIcon,
   SettingsIcon,
 } from '@/components/icons'
@@ -59,6 +60,11 @@ interface Props {
   onDelete: (sessionId: string) => void
   onRemoveProject: (projectId: string) => void
   onSearch: () => void
+  /**
+   * Refresh the file tree used for `@` mentions — the selected session's
+   * workspace, or the repository chosen on New Session.
+   */
+  onSyncFiles?: () => void
   /** Set when an archive or remove request failed; the row stays put. */
   archiveError?: string | null
   /** Creating, archiving, and environment setup talk to the server. */
@@ -81,6 +87,7 @@ export function Sidebar({
   onDelete,
   onRemoveProject,
   onSearch,
+  onSyncFiles,
   archiveError,
   disabled = false,
 }: Props) {
@@ -117,6 +124,12 @@ export function Sidebar({
           {...(disabled ? {} : { onClick: () => onNewSession() })}
         >
           New session
+        </SidebarAction>
+        <SidebarAction
+          icon={<RefreshIcon size={16} />}
+          {...(disabled || !onSyncFiles ? {} : { onClick: onSyncFiles })}
+        >
+          Sync files
         </SidebarAction>
         <SidebarAction icon={<SearchIcon size={16} />} onClick={onSearch}>
           Search

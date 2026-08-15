@@ -155,6 +155,22 @@ describe('listRepositories', () => {
   })
 })
 
+describe('listTree', () => {
+  it('returns blob paths', async () => {
+    const { client } = clientReturning(JSON.stringify(['README.md', 'src/app.ts']))
+    expect(await client.listTree('diego/dukebox', 'main')).toEqual(['README.md', 'src/app.ts'])
+  })
+
+  it('asks for the recursive tree of that ref', async () => {
+    const { client, run } = clientReturning('[]')
+    await client.listTree('diego/dukebox', 'refact/auth')
+
+    const args = run.mock.calls[0]?.[0] as unknown as string[]
+    expect(args.join(' ')).toContain('repos/diego/dukebox/git/trees/refact%2Fauth?recursive=1')
+    expect(args.join(' ')).toContain('select(.type=="blob")')
+  })
+})
+
 describe('listBranches', () => {
   it('returns branch names', async () => {
     const { client } = clientReturning(JSON.stringify([{ name: 'main' }, { name: 'develop' }]))

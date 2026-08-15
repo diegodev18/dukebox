@@ -26,8 +26,12 @@ import {
 } from '@/components/AgentIcon'
 import { AttachmentChips } from '@/components/AttachmentChips'
 import { readFile, type ComposerFile } from '@/components/Composer'
+import { FileMentionList } from '@/components/FileMentionList'
 import { modelsForProvider } from '@/components/OpenCodeProviders'
 import { AttachIcon, SendIcon } from '@/components/icons'
+import { insertMention } from '@/lib/fileMentions'
+import { useFileMention } from '@/lib/useFileMention'
+import { useFileTree } from '@/lib/useFileTree'
 import { filesFromPaste, useFileDrop } from '@/lib/useFileDrop'
 import {
   AgentPicker,
@@ -85,6 +89,11 @@ interface Props {
   onConfigureProviders: () => void
   /** Starting a session needs the server. */
   disabled?: boolean
+  /**
+   * Bumped by Sync files so this form refetches the repository tree without
+   * changing the selected repo or branch.
+   */
+  fileTreeRevision?: number
 }
 
 /** Matches the search field in the pickers, so the two read as one family. */
@@ -111,6 +120,7 @@ export function NewSession({
   onRemember,
   onConfigureProviders,
   disabled = false,
+  fileTreeRevision = 0,
 }: Props) {
   const preferredId = preferSetupProjectId ?? preferProjectId
   const preferred = preferredId ? projects.find((project) => project.id === preferredId) : undefined
@@ -142,6 +152,7 @@ export function NewSession({
   const [agentsStatus, setAgentsStatus] = useState<'loading' | 'loaded'>('loading')
   const [providerId, setProviderId] = useState(initialProviderId(lastNewSession, initialAgent))
   const [prompt, setPrompt] = useState('')
+  const [cursor, setCursor] = useState(0)
   const [files, setFiles] = useState<ComposerFile[]>([])
   const [forceSetup, setForceSetup] = useState(Boolean(preferSetupProjectId))
   const [newEnvironmentName, setNewEnvironmentName] = useState('Default')
@@ -149,6 +160,31 @@ export function NewSession({
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const field = useRef<HTMLTextAreaElement>(null)
   const picker = useRef<HTMLInputElement>(null)
+  const fileTree = useFileTree(
+    client,
+    target && baseBranch ? { kind: 'repo', repoFullName: target, ref: baseBranch } : null,
+    fileTreeRevision,
+  )
+  const mention = useFileMention(
+    prompt,
+    cursor,
+    fileTree.status === 'idle' ? undefined : fileTree.paths,
+  )
+  const syncCursor = (element: HTMLTextAreaElement) => {
+    setCursor(element.selectionStart)
+  }
+  const pickMention = (path: string) => {
+    if (!mention.mention) return
+    const next = insertMention(prompt, mention.mention.start, cursor, path)
+    setPrompt(next.text)
+    setCursor(next.cursor)
+    requestAnimationFrame(() => {
+      const element = field.current
+      if (!element) return
+      element.focus()
+      element.setSelectionRange(next.cursor, next.cursor)
+    })
+  }
 
   // Setup is offered, not required: a branch with no environment runs on the
   // base image rather than being blocked.
@@ -727,8 +763,50 @@ export function NewSession({
             <textarea
               ref={field}
               value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
+              onChange={(event) => {
+                setPrompt(event.target.value)
+                syncCursor(event.currentTarget)
+              }}
+              onClick={(event) => syncCursor(event.currentTarget)}
+              onKeyUp={(event) => syncCursor(event.currentTarget)}
+              onSelect={(event) => syncCursor(event.currentTarget)}
               onKeyDown={(event) => {
+                if (mention.open) {
+                  if (event.key === 'ArrowDown') {
+                    event.preventDefault()
+                    if (mention.matches.length > 0) {
+                      mention.setIndex((current) => (current + 1) % mention.matches.length)
+                    }
+                    return
+                  }
+                  if (event.key === 'ArrowUp') {
+                    event.preventDefault()
+                    if (mention.matches.length > 0) {
+                      mention.setIndex(
+                        (current) =>
+                          (current - 1 + mention.matches.length) % mention.matches.length,
+                      )
+                    }
+                    return
+                  }
+                  if (event.key === 'Escape') {
+                    event.preventDefault()
+                    mention.dismiss()
+                    return
+                  }
+                  if ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey) {
+                    const path = mention.matches[mention.index]
+                    if (path) {
+                      event.preventDefault()
+                      pickMention(path)
+                      return
+                    }
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      return
+                    }
+                  }
+                }
                 if (
                   event.key === 'Tab' &&
                   event.shiftKey &&
@@ -752,7 +830,9 @@ export function NewSession({
               }}
               rows={3}
               disabled={busy}
-              placeholder={disabled ? 'Waiting for connection…' : 'Ask for a change…'}
+              placeholder={
+                disabled ? 'Waiting for connection…' : 'Ask for a change…  (@ to mention a file)'
+              }
               aria-label="What should it do?"
               className="block w-full resize-none bg-transparent px-3.5 pt-3.5 pb-2 outline-none placeholder:text-muted-foreground disabled:opacity-50"
             />
@@ -806,6 +886,15 @@ export function NewSession({
               </button>
             </div>
             <input ref={picker} type="file" multiple className="hidden" onChange={handleFiles} />
+            {mention.open && (
+              <FileMentionList
+                items={mention.matches}
+                selectedIndex={mention.index}
+                status={fileTree.status}
+                onSelect={pickMention}
+                onHighlight={mention.setIndex}
+              />
+            )}
           </div>
         )}
 

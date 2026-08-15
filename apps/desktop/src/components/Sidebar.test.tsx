@@ -256,6 +256,62 @@ describe('Sidebar', () => {
     expect(onNewSession).toHaveBeenCalledWith()
   })
 
+  it('refreshes the file tree from Sync files', async () => {
+    const onSyncFiles = vi.fn()
+    render(
+      <Sidebar
+        projects={[project]}
+        sessions={[session]}
+        selectedId={session.id}
+        identity={DEFAULT_COMMIT_IDENTITY}
+        serverName="debian-01"
+        role="owner"
+        onOpenSettings={vi.fn()}
+        onSelect={vi.fn()}
+        onNewSession={vi.fn()}
+        onSearch={vi.fn()}
+        onSyncFiles={onSyncFiles}
+        onConfigureEnvironment={vi.fn()}
+        onManageEnvironments={vi.fn()}
+        onArchive={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveProject={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sync files' }))
+    expect(onSyncFiles).toHaveBeenCalled()
+  })
+
+  it('disables Sync files while disconnected', async () => {
+    const onSyncFiles = vi.fn()
+    render(
+      <Sidebar
+        projects={[project]}
+        sessions={[session]}
+        selectedId={session.id}
+        identity={DEFAULT_COMMIT_IDENTITY}
+        serverName="debian-01"
+        role="owner"
+        onOpenSettings={vi.fn()}
+        onSelect={vi.fn()}
+        onNewSession={vi.fn()}
+        onSearch={vi.fn()}
+        onSyncFiles={onSyncFiles}
+        onConfigureEnvironment={vi.fn()}
+        onManageEnvironments={vi.fn()}
+        onArchive={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveProject={vi.fn()}
+        disabled
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Sync files' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Sync files' }))
+    expect(onSyncFiles).not.toHaveBeenCalled()
+  })
+
   it('opens search without hiding New session', async () => {
     const onSearch = vi.fn()
     render(

@@ -69,6 +69,8 @@ vi.mock('@/lib/client', async (importOriginal) => {
       deleteSession = deleteSession
       deleteProject = deleteProject
       listEnvironments = vi.fn().mockResolvedValue([])
+      listWorkspaceTree = vi.fn().mockResolvedValue(['README.md', 'src/app.ts'])
+      listRepositoryTree = vi.fn().mockResolvedValue(['README.md', 'src/app.ts'])
     },
   }
 })

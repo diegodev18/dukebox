@@ -28,6 +28,7 @@ import type {
   PermissionMode,
   WorkspaceFileResponse,
   WorkspaceTreeResponse,
+  RepositoryTreeResponse,
 } from '@dukebox/protocol'
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 
@@ -185,6 +186,18 @@ export class DukeboxClient {
       `/api/projects/${encodeURIComponent(projectId)}/branches`,
     )
     return body.branches
+  }
+
+  /**
+   * File paths in a GitHub repository at a ref, relative to the root.
+   *
+   * Used for `@` mentions on New Session (no sandbox yet) and as a fallback
+   * when a session's workspace tree cannot be read.
+   */
+  async listRepositoryTree(repoFullName: string, ref: string): Promise<string[]> {
+    const params = new URLSearchParams({ repo: repoFullName, ref })
+    const body = await this.request<RepositoryTreeResponse>(`/api/repositories/tree?${params}`)
+    return body.paths
   }
 
   async listSessions(projectId?: string): Promise<SessionSummary[]> {

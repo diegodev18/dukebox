@@ -6,6 +6,8 @@ import {
   reorderEnvironmentsRequest,
   workspaceTreeResponse,
   workspaceFileResponse,
+  repositoryTreeQuery,
+  repositoryTreeResponse,
   resolvePullRequestConflictsResponse,
   pullRequestResponse,
   partitionAttachments,
@@ -203,6 +205,19 @@ describe('workspace file schemas', () => {
 
   it('accepts an empty tree', () => {
     expect(workspaceTreeResponse.parse({ paths: [] }).paths).toEqual([])
+  })
+
+  it('accepts a repository tree as the same path list', () => {
+    expect(repositoryTreeResponse.parse({ paths: ['README.md'] }).paths).toEqual(['README.md'])
+  })
+
+  it('requires owner/repo and a ref for a repository tree query', () => {
+    expect(repositoryTreeQuery.safeParse({ repo: 'diego/dukebox', ref: 'main' }).success).toBe(true)
+    expect(repositoryTreeQuery.safeParse({ repo: 'not-a-repo', ref: 'main' }).success).toBe(false)
+    expect(repositoryTreeQuery.safeParse({ repo: 'diego/dukebox', ref: '' }).success).toBe(false)
+    expect(repositoryTreeQuery.safeParse({ repo: 'diego/dukebox', ref: 'feat/../x' }).success).toBe(
+      false,
+    )
   })
 
   it('accepts a text file payload', () => {

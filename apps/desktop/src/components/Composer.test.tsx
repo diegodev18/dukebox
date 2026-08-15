@@ -468,4 +468,30 @@ describe('Composer drag and drop', () => {
 
     expect(screen.queryByText('image.png')).not.toBeInTheDocument()
   })
+
+  it('inserts a mentioned file from the @ list', async () => {
+    const onSend = vi.fn()
+    render(
+      <Composer
+        onSend={onSend}
+        onInterrupt={vi.fn()}
+        running={false}
+        mentionFiles={{ paths: ['README.md', 'src/app.ts'] }}
+      />,
+    )
+
+    await userEvent.type(screen.getByLabelText('Message'), '@app')
+    expect(screen.getByRole('option', { name: /app.ts/ })).toBeInTheDocument()
+    await userEvent.keyboard('{Enter}')
+
+    expect(screen.getByLabelText('Message')).toHaveValue('@src/app.ts ')
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('does not open a mention list when no files are provided', async () => {
+    render(<Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />)
+
+    await userEvent.type(screen.getByLabelText('Message'), '@app')
+    expect(screen.queryByRole('listbox', { name: 'Files' })).not.toBeInTheDocument()
+  })
 })
