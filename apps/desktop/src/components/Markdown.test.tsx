@@ -1,4 +1,6 @@
 import { createElement } from 'react'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -42,5 +44,14 @@ describe('Markdown', () => {
     expect(html).toContain('language-ts')
     expect(html).toMatch(/<code[^>]*>execStream<\/code>/)
     expect(html).not.toMatch(/<code[^>]*>`execStream`<\/code>/)
+  })
+
+  it('opens an inline image in a lightbox when clicked', async () => {
+    render(createElement(Markdown, null, '![screenshot](https://example.com/shot.png)'))
+
+    await userEvent.click(screen.getByRole('button', { name: 'View screenshot' }))
+
+    expect(screen.getByRole('dialog', { name: 'screenshot' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save image' })).toBeInTheDocument()
   })
 })

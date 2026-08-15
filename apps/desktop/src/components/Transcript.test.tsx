@@ -198,6 +198,31 @@ describe('Transcript', () => {
     expect(screen.getByText('shot.png')).toBeInTheDocument()
   })
 
+  it('opens an attached image in a lightbox when clicked', async () => {
+    render(
+      <Transcript
+        transcript={transcript({
+          blocks: [
+            {
+              kind: 'prompt',
+              id: 'p',
+              text: 'what is this',
+              attachments: [
+                { name: 'shot.png', mediaType: 'image/png', data: 'data:image/png;base64,QUFB' },
+              ],
+            },
+          ],
+        })}
+        onRespond={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'View shot.png' }))
+
+    expect(screen.getByRole('dialog', { name: 'shot.png' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save image' })).toBeInTheDocument()
+  })
+
   it('loads a user prompt into the composer when edited', async () => {
     const onEdit = vi.fn()
     render(
