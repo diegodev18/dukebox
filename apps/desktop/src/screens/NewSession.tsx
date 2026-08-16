@@ -491,6 +491,8 @@ export function NewSession({
     if (!target || !baseBranch || !agentId) return
     if (!needsEnvironment && !prompt.trim()) return
 
+    // The start is in flight; a leftover read error would look like this failed.
+    setAttachError(null)
     setStatus({ kind: 'starting' })
 
     try {

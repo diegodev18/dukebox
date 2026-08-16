@@ -129,6 +129,8 @@ export const Composer = memo(
       else onSend(trimmed)
       setText('')
       setFiles([])
+      // The pick is gone; a leftover read error would look like a send failure.
+      setAttachError(null)
     }
 
     // Selected files are read once, immediately, and held as base64 data URIs so

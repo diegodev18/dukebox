@@ -271,6 +271,65 @@ describe('Composer', () => {
     }
   })
 
+  it('shows a read error beside a stream error', async () => {
+    const restore = stubFileReaderFailing('broken.bin')
+    try {
+      const { container } = render(
+        <Composer
+          onSend={vi.fn()}
+          onInterrupt={vi.fn()}
+          running={false}
+          error="rejected"
+        />,
+      )
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      fireEvent.change(input, {
+        target: {
+          files: [
+            new File(['a'], 'notes.txt', { type: 'text/plain' }),
+            new File(['b'], 'broken.bin', { type: 'application/octet-stream' }),
+          ],
+        },
+      })
+
+      expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+      const alerts = screen.getAllByRole('alert').map((node) => node.textContent ?? '')
+      expect(alerts).toHaveLength(2)
+      expect(alerts.some((text) => /rejected/.test(text))).toBe(true)
+      expect(alerts.some((text) => /broken\.bin/.test(text))).toBe(true)
+    } finally {
+      restore()
+    }
+  })
+
+  it('clears the read error when the prompt is sent', async () => {
+    const restore = stubFileReaderFailing('broken.bin')
+    try {
+      const { container } = render(
+        <Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />,
+      )
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      fireEvent.change(input, {
+        target: {
+          files: [
+            new File(['a'], 'notes.txt', { type: 'text/plain' }),
+            new File(['b'], 'broken.bin', { type: 'application/octet-stream' }),
+          ],
+        },
+      })
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(/broken\.bin/)
+      await userEvent.type(screen.getByLabelText('Message'), 'read this')
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
   it('removes an attached file from the draft', async () => {
     const { container } = render(
       <Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />,

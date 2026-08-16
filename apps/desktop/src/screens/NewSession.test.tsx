@@ -922,6 +922,71 @@ describe('NewSession file attachments', () => {
     }
   })
 
+  it('shows a read error beside a start failure', async () => {
+    const restore = stubFileReaderFailing('broken.bin')
+    try {
+      const client = makeClient({
+        startSession: vi.fn().mockRejectedValue(new Error('sandbox unavailable')),
+      })
+      const { container } = renderScreen(client)
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Environment' })).toHaveTextContent('Default'),
+      )
+
+      await userEvent.type(screen.getByLabelText(/what should it do/i), 'do a thing')
+      await userEvent.click(screen.getByRole('button', { name: /start session/i }))
+      expect(await screen.findByRole('alert')).toHaveTextContent(/sandbox unavailable/i)
+
+      fireEvent.change(fileInput(container), {
+        target: {
+          files: [
+            new File(['a'], 'notes.txt', { type: 'text/plain' }),
+            new File(['b'], 'broken.bin', { type: 'application/octet-stream' }),
+          ],
+        },
+      })
+
+      expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+      const alerts = screen.getAllByRole('alert').map((node) => node.textContent ?? '')
+      expect(alerts).toHaveLength(2)
+      expect(alerts.some((text) => /sandbox unavailable/i.test(text))).toBe(true)
+      expect(alerts.some((text) => /broken\.bin/.test(text))).toBe(true)
+    } finally {
+      restore()
+    }
+  })
+
+  it('clears the read error when a session starts', async () => {
+    const restore = stubFileReaderFailing('broken.bin')
+    try {
+      const client = makeClient()
+      const { container } = renderScreen(client)
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Environment' })).toHaveTextContent('Default'),
+      )
+
+      fireEvent.change(fileInput(container), {
+        target: {
+          files: [
+            new File(['a'], 'notes.txt', { type: 'text/plain' }),
+            new File(['b'], 'broken.bin', { type: 'application/octet-stream' }),
+          ],
+        },
+      })
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(/broken\.bin/)
+      await userEvent.type(screen.getByLabelText(/what should it do/i), 'read this')
+      await userEvent.click(screen.getByRole('button', { name: /start session/i }))
+
+      await waitFor(() => expect(client.startSession).toHaveBeenCalled())
+      expect(screen.queryByText(/broken\.bin/)).not.toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
   it('removes an attached file from the draft', async () => {
     const { container } = renderScreen(makeClient())
 
