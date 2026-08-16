@@ -634,12 +634,26 @@ describe('NewSession permission mode', () => {
   })
 
   it('re-runs setup on an existing environment without creating another', async () => {
-    const client = makeClient({ createEnvironment: vi.fn() })
+    const client = makeClient({
+      createEnvironment: vi.fn(),
+      listRepositories: vi
+        .fn()
+        .mockResolvedValue([{ fullName: 'acme/app', defaultBranch: 'main', isRegistered: true }]),
+    })
     renderScreen(
       client,
       {},
       { preferSetupEnvironmentId: environments[0].id, preferProjectId: project.id },
     )
+
+    // Default branch is `main`; Refactors is `refact/*`. The chip must not
+    // fall back to Base image while the submit still sends that id.
+    expect(await screen.findByRole('heading', { name: /run setup again/i })).toHaveTextContent(
+      'Refactors',
+    )
+    expect(screen.queryByRole('button', { name: 'Environment' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/base image/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Repository' })).toBeDisabled()
 
     await userEvent.click(await screen.findByRole('button', { name: /start setup/i }))
 
@@ -652,6 +666,27 @@ describe('NewSession permission mode', () => {
       ),
     )
     expect(client.createEnvironment).not.toHaveBeenCalled()
+  })
+
+  it('stops reusing the environment after leaving the setup card', async () => {
+    const client = makeClient({
+      createEnvironment: vi.fn(),
+      listRepositories: vi
+        .fn()
+        .mockResolvedValue([{ fullName: 'acme/app', defaultBranch: 'main', isRegistered: true }]),
+    })
+    renderScreen(
+      client,
+      {},
+      { preferSetupEnvironmentId: environments[0].id, preferProjectId: project.id },
+    )
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Back' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Repository' })).toBeEnabled())
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reconfigure environment' }))
+    expect(screen.getByRole('heading', { name: 'Configure environment' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Name')).toBeInTheDocument()
   })
 
   it('starts environment setup in bypass even when Plan is selected', async () => {

@@ -276,6 +276,7 @@ describe('EnvironmentsPanel', () => {
     expect(client.getEnvironmentProposal).not.toHaveBeenCalled()
 
     expect(await screen.findByLabelText(/setup commands/i)).toHaveValue('pnpm install')
+    expect(screen.getByRole('heading', { name: /edit setup/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/agent instructions/i)).toHaveValue('Use pnpm')
 
     await userEvent.click(screen.getByRole('button', { name: 'Save environment' }))

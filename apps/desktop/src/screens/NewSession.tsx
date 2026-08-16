@@ -147,7 +147,14 @@ export function NewSession({
   const [branches, setBranches] = useState<string[]>([])
   const [branchesLoading, setBranchesLoading] = useState(false)
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([])
-  const [environmentId, setEnvironmentId] = useState<string>(BASE_IMAGE_VALUE)
+  const [environmentId, setEnvironmentId] = useState<string>(
+    preferSetupEnvironmentId ?? BASE_IMAGE_VALUE,
+  )
+  // Local so Back or a repo change can drop the re-run without the prop
+  // staying sticky and sending that id after the person has left the card.
+  const [reuseEnvironmentId, setReuseEnvironmentId] = useState<string | null>(
+    preferSetupEnvironmentId ?? null,
+  )
   const [agentId, setAgentId] = useState<string>(initialAgent)
   const [model, setModel] = useState<string>(initialModel(lastNewSession, initialAgent))
   const [permissionMode, setPermissionMode] = useState(initialPermissionMode(lastNewSession))
@@ -313,6 +320,9 @@ export function NewSession({
   const matching = environments
     .filter((environment) => matchesBranch(environment.branchPattern, baseBranch))
     .sort((left, right) => left.position - right.position)
+  const reuseEnvironment = reuseEnvironmentId
+    ? environments.find((environment) => environment.id === reuseEnvironmentId)
+    : undefined
 
   // Changing branch re-resolves the environment with the same rule the server
   // uses, so the picker never shows one the server would not have chosen. A
@@ -324,8 +334,8 @@ export function NewSession({
   // selected, keep the environment it ran in — including an explicit base
   // image — rather than overwriting it with the auto-resolved match.
   useEffect(() => {
-    if (preferSetupEnvironmentId) {
-      setEnvironmentId(preferSetupEnvironmentId)
+    if (reuseEnvironmentId) {
+      setEnvironmentId(reuseEnvironmentId)
       return
     }
 
@@ -354,7 +364,7 @@ export function NewSession({
     }
 
     setEnvironmentId(resolved)
-  }, [baseBranch, environments, target, lastNewSession, preferSetupEnvironmentId])
+  }, [baseBranch, environments, target, lastNewSession, reuseEnvironmentId])
 
   useEffect(() => {
     let cancelled = false
@@ -479,9 +489,14 @@ export function NewSession({
     if (first) setModel(first)
   }
 
+  const leaveReuse = () => {
+    setReuseEnvironmentId(null)
+    setForceSetup(false)
+  }
+
   const selectRepo = (fullName: string) => {
     setTarget(fullName)
-    setForceSetup(false)
+    leaveReuse()
     const project = projects.find((candidate) => candidate.repoFullName === fullName)
     const repository = repositories.find((candidate) => candidate.fullName === fullName)
     setBaseBranch(project?.defaultBranch || repository?.defaultBranch || 'main')
@@ -546,20 +561,26 @@ export function NewSession({
       )
 
       if (needsEnvironment) {
-        if (preferSetupEnvironmentId) {
+        if (reuseEnvironmentId) {
+          // Seeded from the prop and locked while this card is open. Refuse a
+          // foreign id rather than start setup on another project's row.
+          if (!reuseEnvironment || reuseEnvironment.projectId !== project.id) {
+            throw new Error('This environment does not belong to the selected repository.')
+          }
+
           const session = await client.startSession({
             projectId: project.id,
             agentId,
             model,
             baseBranch,
             purpose: 'environment_setup',
-            environmentId: preferSetupEnvironmentId,
+            environmentId,
             ...(mode ? { permissionMode: mode } : {}),
             ...(identity ? { commitIdentity: identity } : {}),
             ...(gitPreferences ? { gitPreferences } : {}),
           })
 
-          remember(preferSetupEnvironmentId)
+          remember(environmentId)
           clearNewSessionDraft()
           onCreated(session, created)
           return
@@ -647,7 +668,12 @@ export function NewSession({
   const agentReady = configuredAgents.some((agent) => agent.id === agentId)
 
   const canSend = needsEnvironment
-    ? !busy && Boolean(target) && Boolean(baseBranch) && agentReady && hasModel
+    ? !busy &&
+      Boolean(target) &&
+      Boolean(baseBranch) &&
+      agentReady &&
+      hasModel &&
+      (!reuseEnvironmentId || Boolean(reuseEnvironment))
     : !busy &&
       Boolean(target) &&
       Boolean(baseBranch) &&
@@ -719,7 +745,12 @@ export function NewSession({
           </p>
         )}
         <div className="mb-3 flex flex-wrap items-center gap-1">
-          <RepoPicker options={options} value={target} onChange={selectRepo} disabled={busy} />
+          <RepoPicker
+            options={options}
+            value={target}
+            onChange={selectRepo}
+            disabled={busy || Boolean(reuseEnvironmentId)}
+          />
           <BranchPicker
             branches={branches}
             value={baseBranch}
@@ -727,9 +758,9 @@ export function NewSession({
             disabled={busy || !target}
             loading={branchesLoading}
           />
-          {/* A lone "base image" entry would be noise, so it stays hidden
-              until the project actually has environments to choose between. */}
-          {environments.length > 0 && (
+          {/* Hidden while re-running: a matching-only list would label the
+              locked id as Base image, and the heading already names it. */}
+          {environments.length > 0 && !reuseEnvironmentId && (
             <EnvironmentPicker
               environments={matching}
               value={environmentId}
@@ -749,14 +780,16 @@ export function NewSession({
         {needsEnvironment ? (
           <div className="rounded-[calc(var(--radius)*1.1)] border border-border bg-surface px-3.5 py-3.5">
             <h2 className="text-[14px] font-medium">
-              {preferSetupEnvironmentId ? 'Run setup again' : 'Configure environment'}
+              {reuseEnvironmentId
+                ? `Run setup again${reuseEnvironment ? ` · ${reuseEnvironment.name}` : ''}`
+                : 'Configure environment'}
             </h2>
             <p className="mt-1 text-[13px] text-muted-foreground">
               {agentId} will inspect the repository and propose setup commands and environment
               variables. You review and save them, and branches this environment covers use them
               from then on.
             </p>
-            {!preferSetupEnvironmentId && (
+            {!reuseEnvironmentId && (
               <>
                 <label className="mt-3 block text-[12px] text-muted-foreground">
                   Name
@@ -804,7 +837,7 @@ export function NewSession({
               <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setForceSetup(false)}
+                  onClick={leaveReuse}
                   disabled={busy}
                   className="text-[12px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-40"
                 >

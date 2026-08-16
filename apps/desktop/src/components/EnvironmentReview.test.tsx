@@ -20,6 +20,24 @@ function makeClient(overrides = {}) {
 }
 
 describe('EnvironmentReview', () => {
+  it('says it is loading the environment when there is no session', () => {
+    const client = makeClient({
+      getEnvironment: vi.fn(() => new Promise(() => undefined)),
+    })
+    render(
+      <EnvironmentReview
+        client={client as never}
+        projectId="p1"
+        environmentId="e1"
+        environmentName="Default"
+        onSaved={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Loading environment…')).toBeInTheDocument()
+    expect(screen.queryByText('Loading environment proposal…')).not.toBeInTheDocument()
+  })
+
   it('loads a saved environment without a setup session', async () => {
     const client = makeClient({
       getEnvironmentProposal: vi.fn(),
@@ -45,8 +63,52 @@ describe('EnvironmentReview', () => {
     )
 
     expect(await screen.findByLabelText(/setup commands/i)).toHaveValue('pnpm install')
+    expect(screen.getByRole('heading', { name: /edit setup/i })).toBeInTheDocument()
     expect(client.getEnvironmentProposal).not.toHaveBeenCalled()
     expect(client.getEnvironment).toHaveBeenCalledWith('p1', 'e1')
+  })
+
+  it('prefers saved config over a leftover draft when there is no session', async () => {
+    const client = makeClient({
+      getEnvironmentProposal: vi.fn(),
+      getEnvironment: vi.fn().mockResolvedValue({
+        config: {
+          image: 'dukebox/base-node:latest',
+          setup: ['pnpm install'],
+          env: { NODE_ENV: 'test' },
+          instructions: 'Use pnpm',
+        },
+        draft: {
+          setup: ['false'],
+          env: { NODE_ENV: { secret: false } },
+        },
+        secretNames: [],
+      }),
+    })
+    render(
+      <EnvironmentReview
+        client={client as never}
+        projectId="p1"
+        environmentId="e1"
+        environmentName="Default"
+        onSaved={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByLabelText(/setup commands/i)).toHaveValue('pnpm install')
+    await userEvent.click(screen.getByRole('button', { name: 'Save environment' }))
+
+    await waitFor(() =>
+      expect(client.putEnvironment).toHaveBeenCalledWith(
+        'p1',
+        'e1',
+        expect.objectContaining({
+          setup: ['pnpm install'],
+          literalEnv: { NODE_ENV: 'test' },
+        }),
+      ),
+    )
+    expect(client.getEnvironmentProposal).not.toHaveBeenCalled()
   })
 
   it('lets the form be saved again after an edit', async () => {

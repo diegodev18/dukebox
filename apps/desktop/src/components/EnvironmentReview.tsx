@@ -97,12 +97,12 @@ export function EnvironmentReview({
 
         if (cancelled) return
 
-        // No session means no proposal route; saved config (or a leftover
-        // draft) is what the person is here to edit.
+        // Edit setup is the live-config editor: a leftover draft must not
+        // replace saved literals. A session review still prefers the proposal.
         const saved = sessionId ? null : sourceFromSavedConfig(environment.config)
-        const source: EnvironmentProposal = proposal ??
-          environment.draft ??
-          saved?.proposal ?? { setup: [], env: {} }
+        const source: EnvironmentProposal = sessionId
+          ? (proposal ?? environment.draft ?? { setup: [], env: {} })
+          : (saved?.proposal ?? environment.draft ?? { setup: [], env: {} })
         const literals = saved && source === saved.proposal ? saved.literals : {}
 
         setSetupText(source.setup.join('\n'))
@@ -205,12 +205,10 @@ export function EnvironmentReview({
     )
   }
 
+  const loadingLabel = sessionId ? 'Loading environment proposal…' : 'Loading environment…'
+
   if (status.kind === 'loading' || identityChanged) {
-    return (
-      <div className="px-3.5 py-4 text-[12.5px] text-muted-foreground">
-        Loading environment proposal…
-      </div>
-    )
+    return <div className="px-3.5 py-4 text-[12.5px] text-muted-foreground">{loadingLabel}</div>
   }
 
   // An empty form with Save would PUT empty setup and secrets over whatever
@@ -237,11 +235,7 @@ export function EnvironmentReview({
       )
     }
 
-    return (
-      <div className="px-3.5 py-4 text-[12.5px] text-muted-foreground">
-        Loading environment proposal…
-      </div>
-    )
+    return <div className="px-3.5 py-4 text-[12.5px] text-muted-foreground">{loadingLabel}</div>
   }
 
   return (
@@ -255,7 +249,7 @@ export function EnvironmentReview({
               project, "Review environment" alone does not say what is about to
               be overwritten. */}
           <h2 className="flex flex-wrap items-baseline gap-x-1.5 text-[13px] font-medium">
-            Review environment
+            {sessionId ? 'Review environment' : 'Edit setup'}
             {environmentName && (
               <span className="font-normal text-muted-foreground">· {environmentName}</span>
             )}
