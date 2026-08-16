@@ -114,6 +114,45 @@ describe('searchPalette', () => {
     expect(groupItems('', 'settings')['settings']).toContain('settings:account')
   })
 
+  it('adds repo and archive actions when a session is selected', () => {
+    const groups = searchPalette('', 'actions', {
+      ...input,
+      selectedSessionId: demux.id,
+      selectedProjectId: dukebox.id,
+    })
+    expect(groups.find((group) => group.id === 'actions')?.items.map((item) => item.id)).toEqual([
+      'action:new-session',
+      'action:new-session-on-repo',
+      'action:manage-environments',
+      'action:archive-session',
+    ])
+  })
+
+  it('adds repo actions when the query uniquely filters a repo', () => {
+    const groups = searchPalette('notes', 'actions', input)
+    const items = groups.find((group) => group.id === 'actions')?.items ?? []
+    expect(items.map((item) => item.id)).toEqual([
+      'action:new-session-on-repo',
+      'action:manage-environments',
+    ])
+    expect(items.every((item) => item.kind === 'action' && item.projectId === notes.id)).toBe(true)
+  })
+
+  it('omits archive when no session is selected', () => {
+    const ids = searchPalette('', 'actions', {
+      ...input,
+      selectedProjectId: dukebox.id,
+    })
+      .find((group) => group.id === 'actions')
+      ?.items.map((item) => item.id)
+    expect(ids).toEqual([
+      'action:new-session',
+      'action:new-session-on-repo',
+      'action:manage-environments',
+    ])
+    expect(ids).not.toContain('action:archive-session')
+  })
+
   it('lists only archived sessions on the archived tab', () => {
     const archived = session({
       id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',

@@ -57,26 +57,38 @@ const health = session({
 function renderPalette({
   onSelect = vi.fn(),
   onNewSession = vi.fn(),
+  onManageEnvironments = vi.fn(),
+  onArchive = vi.fn(),
   onOpenSettings = vi.fn(),
   onDismiss = vi.fn(),
+  selectedSessionId = null as string | null,
+  selectedProjectId = null as string | null,
 }: {
   onSelect?: ReturnType<typeof vi.fn>
   onNewSession?: ReturnType<typeof vi.fn>
+  onManageEnvironments?: ReturnType<typeof vi.fn>
+  onArchive?: ReturnType<typeof vi.fn>
   onOpenSettings?: ReturnType<typeof vi.fn>
   onDismiss?: ReturnType<typeof vi.fn>
+  selectedSessionId?: string | null
+  selectedProjectId?: string | null
 } = {}) {
   render(
     <SearchPalette
       sessions={[demux, health]}
       projects={[dukebox, notes]}
       role="owner"
+      selectedSessionId={selectedSessionId}
+      selectedProjectId={selectedProjectId}
       onSelect={onSelect}
       onNewSession={onNewSession}
+      onManageEnvironments={onManageEnvironments}
+      onArchive={onArchive}
       onOpenSettings={onOpenSettings}
       onDismiss={onDismiss}
     />,
   )
-  return { onSelect, onNewSession, onOpenSettings, onDismiss }
+  return { onSelect, onNewSession, onManageEnvironments, onArchive, onOpenSettings, onDismiss }
 }
 
 describe('SearchPalette', () => {
@@ -165,5 +177,44 @@ describe('SearchPalette', () => {
 
     await userEvent.click(screen.getByRole('option', { name: 'acme/notes' }))
     expect(onNewSession).toHaveBeenCalledWith(notes.id)
+  })
+
+  it('lists session verbs when a session is selected', () => {
+    renderPalette({ selectedSessionId: demux.id, selectedProjectId: dukebox.id })
+
+    expect(screen.getByRole('option', { name: 'New session on this repo' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Manage environments' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Archive current session' })).toBeInTheDocument()
+  })
+
+  it('starts a session on the selected repo', async () => {
+    const { onNewSession, onDismiss } = renderPalette({
+      selectedSessionId: demux.id,
+      selectedProjectId: dukebox.id,
+    })
+
+    await userEvent.click(screen.getByRole('option', { name: 'New session on this repo' }))
+    expect(onNewSession).toHaveBeenCalledWith(dukebox.id)
+    expect(onDismiss).toHaveBeenCalled()
+  })
+
+  it('opens environments for the selected repo', async () => {
+    const { onManageEnvironments } = renderPalette({
+      selectedSessionId: demux.id,
+      selectedProjectId: dukebox.id,
+    })
+
+    await userEvent.click(screen.getByRole('option', { name: 'Manage environments' }))
+    expect(onManageEnvironments).toHaveBeenCalledWith(dukebox.id)
+  })
+
+  it('asks to archive the current session', async () => {
+    const { onArchive } = renderPalette({
+      selectedSessionId: demux.id,
+      selectedProjectId: dukebox.id,
+    })
+
+    await userEvent.click(screen.getByRole('option', { name: 'Archive current session' }))
+    expect(onArchive).toHaveBeenCalledWith(demux.id)
   })
 })

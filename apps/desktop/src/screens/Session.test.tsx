@@ -12,6 +12,7 @@ const listArchivedSessions = vi.fn()
 const whoami = vi.fn()
 const archiveSession = vi.fn()
 const unarchiveSession = vi.fn()
+const stopSession = vi.fn()
 const deleteSession = vi.fn()
 const deleteProject = vi.fn()
 const getPullRequest = vi.fn()
@@ -91,6 +92,7 @@ vi.mock('@/lib/client', async (importOriginal) => {
       whoami = whoami
       archiveSession = archiveSession
       unarchiveSession = unarchiveSession
+      stopSession = stopSession
       deleteSession = deleteSession
       deleteProject = deleteProject
       getPullRequest = getPullRequest
@@ -182,6 +184,7 @@ beforeEach(() => {
   archiveSession.mockResolvedValue(undefined)
   unarchiveSession.mockResolvedValue(undefined)
   deleteProject.mockResolvedValue(undefined)
+  stopSession.mockResolvedValue(undefined)
   removeConnection.mockResolvedValue(undefined)
 })
 
@@ -540,5 +543,45 @@ describe('Session', () => {
     expect(await screen.findByText(/This pull request was merged/)).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Merged pull request' })).toBeInTheDocument()
     expect(getPullRequest).toHaveBeenCalledWith(session.id)
+  })
+
+  it('archives the current session from search after confirm', async () => {
+    renderSession()
+
+    await screen.findByRole('button', { name: 'Done, Fix the demux bug' })
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Archive current session' }))
+
+    expect(archiveSession).not.toHaveBeenCalled()
+    expect(screen.getByText('Hide from the sidebar. You can restore it later.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Archive' }))
+    await waitFor(() => expect(archiveSession).toHaveBeenCalledWith(session.id))
+  })
+
+  it('stops the selected session through the bound command', async () => {
+    const onSessionCommands = vi.fn()
+    render(
+      <Session
+        connection={connection}
+        settings={defaultSettings()}
+        update={update}
+        onSaveSettings={vi.fn()}
+        onSwitchServer={vi.fn()}
+        onDisconnected={vi.fn()}
+        onSessionCommands={onSessionCommands}
+      />,
+    )
+
+    await screen.findByRole('button', { name: 'Done, Fix the demux bug' })
+    const bound = onSessionCommands.mock.calls.at(-1)?.[0] as {
+      selectedId: string
+      stopSession: (sessionId: string) => Promise<void>
+    }
+    expect(bound.selectedId).toBe(session.id)
+    await act(async () => {
+      await bound.stopSession(session.id)
+    })
+    expect(stopSession).toHaveBeenCalledWith(session.id)
   })
 })

@@ -42,7 +42,7 @@ export function CommandPalette({ commands, onRun, onDismiss }: Props) {
       onDismiss={onDismiss}
       onConfirm={(index) => {
         const command = items[index]
-        if (!command) return
+        if (!command || command.disabled) return
         onRun(command)
         onDismiss()
       }}
@@ -54,6 +54,7 @@ export function CommandPalette({ commands, onRun, onDismiss }: Props) {
             id={`command-item-${command.id}`}
             active={selectedIndex === index}
             onMouseEnter={() => setSelectedIndex(index)}
+            disabled={Boolean(command.disabled)}
             onClick={() => {
               onRun(command)
               onDismiss()

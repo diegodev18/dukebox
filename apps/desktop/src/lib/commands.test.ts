@@ -81,6 +81,26 @@ describe('commandsFor', () => {
       'On',
     )
   })
+
+  it('disables Stop this session without a live session', () => {
+    const none = COMMANDS.find((command) => command.id === 'session:stop')
+    expect(none?.disabled).toBe(true)
+    expect(none?.detail).toBe('No session')
+
+    const stopped = commandsFor(defaultSettings(), {
+      selectedId: 'sess-1',
+      status: 'stopped',
+    }).find((command) => command.id === 'session:stop')
+    expect(stopped?.disabled).toBe(true)
+    expect(stopped?.detail).toBe('Already stopped')
+
+    const running = commandsFor(defaultSettings(), {
+      selectedId: 'sess-1',
+      status: 'running',
+    }).find((command) => command.id === 'session:stop')
+    expect(running?.disabled).toBe(false)
+    expect(running?.detail).toBeUndefined()
+  })
 })
 
 describe('runCommand', () => {
@@ -132,6 +152,12 @@ describe('runCommand', () => {
     expect(ctx.save).toHaveBeenCalledWith({
       git: { ...defaultSettings().git, prDescription: 'dedicated' },
     })
+  })
+
+  it('stops the selected session', () => {
+    const ctx = context({ stopSession: vi.fn() })
+    runCommand('session:stop', ctx)
+    expect(ctx.stopSession).toHaveBeenCalledOnce()
   })
 
   it('ignores an unknown id', () => {

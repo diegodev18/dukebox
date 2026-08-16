@@ -28,8 +28,12 @@ interface Props {
   archivedSessions?: SessionSummary[]
   projects: ProjectSummary[]
   role: DeviceRole | null
+  selectedSessionId?: string | null
+  selectedProjectId?: string | null
   onSelect: (sessionId: string) => void
   onNewSession: (projectId?: string) => void
+  onManageEnvironments?: (projectId: string) => void
+  onArchive?: (sessionId: string) => void
   onOpenSettings: (category: SettingsCategory) => void
   onDismiss: () => void
 }
@@ -39,8 +43,12 @@ export function SearchPalette({
   archivedSessions = [],
   projects,
   role,
+  selectedSessionId = null,
+  selectedProjectId = null,
   onSelect,
   onNewSession,
+  onManageEnvironments,
+  onArchive,
   onOpenSettings,
   onDismiss,
 }: Props) {
@@ -48,13 +56,36 @@ export function SearchPalette({
   const [filter, setFilter] = useState<SearchFilter>('all')
 
   const groups = useMemo(
-    () => searchPalette(query, filter, { sessions, archivedSessions, projects, role }),
-    [query, filter, sessions, archivedSessions, projects, role],
+    () =>
+      searchPalette(query, filter, {
+        sessions,
+        archivedSessions,
+        projects,
+        role,
+        selectedSessionId,
+        selectedProjectId,
+      }),
+    [
+      query,
+      filter,
+      sessions,
+      archivedSessions,
+      projects,
+      role,
+      selectedSessionId,
+      selectedProjectId,
+    ],
   )
   const items = useMemo(() => flattenSearchGroups(groups), [groups])
 
   const runItem = (item: SearchItem) => {
-    applySearchItem(item, sessions, { onSelect, onNewSession, onOpenSettings })
+    applySearchItem(item, sessions, {
+      onSelect,
+      onNewSession,
+      onOpenSettings,
+      ...(onManageEnvironments ? { onManageEnvironments } : {}),
+      ...(onArchive ? { onArchive } : {}),
+    })
     onDismiss()
   }
 
@@ -141,6 +172,8 @@ function applySearchItem(
   actions: {
     onSelect: (sessionId: string) => void
     onNewSession: (projectId?: string) => void
+    onManageEnvironments?: (projectId: string) => void
+    onArchive?: (sessionId: string) => void
     onOpenSettings: (category: SettingsCategory) => void
   },
 ) {
@@ -157,7 +190,20 @@ function applySearchItem(
       return
     }
     case 'action':
-      actions.onNewSession()
+      switch (item.action) {
+        case 'new-session':
+          actions.onNewSession()
+          return
+        case 'new-session-on-repo':
+          if (item.projectId) actions.onNewSession(item.projectId)
+          return
+        case 'manage-environments':
+          if (item.projectId) actions.onManageEnvironments?.(item.projectId)
+          return
+        case 'archive-session':
+          if (item.sessionId) actions.onArchive?.(item.sessionId)
+          return
+      }
       return
     case 'settings':
       actions.onOpenSettings(item.category)

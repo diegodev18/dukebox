@@ -17,6 +17,7 @@ import {
   type CSSProperties,
 } from 'react'
 import { DukeboxClient, isAuthFailure } from '@/lib/client'
+import type { SessionCommands } from '@/lib/commands'
 import { removeConnection, type Connection } from '@/lib/connection'
 import { lastNewSessionFromSummary, type LastNewSession, type Settings } from '@/lib/settings'
 import { notifyWaitingInput, shouldNotifyWaiting } from '@/lib/waitingNotification'
@@ -70,6 +71,7 @@ interface Props {
   onSaveSettings: (patch: Partial<Settings>) => void
   onSwitchServer: (connection: Connection) => void
   onDisconnected: () => void
+  onSessionCommands?: (commands: SessionCommands | null) => void
 }
 
 export function Session({
@@ -79,6 +81,7 @@ export function Session({
   onSaveSettings,
   onSwitchServer,
   onDisconnected,
+  onSessionCommands,
 }: Props) {
   // Memoised because it is passed to effects: a new client every render would
   // re-run them forever.
@@ -109,6 +112,7 @@ export function Session({
   const [archiveError, setArchiveError] = useState<string | null>(null)
   const [role, setRole] = useState<DeviceRole | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [pendingArchive, setPendingArchive] = useState<string | null>(null)
   // Prefill New Session from a merged PR, even before settings persist.
   const [continueFrom, setContinueFrom] = useState<LastNewSession | null>(null)
 
@@ -406,6 +410,63 @@ export function Session({
     setCreating(true)
   }
 
+  const openEnvironments = (projectId: string) => {
+    setCreating(false)
+    setSettingsOpen(false)
+    setSetupProjectId(null)
+    setPreferProjectId(null)
+    setPreferAgentId(null)
+    setSearchOpen(false)
+    setContinueFrom(null)
+    setManagingProjectId(projectId)
+  }
+
+  const archiveById = (sessionId: string) => {
+    void (async () => {
+      try {
+        await client.archiveSession(sessionId)
+        setArchiveError(null)
+      } catch (error) {
+        // Leave the row where it is: a failed archive that vanishes
+        // from the list looks like the session was deleted.
+        setArchiveError(error instanceof Error ? error.message : 'Could not archive the session.')
+        return
+      }
+
+      const moved = sessions.find((session) => session.id === sessionId) ?? null
+      const fallback = sessions.find((session) => session.id !== sessionId)?.id ?? null
+      setSessions((current) => current.filter((session) => session.id !== sessionId))
+      if (moved) {
+        setArchivedSessions((current) =>
+          [moved, ...current.filter((session) => session.id !== moved.id)].sort(
+            (left, right) => right.updatedAt - left.updatedAt,
+          ),
+        )
+      }
+      setSelected((currentSelected) => (currentSelected === sessionId ? fallback : currentSelected))
+    })()
+  }
+
+  const stopById = useCallback(
+    async (sessionId: string) => {
+      try {
+        await client.stopSession(sessionId)
+        setArchiveError(null)
+      } catch (error) {
+        setArchiveError(error instanceof Error ? error.message : 'Could not stop the session.')
+        return
+      }
+
+      const markStopped = (rows: SessionSummary[]) =>
+        rows.map((session) =>
+          session.id === sessionId ? { ...session, status: 'stopped' as const } : session,
+        )
+      setSessions(markStopped)
+      setArchivedSessions(markStopped)
+    },
+    [client],
+  )
+
   const continueAfterMerge = (session: SessionSummary) => {
     const last = lastNewSessionFromSummary(session, projects)
     setSetupProjectId(null)
@@ -418,6 +479,26 @@ export function Session({
     setContinueFrom(last)
     setCreating(true)
   }
+
+  const actionSession = creating || !current ? null : current
+  const actionSessionActive = actionSession
+    ? sessions.some((session) => session.id === actionSession.id)
+    : false
+  const actionProjectId =
+    current?.projectId ?? preferProjectId ?? setupProjectId ?? managingProjectId ?? null
+
+  useEffect(() => {
+    if (!onSessionCommands) return
+    onSessionCommands({
+      selectedId: actionSession?.id ?? null,
+      status: actionSession?.status ?? null,
+      stopSession: stopById,
+    })
+  }, [onSessionCommands, actionSession?.id, actionSession?.status, stopById])
+
+  useEffect(() => {
+    return () => onSessionCommands?.(null)
+  }, [onSessionCommands])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -487,15 +568,7 @@ export function Session({
                 setSettingsOpen(false)
                 setCreating(true)
               }}
-              onManageEnvironments={(projectId) => {
-                setCreating(false)
-                setSettingsOpen(false)
-                setSetupProjectId(null)
-                setSetupEnvironmentId(null)
-                setPreferProjectId(null)
-                setPreferAgentId(null)
-                setManagingProjectId(projectId)
-              }}
+              onManageEnvironments={openEnvironments}
               archiveError={archiveError}
               onDelete={(sessionId) => {
                 void (async () => {
@@ -569,35 +642,7 @@ export function Session({
                 })()
               }}
               onRestore={selectSession}
-              onArchive={(sessionId) => {
-                void (async () => {
-                  try {
-                    await client.archiveSession(sessionId)
-                    setArchiveError(null)
-                  } catch (error) {
-                    // Leave the row where it is: a failed archive that vanishes
-                    // from the list looks like the session was deleted.
-                    setArchiveError(
-                      error instanceof Error ? error.message : 'Could not archive the session.',
-                    )
-                    return
-                  }
-
-                  const moved = sessions.find((session) => session.id === sessionId) ?? null
-                  const fallback = sessions.find((session) => session.id !== sessionId)?.id ?? null
-                  setSessions((current) => current.filter((session) => session.id !== sessionId))
-                  if (moved) {
-                    setArchivedSessions((current) =>
-                      [moved, ...current.filter((session) => session.id !== moved.id)].sort(
-                        (left, right) => right.updatedAt - left.updatedAt,
-                      ),
-                    )
-                  }
-                  setSelected((currentSelected) =>
-                    currentSelected === sessionId ? fallback : currentSelected,
-                  )
-                })()
-              }}
+              onArchive={archiveById}
             />
           )}
           <ResizeHandle
@@ -746,12 +791,99 @@ export function Session({
           archivedSessions={archivedSessions}
           projects={projects}
           role={role}
+          selectedSessionId={actionSession && actionSessionActive ? actionSession.id : null}
+          selectedProjectId={actionProjectId}
           onSelect={selectSession}
           onNewSession={startNewSession}
+          onManageEnvironments={openEnvironments}
+          onArchive={(sessionId) => setPendingArchive(sessionId)}
           onOpenSettings={openSettings}
           onDismiss={() => setSearchOpen(false)}
         />
       )}
+
+      {pendingArchive && (
+        <ConfirmArchive
+          onConfirm={() => {
+            const sessionId = pendingArchive
+            setPendingArchive(null)
+            archiveById(sessionId)
+          }}
+          onDismiss={() => setPendingArchive(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ConfirmArchive({
+  onConfirm,
+  onDismiss,
+}: {
+  onConfirm: () => void
+  onDismiss: () => void
+}) {
+  const panel = useRef<HTMLDivElement>(null)
+  const dismiss = useRef(onDismiss)
+  dismiss.current = onDismiss
+
+  useEffect(() => {
+    panel.current?.querySelector<HTMLButtonElement>('button')?.focus()
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        dismiss.current()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-6"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onDismiss()
+      }}
+    >
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-archive-title"
+        tabIndex={-1}
+        className="w-full max-w-sm overflow-hidden rounded-[calc(var(--radius)*1.1)] border border-border bg-background shadow-lg outline-none"
+      >
+        <div className="border-b border-border px-4 py-3">
+          <h2 id="confirm-archive-title" className="font-medium">
+            Archive this session?
+          </h2>
+        </div>
+        <div className="px-4 py-3">
+          <p className="text-[13px] text-muted-foreground">
+            Hide from the sidebar. You can restore it later.
+          </p>
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="rounded-[calc(var(--radius)*0.6)] px-2.5 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12px] font-medium hover:bg-muted"
+            >
+              Archive
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

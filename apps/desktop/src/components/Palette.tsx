@@ -247,12 +247,14 @@ export function Palette({
 export function PaletteOption({
   id,
   active,
+  disabled = false,
   onMouseEnter,
   onClick,
   children,
 }: {
   id: string
   active: boolean
+  disabled?: boolean
   onMouseEnter: () => void
   onClick: () => void
   children: ReactNode
@@ -263,11 +265,14 @@ export function PaletteOption({
       id={id}
       role="option"
       aria-selected={active}
+      aria-disabled={disabled || undefined}
       onMouseEnter={onMouseEnter}
-      onClick={onClick}
+      onClick={() => {
+        if (!disabled) onClick()
+      }}
       className={`flex w-full items-center gap-2.5 rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left text-[13px] ${
-        active ? 'bg-muted text-foreground' : 'text-foreground hover:bg-muted/60'
-      }`}
+        disabled ? 'opacity-40' : ''
+      } ${active ? 'bg-muted text-foreground' : 'text-foreground hover:bg-muted/60'}`}
     >
       <span
         className={`size-1.5 flex-none rounded-full ${active ? 'bg-primary' : 'bg-transparent'}`}
