@@ -313,7 +313,7 @@ describe('Session', () => {
 
     await screen.findByRole('button', { name: /Done, Add a health check/ })
     await userEvent.click(screen.getByRole('button', { name: 'New session' }))
-    expect(await screen.findByText('new session form')).toBeInTheDocument()
+    expect(await screen.findByText('new session for none')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Archived' }))
     await userEvent.click(
@@ -322,7 +322,7 @@ describe('Session', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'Restore' }))
 
     await waitFor(() => expect(unarchiveSession).toHaveBeenCalledWith(session.id))
-    expect(screen.queryByText('new session form')).not.toBeInTheDocument()
+    expect(screen.queryByText('new session for none')).not.toBeInTheDocument()
     expect(screen.getByText('transcript')).toBeInTheDocument()
   })
 
