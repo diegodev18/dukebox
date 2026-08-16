@@ -381,23 +381,37 @@ function ToggleRow({
         <p className="text-[13px] font-medium">{label}</p>
         <p className="mt-0.5 text-[12px] text-muted-foreground">{description}</p>
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        onClick={() => onChange(!checked)}
-        className={`relative h-5 w-9 flex-none rounded-full transition-colors ${
-          checked ? 'bg-foreground' : 'bg-muted'
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 size-4 rounded-full bg-background transition-transform ${
-            checked ? 'left-4.5' : 'left-0.5'
-          }`}
-        />
-      </button>
+      <Switch checked={checked} onChange={onChange} label={label} />
     </div>
+  )
+}
+
+function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={`relative h-5 w-9 flex-none rounded-full transition-colors ${
+        checked ? 'bg-foreground' : 'bg-muted'
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 size-4 rounded-full bg-background transition-transform ${
+          checked ? 'left-4.5' : 'left-0.5'
+        }`}
+      />
+    </button>
   )
 }
 
@@ -1564,41 +1578,12 @@ function UpdatesSection({
             Ask the release feed for a newer build when the app starts.
           </span>
         </span>
-        <Toggle
+        <Switch
           checked={checkOnLaunch}
           onChange={(checked) => onSave({ checkForUpdatesOnLaunch: checked })}
           label="Check on launch"
         />
       </label>
     </section>
-  )
-}
-
-function Toggle({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean
-  onChange: (checked: boolean) => void
-  label: string
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={() => onChange(!checked)}
-      className={`relative h-5.5 w-9.5 flex-none rounded-full transition-colors ${
-        checked ? 'bg-primary' : 'bg-muted-foreground/40'
-      }`}
-    >
-      <span
-        className={`absolute top-0.5 left-0.5 size-4.5 rounded-full bg-background transition-transform ${
-          checked ? 'translate-x-4' : ''
-        }`}
-      />
-    </button>
   )
 }
