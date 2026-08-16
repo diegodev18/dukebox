@@ -233,14 +233,17 @@ export function Workspace({
   }, [terminals.tabs.length, onOpenTerminal])
 
   // Switching sessions must not leave a dead Environment or PR tab — those
-  // belong to the previous session. Plans and terminals are pruned by the
-  // effects below, which also re-open whatever this session still has.
+  // belong to the previous session. Changes, Files, terminals, and plans stay;
+  // the prune effects below still handle in-session list updates. Wiping the
+  // whole strip would drop shells/plans when their id lists do not change.
   const sessionId = session?.id ?? null
   useEffect(() => {
     materializedPlans.current = new Set()
     setOpening(false)
-    setOpenTabs([{ kind: 'changes' }, { kind: 'files' }])
-    setActiveKey(tabKey({ kind: 'changes' }))
+    setOpenTabs((current) => {
+      const next = current.filter((tab) => tab.kind !== 'environment' && tab.kind !== 'pr')
+      return next.length === current.length ? current : next
+    })
   }, [sessionId])
 
   // Open the Environment tab when a proposal is ready to review — the form is

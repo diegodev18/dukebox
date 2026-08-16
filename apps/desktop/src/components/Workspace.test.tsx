@@ -572,6 +572,7 @@ describe('Workspace session switch', () => {
 
     expect(screen.getByRole('tab', { name: 'Environment' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Pull request #1' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '047' })).toBeInTheDocument()
 
     rerender(
       <Workspace
@@ -586,6 +587,7 @@ describe('Workspace session switch', () => {
       expect(screen.queryByRole('tab', { name: 'Environment' })).not.toBeInTheDocument()
       expect(screen.queryByRole('tab', { name: 'Pull request #1' })).not.toBeInTheDocument()
       expect(screen.getByRole('tab', { name: 'Changes', selected: true })).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: '047' })).toBeInTheDocument()
     })
   })
 })
