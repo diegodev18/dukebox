@@ -389,6 +389,38 @@ describe('Settings', () => {
     )
   })
 
+  it('does not treat a failed OpenCode list as no providers configured', async () => {
+    const client = clientMock()
+    client.listOpencodeProviders.mockRejectedValue(new Error('network'))
+    renderSettings({ client, category: 'agents' })
+
+    expect(await screen.findByText('Couldn’t load providers.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+    expect(screen.queryByText('No providers configured yet.')).not.toBeInTheDocument()
+  })
+
+  it('does not treat a failed Claude check as not configured', async () => {
+    const client = clientMock()
+    client.agentCredentialsConfigured.mockRejectedValue(new Error('network'))
+    renderSettings({ client, category: 'agents' })
+
+    expect(await screen.findByText('Couldn’t check Claude Code credentials.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+    // Grok still loaded; only its chips may say this.
+    expect(await screen.findAllByText('Not configured')).toHaveLength(2)
+  })
+
+  it('does not treat a failed Grok check as not configured', async () => {
+    const client = clientMock()
+    client.grokCredentialsStatus.mockRejectedValue(new Error('network'))
+    renderSettings({ client, category: 'agents' })
+
+    expect(await screen.findByText('Couldn’t check Grok Build credentials.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+    // Claude still loaded; Grok must not add a false "Not configured".
+    expect(await screen.findAllByText('Not configured')).toHaveLength(1)
+  })
+
   it('opens Appearance when asked to land there', async () => {
     renderSettings({ category: 'appearance' })
 

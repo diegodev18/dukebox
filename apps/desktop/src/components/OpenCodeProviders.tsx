@@ -35,7 +35,9 @@ export function opencodeModelOptions(
 }
 
 export function OpenCodeProviders({ client }: { client: DukeboxClient }) {
-  const [providers, setProviders] = useState<OpencodeProvider[] | null>(null)
+  const [providers, setProviders] = useState<OpencodeProvider[]>([])
+  const [status, setStatus] = useState<'loading' | 'loaded' | 'failed'>('loading')
+  const [reloadKey, setReloadKey] = useState(0)
   const [adding, setAdding] = useState(false)
   const [working, setWorking] = useState(false)
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
@@ -43,24 +45,29 @@ export function OpenCodeProviders({ client }: { client: DukeboxClient }) {
   const reload = async () => {
     const found = await client.listOpencodeProviders()
     setProviders(found)
+    setStatus('loaded')
     return found
   }
 
   useEffect(() => {
     let cancelled = false
+    setStatus('loading')
     client
       .listOpencodeProviders()
       .then((found) => {
         if (cancelled) return
         setProviders(found)
+        setStatus('loaded')
       })
       .catch(() => {
-        if (!cancelled) setProviders([])
+        // A failed list must not look like "no providers": that would invite
+        // replacing keys that may already exist.
+        if (!cancelled) setStatus('failed')
       })
     return () => {
       cancelled = true
     }
-  }, [client])
+  }, [client, reloadKey])
 
   const remove = async (id: string) => {
     setWorking(true)
@@ -106,8 +113,21 @@ export function OpenCodeProviders({ client }: { client: DukeboxClient }) {
         API keys OpenCode uses to reach each model provider. Stored on the server.
       </p>
 
-      {providers === null ? (
+      {status === 'loading' ? (
         <p className="mt-3 text-[12.5px] text-muted-foreground">Loading providers…</p>
+      ) : status === 'failed' ? (
+        <div className="mt-3 flex items-center gap-2">
+          <p role="alert" className="text-[12.5px] text-destructive">
+            Couldn’t load providers.
+          </p>
+          <button
+            type="button"
+            onClick={() => setReloadKey((current) => current + 1)}
+            className="rounded-[calc(var(--radius)*0.6)] border border-border px-3.5 py-1.5 text-[12.5px] font-medium hover:bg-muted"
+          >
+            Retry
+          </button>
+        </div>
       ) : providers.length === 0 && !adding ? (
         <p className="mt-3 text-[12.5px] text-muted-foreground">No providers configured yet.</p>
       ) : (
@@ -138,7 +158,7 @@ export function OpenCodeProviders({ client }: { client: DukeboxClient }) {
 
       {adding ? (
         <ProviderForm
-          existingIds={new Set((providers ?? []).map((provider) => provider.id))}
+          existingIds={new Set(providers.map((provider) => provider.id))}
           working={working}
           onSave={(request) => void save(request)}
           onCancel={() => setAdding(false)}

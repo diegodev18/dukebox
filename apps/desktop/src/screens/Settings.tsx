@@ -514,25 +514,32 @@ function AgentsSection({ client }: { client: DukeboxClient }) {
 }
 
 function AgentCredentials({ client }: { client: DukeboxClient }) {
-  const [configured, setConfigured] = useState<boolean | null>(null)
+  const [configured, setConfigured] = useState(false)
+  const [status, setStatus] = useState<'loading' | 'loaded' | 'failed'>('loading')
+  const [reloadKey, setReloadKey] = useState(0)
   const [token, setToken] = useState('')
   const [working, setWorking] = useState(false)
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
+    setStatus('loading')
     client
       .agentCredentialsConfigured()
       .then((found) => {
-        if (!cancelled) setConfigured(found)
+        if (cancelled) return
+        setConfigured(found)
+        setStatus('loaded')
       })
       .catch(() => {
-        if (!cancelled) setConfigured(false)
+        // A failed check must not look like "not configured": that would
+        // invite replacing a token that may already be stored.
+        if (!cancelled) setStatus('failed')
       })
     return () => {
       cancelled = true
     }
-  }, [client])
+  }, [client, reloadKey])
 
   const saveToken = async () => {
     setWorking(true)
@@ -541,6 +548,7 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
       await client.setAgentCredentials(token.trim())
       setToken('')
       setConfigured(true)
+      setStatus('loaded')
       setMessage({ tone: 'ok', text: 'Token saved.' })
     } catch (error) {
       setMessage({
@@ -558,6 +566,7 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
     try {
       await client.clearAgentCredentials()
       setConfigured(false)
+      setStatus('loaded')
       setMessage({ tone: 'ok', text: 'Token removed.' })
     } catch (error) {
       setMessage({
@@ -584,7 +593,7 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
           type="password"
           value={token}
           onChange={(event) => setToken(event.target.value)}
-          placeholder={configured ? 'Replace token…' : 'Paste token…'}
+          placeholder={status === 'loaded' && configured ? 'Replace token…' : 'Paste token…'}
           spellCheck={false}
           autoComplete="off"
           disabled={working}
@@ -599,7 +608,7 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
         >
           Save
         </button>
-        {configured && (
+        {status === 'loaded' && configured && (
           <button
             type="button"
             disabled={working}
@@ -612,7 +621,22 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
       </div>
 
       <div className="mt-2 flex items-center gap-2 text-[12px]">
-        <StatusChip configured={configured} />
+        {status === 'failed' ? (
+          <>
+            <span role="alert" className="text-destructive">
+              Couldn’t check Claude Code credentials.
+            </span>
+            <button
+              type="button"
+              onClick={() => setReloadKey((current) => current + 1)}
+              className="rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12px] font-medium hover:bg-muted"
+            >
+              Retry
+            </button>
+          </>
+        ) : (
+          <StatusChip configured={status === 'loading' ? null : configured} />
+        )}
         {message && (
           <span className={message.tone === 'ok' ? 'text-muted-foreground' : 'text-destructive'}>
             {message.text}
@@ -792,6 +816,8 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
     apiKey: boolean
     subscription: boolean
   } | null>(null)
+  const [loadStatus, setLoadStatus] = useState<'loading' | 'loaded' | 'failed'>('loading')
+  const [reloadKey, setReloadKey] = useState(0)
   const [token, setToken] = useState('')
   const [authJson, setAuthJson] = useState('')
   const [working, setWorking] = useState(false)
@@ -800,22 +826,27 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
   const reload = async () => {
     const next = await client.grokCredentialsStatus()
     setStatus({ apiKey: next.apiKey, subscription: next.subscription })
+    setLoadStatus('loaded')
   }
 
   useEffect(() => {
     let cancelled = false
+    setLoadStatus('loading')
     client
       .grokCredentialsStatus()
       .then((next) => {
-        if (!cancelled) setStatus({ apiKey: next.apiKey, subscription: next.subscription })
+        if (cancelled) return
+        setStatus({ apiKey: next.apiKey, subscription: next.subscription })
+        setLoadStatus('loaded')
       })
       .catch(() => {
-        if (!cancelled) setStatus({ apiKey: false, subscription: false })
+        // Same as Claude: a blip must not read as "not configured".
+        if (!cancelled) setLoadStatus('failed')
       })
     return () => {
       cancelled = true
     }
-  }, [client])
+  }, [client, reloadKey])
 
   const save = async (body: { token?: string; authJson?: string }, ok: string) => {
     setWorking(true)
@@ -863,6 +894,21 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
         device. An API key from console.x.ai is billed separately.
       </p>
 
+      {loadStatus === 'failed' && (
+        <div className="mt-3 flex items-center gap-2 text-[12px]">
+          <span role="alert" className="text-destructive">
+            Couldn’t check Grok Build credentials.
+          </span>
+          <button
+            type="button"
+            onClick={() => setReloadKey((current) => current + 1)}
+            className="rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12px] font-medium hover:bg-muted"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       <GrokLoginWizard client={client} onFinished={() => void reload()} />
 
       <p className="mt-4 text-[12px] font-medium text-foreground">Subscription</p>
@@ -892,7 +938,7 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
         >
           Save session
         </button>
-        {status?.subscription && (
+        {loadStatus === 'loaded' && status?.subscription && (
           <button
             type="button"
             disabled={working}
@@ -902,7 +948,9 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
             Clear session
           </button>
         )}
-        <StatusChip configured={status === null ? null : status.subscription} />
+        {loadStatus !== 'failed' && (
+          <StatusChip configured={status === null ? null : status.subscription} />
+        )}
       </div>
 
       <p className="mt-4 text-[12px] font-medium text-foreground">API key</p>
@@ -929,7 +977,7 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
         >
           Save key
         </button>
-        {status?.apiKey && (
+        {loadStatus === 'loaded' && status?.apiKey && (
           <button
             type="button"
             disabled={working}
@@ -942,7 +990,9 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
       </div>
 
       <div className="mt-2 flex items-center gap-2 text-[12px]">
-        <StatusChip configured={status === null ? null : status.apiKey} />
+        {loadStatus !== 'failed' && (
+          <StatusChip configured={status === null ? null : status.apiKey} />
+        )}
         {message && (
           <span className={message.tone === 'ok' ? 'text-muted-foreground' : 'text-destructive'}>
             {message.text}
