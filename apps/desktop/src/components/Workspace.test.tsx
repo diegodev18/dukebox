@@ -540,3 +540,54 @@ describe('Workspace plans', () => {
     expect(screen.getByRole('tab', { name: 'Changes', selected: true })).toBeInTheDocument()
   })
 })
+
+describe('Workspace session switch', () => {
+  it('drops Environment and PR tabs when the session changes', async () => {
+    const { rerender } = render(
+      <Workspace
+        session={{
+          ...session,
+          pullRequestUrl: 'https://github.com/diego/dukebox/pull/1',
+          pullRequest: {
+            url: 'https://github.com/diego/dukebox/pull/1',
+            title: 'Fix the demux bug',
+            isDraft: true,
+            state: 'open',
+          },
+        }}
+        files={[]}
+        terminals={terminals}
+        environmentReview={{
+          client: {} as never,
+          projectId: session.projectId,
+          sessionId: session.id,
+          environmentId: null,
+          environmentName: null,
+          onSaved: vi.fn(),
+        }}
+        pullRequest={pullRequestTab}
+        {...terminalHandlers}
+      />,
+    )
+
+    expect(screen.getByRole('tab', { name: 'Environment' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Pull request #1' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '047' })).toBeInTheDocument()
+
+    rerender(
+      <Workspace
+        session={{ ...session, id: '00000000-0000-4000-8000-000000000022' }}
+        files={[]}
+        terminals={terminals}
+        {...terminalHandlers}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.queryByRole('tab', { name: 'Environment' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('tab', { name: 'Pull request #1' })).not.toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: 'Changes', selected: true })).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: '047' })).toBeInTheDocument()
+    })
+  })
+})

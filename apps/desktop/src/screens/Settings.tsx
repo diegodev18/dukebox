@@ -27,6 +27,7 @@ import {
   type Connection,
 } from '@/lib/connection'
 import type { Settings, Theme } from '@/lib/settings'
+import { requestNotificationPermission } from '@/lib/waitingNotification'
 import { settingsCategoriesFor, type SettingsCategory } from '@/lib/settingsCategories'
 import type { UseUpdate } from '@/lib/useUpdate'
 
@@ -109,17 +110,24 @@ export function Settings({
   onClose,
   onDisconnected,
 }: Props) {
+  const root = useRef<HTMLDivElement>(null)
+
   // Esc closes from anywhere in the panel, the same way it closes a popover.
+  // A palette stacked on top owns Escape; this listener is on document too, so
+  // it must ignore a modal that is not this panel.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key !== 'Escape') return
+      const modal = document.querySelector('[aria-modal="true"]')
+      if (modal && modal !== root.current) return
+      onClose()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto px-6 py-5">
+    <div ref={root} className="h-full min-h-0 overflow-y-auto px-6 py-5">
       <div className="mx-auto max-w-xl">
         {category === 'account' && (
           <AccountSection
@@ -146,7 +154,11 @@ export function Settings({
           />
         )}
         {category === 'appearance' && (
-          <AppearanceSection theme={settings.theme} onSave={onSaveSettings} />
+          <AppearanceSection
+            theme={settings.theme}
+            notifyWhenWaiting={settings.notifyWhenWaiting}
+            onSave={onSaveSettings}
+          />
         )}
         {category === 'updates' && (
           <UpdatesSection
@@ -172,9 +184,11 @@ const THEME_OPTIONS: { value: Theme; label: string }[] = [
 
 function AppearanceSection({
   theme,
+  notifyWhenWaiting,
   onSave,
 }: {
   theme: Theme
+  notifyWhenWaiting: boolean
   onSave: (patch: Partial<Settings>) => void
 }) {
   return (
@@ -208,6 +222,16 @@ function AppearanceSection({
           ))}
         </div>
       </div>
+
+      <ToggleRow
+        label="Notify when a session needs you"
+        description="A desktop notification when an agent is waiting and you are not looking at that session."
+        checked={notifyWhenWaiting}
+        onChange={(checked) => {
+          onSave({ notifyWhenWaiting: checked })
+          if (checked) requestNotificationPermission()
+        }}
+      />
     </section>
   )
 }
@@ -374,23 +398,37 @@ function ToggleRow({
         <p className="text-[13px] font-medium">{label}</p>
         <p className="mt-0.5 text-[12px] text-muted-foreground">{description}</p>
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        onClick={() => onChange(!checked)}
-        className={`relative h-5 w-9 flex-none rounded-full transition-colors ${
-          checked ? 'bg-foreground' : 'bg-muted'
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 size-4 rounded-full bg-background transition-transform ${
-            checked ? 'left-4.5' : 'left-0.5'
-          }`}
-        />
-      </button>
+      <Switch checked={checked} onChange={onChange} label={label} />
     </div>
+  )
+}
+
+function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={`relative h-5 w-9 flex-none rounded-full transition-colors ${
+        checked ? 'bg-foreground' : 'bg-muted'
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 size-4 rounded-full bg-background transition-transform ${
+          checked ? 'left-4.5' : 'left-0.5'
+        }`}
+      />
+    </button>
   )
 }
 
@@ -507,25 +545,32 @@ function AgentsSection({ client }: { client: DukeboxClient }) {
 }
 
 function AgentCredentials({ client }: { client: DukeboxClient }) {
-  const [configured, setConfigured] = useState<boolean | null>(null)
+  const [configured, setConfigured] = useState(false)
+  const [status, setStatus] = useState<'loading' | 'loaded' | 'failed'>('loading')
+  const [reloadKey, setReloadKey] = useState(0)
   const [token, setToken] = useState('')
   const [working, setWorking] = useState(false)
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
+    setStatus('loading')
     client
       .agentCredentialsConfigured()
       .then((found) => {
-        if (!cancelled) setConfigured(found)
+        if (cancelled) return
+        setConfigured(found)
+        setStatus('loaded')
       })
       .catch(() => {
-        if (!cancelled) setConfigured(false)
+        // A failed check must not look like "not configured": that would
+        // invite replacing a token that may already be stored.
+        if (!cancelled) setStatus('failed')
       })
     return () => {
       cancelled = true
     }
-  }, [client])
+  }, [client, reloadKey])
 
   const saveToken = async () => {
     setWorking(true)
@@ -534,6 +579,7 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
       await client.setAgentCredentials(token.trim())
       setToken('')
       setConfigured(true)
+      setStatus('loaded')
       setMessage({ tone: 'ok', text: 'Token saved.' })
     } catch (error) {
       setMessage({
@@ -551,6 +597,7 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
     try {
       await client.clearAgentCredentials()
       setConfigured(false)
+      setStatus('loaded')
       setMessage({ tone: 'ok', text: 'Token removed.' })
     } catch (error) {
       setMessage({
@@ -577,7 +624,7 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
           type="password"
           value={token}
           onChange={(event) => setToken(event.target.value)}
-          placeholder={configured ? 'Replace token…' : 'Paste token…'}
+          placeholder={status === 'loaded' && configured ? 'Replace token…' : 'Paste token…'}
           spellCheck={false}
           autoComplete="off"
           disabled={working}
@@ -592,7 +639,7 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
         >
           Save
         </button>
-        {configured && (
+        {status === 'loaded' && configured && (
           <button
             type="button"
             disabled={working}
@@ -605,7 +652,22 @@ function AgentCredentials({ client }: { client: DukeboxClient }) {
       </div>
 
       <div className="mt-2 flex items-center gap-2 text-[12px]">
-        <StatusChip configured={configured} />
+        {status === 'failed' ? (
+          <>
+            <span role="alert" className="text-destructive">
+              Couldn’t check Claude Code credentials.
+            </span>
+            <button
+              type="button"
+              onClick={() => setReloadKey((current) => current + 1)}
+              className="rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12px] font-medium hover:bg-muted"
+            >
+              Retry
+            </button>
+          </>
+        ) : (
+          <StatusChip configured={status === 'loading' ? null : configured} />
+        )}
         {message && (
           <span className={message.tone === 'ok' ? 'text-muted-foreground' : 'text-destructive'}>
             {message.text}
@@ -785,6 +847,8 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
     apiKey: boolean
     subscription: boolean
   } | null>(null)
+  const [loadStatus, setLoadStatus] = useState<'loading' | 'loaded' | 'failed'>('loading')
+  const [reloadKey, setReloadKey] = useState(0)
   const [token, setToken] = useState('')
   const [authJson, setAuthJson] = useState('')
   const [working, setWorking] = useState(false)
@@ -793,22 +857,27 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
   const reload = async () => {
     const next = await client.grokCredentialsStatus()
     setStatus({ apiKey: next.apiKey, subscription: next.subscription })
+    setLoadStatus('loaded')
   }
 
   useEffect(() => {
     let cancelled = false
+    setLoadStatus('loading')
     client
       .grokCredentialsStatus()
       .then((next) => {
-        if (!cancelled) setStatus({ apiKey: next.apiKey, subscription: next.subscription })
+        if (cancelled) return
+        setStatus({ apiKey: next.apiKey, subscription: next.subscription })
+        setLoadStatus('loaded')
       })
       .catch(() => {
-        if (!cancelled) setStatus({ apiKey: false, subscription: false })
+        // Same as Claude: a blip must not read as "not configured".
+        if (!cancelled) setLoadStatus('failed')
       })
     return () => {
       cancelled = true
     }
-  }, [client])
+  }, [client, reloadKey])
 
   const save = async (body: { token?: string; authJson?: string }, ok: string) => {
     setWorking(true)
@@ -856,6 +925,21 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
         device. An API key from console.x.ai is billed separately.
       </p>
 
+      {loadStatus === 'failed' && (
+        <div className="mt-3 flex items-center gap-2 text-[12px]">
+          <span role="alert" className="text-destructive">
+            Couldn’t check Grok Build credentials.
+          </span>
+          <button
+            type="button"
+            onClick={() => setReloadKey((current) => current + 1)}
+            className="rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12px] font-medium hover:bg-muted"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       <GrokLoginWizard client={client} onFinished={() => void reload()} />
 
       <p className="mt-4 text-[12px] font-medium text-foreground">Subscription</p>
@@ -885,7 +969,7 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
         >
           Save session
         </button>
-        {status?.subscription && (
+        {loadStatus === 'loaded' && status?.subscription && (
           <button
             type="button"
             disabled={working}
@@ -895,7 +979,9 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
             Clear session
           </button>
         )}
-        <StatusChip configured={status === null ? null : status.subscription} />
+        {loadStatus !== 'failed' && (
+          <StatusChip configured={status === null ? null : status.subscription} />
+        )}
       </div>
 
       <p className="mt-4 text-[12px] font-medium text-foreground">API key</p>
@@ -922,7 +1008,7 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
         >
           Save key
         </button>
-        {status?.apiKey && (
+        {loadStatus === 'loaded' && status?.apiKey && (
           <button
             type="button"
             disabled={working}
@@ -935,7 +1021,9 @@ function GrokBuildCredentials({ client }: { client: DukeboxClient }) {
       </div>
 
       <div className="mt-2 flex items-center gap-2 text-[12px]">
-        <StatusChip configured={status === null ? null : status.apiKey} />
+        {loadStatus !== 'failed' && (
+          <StatusChip configured={status === null ? null : status.apiKey} />
+        )}
         {message && (
           <span className={message.tone === 'ok' ? 'text-muted-foreground' : 'text-destructive'}>
             {message.text}
@@ -1037,8 +1125,16 @@ function DevicesSection({ client, thisDeviceId }: { client: DukeboxClient; thisD
 
   const copyInvite = async () => {
     if (!inviteUrl) return
-    await navigator.clipboard.writeText(inviteUrl).catch(() => undefined)
-    setMessage({ tone: 'ok', text: 'Invite link copied.' })
+    try {
+      await navigator.clipboard.writeText(inviteUrl)
+      setMessage({ tone: 'ok', text: 'Invite link copied.' })
+    } catch {
+      // A denied clipboard is not a successful copy — leave the URL selectable.
+      setMessage({
+        tone: 'error',
+        text: 'Couldn’t copy the invite link. Select it and copy.',
+      })
+    }
   }
 
   const dropInvite = async (id: string) => {
@@ -1164,7 +1260,9 @@ function DevicesSection({ client, thisDeviceId }: { client: DukeboxClient; thisD
           <p className="text-[12.5px] text-muted-foreground">
             This link expires in 15 minutes and creates a member device.
           </p>
-          <p className="mt-2 break-all font-mono text-[11.5px]">{inviteUrl}</p>
+          <p data-selectable className="mt-2 break-all font-mono text-[11.5px]">
+            {inviteUrl}
+          </p>
           <button
             type="button"
             onClick={() => void copyInvite()}
@@ -1497,41 +1595,12 @@ function UpdatesSection({
             Ask the release feed for a newer build when the app starts.
           </span>
         </span>
-        <Toggle
+        <Switch
           checked={checkOnLaunch}
           onChange={(checked) => onSave({ checkForUpdatesOnLaunch: checked })}
           label="Check on launch"
         />
       </label>
     </section>
-  )
-}
-
-function Toggle({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean
-  onChange: (checked: boolean) => void
-  label: string
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={() => onChange(!checked)}
-      className={`relative h-5.5 w-9.5 flex-none rounded-full transition-colors ${
-        checked ? 'bg-primary' : 'bg-muted-foreground/40'
-      }`}
-    >
-      <span
-        className={`absolute top-0.5 left-0.5 size-4.5 rounded-full bg-background transition-transform ${
-          checked ? 'translate-x-4' : ''
-        }`}
-      />
-    </button>
   )
 }

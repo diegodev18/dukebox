@@ -1,4 +1,4 @@
-import { DEFAULT_GIT_PREFERENCES, type GitPreferences } from '@dukebox/protocol'
+import { DEFAULT_GIT_PREFERENCES, type GitPreferences, type SessionStatus } from '@dukebox/protocol'
 import { defaultSettings, type Settings, type Theme } from '@/lib/settings'
 
 /**
@@ -17,6 +17,18 @@ export interface Command {
   keywords?: string[]
   /** Current value, shown muted after the label. */
   detail?: string
+  /** Present but not runnable — no session, or the container is already down. */
+  disabled?: boolean
+}
+
+/** The session the command palette can act on, if one is selected. */
+export interface SessionCommandTarget {
+  selectedId: string | null
+  status: SessionStatus | null
+}
+
+export interface SessionCommands extends SessionCommandTarget {
+  stopSession: (sessionId: string) => Promise<void>
 }
 
 export interface CommandContext {
@@ -24,6 +36,7 @@ export interface CommandContext {
   save: (patch: Partial<Settings>) => void
   checkForUpdates: () => void
   reload: () => void
+  stopSession?: () => void
 }
 
 /** Reloads the webview's loaded page: the dev URL in dev, the bundle in prod. */
@@ -36,9 +49,10 @@ export const RELOAD_WEBVIEW: Command = {
 /** The catalogue against default settings — useful when no live store is in hand. */
 export const COMMANDS: Command[] = commandsFor(defaultSettings())
 
-export function commandsFor(settings: Settings): Command[] {
+export function commandsFor(settings: Settings, session?: SessionCommandTarget | null): Command[] {
   const git = gitPrefs(settings)
-  return [
+  const commands: Command[] = [
+    stopSessionCommand(session),
     RELOAD_WEBVIEW,
     themeCommand('system', 'System', settings.theme),
     themeCommand('light', 'Light', settings.theme),
@@ -104,6 +118,12 @@ export function commandsFor(settings: Settings): Command[] {
       ['pr body', 'title', 'heuristic'],
     ),
   ]
+  // Disabled rows stay in the list so they can be found, but they must not
+  // steal the default highlight — empty-query Enter should still run something.
+  return [
+    ...commands.filter((command) => !command.disabled),
+    ...commands.filter((command) => command.disabled),
+  ]
 }
 
 export function filterCommands(query: string, commands: Command[]): Command[] {
@@ -118,6 +138,9 @@ export function filterCommands(query: string, commands: Command[]): Command[] {
 
 export function runCommand(id: string, ctx: CommandContext): void {
   switch (id) {
+    case 'session:stop':
+      ctx.stopSession?.()
+      return
     case 'reload-webview':
       ctx.reload()
       return
@@ -168,6 +191,19 @@ export function runCommand(id: string, ctx: CommandContext): void {
     case 'git:pr-description:heuristic':
       patchGit(ctx, { prDescription: 'heuristic' })
       return
+  }
+}
+
+function stopSessionCommand(session?: SessionCommandTarget | null): Command {
+  const hasSession = Boolean(session?.selectedId)
+  const alreadyStopped = session?.status === 'stopped'
+  const detail = !hasSession ? 'No session' : alreadyStopped ? 'Already stopped' : null
+  return {
+    id: 'session:stop',
+    label: 'Stop this session',
+    keywords: ['halt', 'kill', 'container'],
+    disabled: !hasSession || alreadyStopped,
+    ...(detail ? { detail } : {}),
   }
 }
 

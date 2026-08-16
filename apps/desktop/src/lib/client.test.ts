@@ -220,6 +220,23 @@ describe('DukeboxClient', () => {
     expect(init.method).toBe('POST')
   })
 
+  it('lists archived sessions', async () => {
+    const fetchMock = respondWith({ sessions: [] })
+    await client.listArchivedSessions()
+
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toContain('/api/sessions?archived=1')
+  })
+
+  it('unarchives a session', async () => {
+    const fetchMock = respondWith({ unarchived: true })
+    await client.unarchiveSession('00000000-0000-4000-8000-000000000001')
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toContain('/api/sessions/00000000-0000-4000-8000-000000000001/unarchive')
+    expect(init.method).toBe('POST')
+  })
+
   it('deletes a session permanently', async () => {
     const fetchMock = respondWith({ deleted: true })
     await client.deleteSession('00000000-0000-4000-8000-000000000001')

@@ -1,3 +1,6 @@
+import '@fontsource-variable/inter'
+import '@fontsource-variable/inter/wght-italic.css'
+import '@fontsource/jetbrains-mono'
 import {
   applyEvents,
   emptyTranscript,

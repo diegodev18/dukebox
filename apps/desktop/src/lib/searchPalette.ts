@@ -8,17 +8,28 @@ import { settingsCategoriesFor, type SettingsCategory } from '@/lib/settingsCate
  * a filter that fits in memory.
  */
 
-export const SEARCH_FILTERS = ['all', 'sessions', 'repos', 'actions', 'settings'] as const
+export const SEARCH_FILTERS = [
+  'all',
+  'sessions',
+  'archived',
+  'repos',
+  'actions',
+  'settings',
+] as const
 
 export type SearchFilter = (typeof SEARCH_FILTERS)[number]
 
 export const SEARCH_FILTER_LABELS: Record<SearchFilter, string> = {
   all: 'All',
   sessions: 'Sessions',
+  archived: 'Archived',
   repos: 'Repos',
   actions: 'Actions',
   settings: 'Settings',
 }
+
+export type SearchAction =
+  'new-session' | 'new-session-on-repo' | 'manage-environments' | 'archive-session'
 
 export type SearchItem =
   | {
@@ -28,7 +39,14 @@ export type SearchItem =
       project: ProjectSummary | undefined
     }
   | { kind: 'repo'; id: string; project: ProjectSummary }
-  | { kind: 'action'; id: 'action:new-session'; action: 'new-session'; label: string }
+  | {
+      kind: 'action'
+      id: string
+      action: SearchAction
+      label: string
+      projectId?: string
+      sessionId?: string
+    }
   | { kind: 'settings'; id: string; category: SettingsCategory; label: string }
 
 export type SearchGroupId = 'sessions' | 'repos' | 'actions' | 'settings'
@@ -67,8 +85,11 @@ export function searchPalette(
   filter: SearchFilter,
   input: {
     sessions: SessionSummary[]
+    archivedSessions?: SessionSummary[]
     projects: ProjectSummary[]
     role: DeviceRole | null
+    selectedSessionId?: string | null
+    selectedProjectId?: string | null
   },
 ): SearchGroup[] {
   const byId = new Map(input.projects.map((project) => [project.id, project]))
@@ -95,6 +116,26 @@ export function searchPalette(
     }
   }
 
+  if (filter === 'archived') {
+    const items = [...(input.archivedSessions ?? [])]
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .filter((session) => matchSession(query, { session, project: byId.get(session.projectId) }))
+      .map((session): SearchItem => ({
+        kind: 'session',
+        id: `session:${session.id}`,
+        session,
+        project: byId.get(session.projectId),
+      }))
+
+    if (items.length > 0) {
+      groups.push({
+        id: 'sessions',
+        heading: 'Archived',
+        items,
+      })
+    }
+  }
+
   if (filter === 'all' || filter === 'repos') {
     const items = input.projects
       .filter((project) => matchProject(query, project))
@@ -110,7 +151,7 @@ export function searchPalette(
   }
 
   if (filter === 'all' || filter === 'actions') {
-    const items = matchAction(query, NEW_SESSION) ? [NEW_SESSION] : []
+    const items = actionItems(query, input)
     if (items.length > 0) {
       groups.push({ id: 'actions', heading: 'Actions', items })
     }
@@ -133,6 +174,63 @@ export function searchPalette(
   }
 
   return groups
+}
+
+function actionItems(
+  query: string,
+  input: {
+    sessions: SessionSummary[]
+    projects: ProjectSummary[]
+    selectedSessionId?: string | null
+    selectedProjectId?: string | null
+  },
+): SearchItem[] {
+  const items: SearchItem[] = []
+  if (matchAction(query, NEW_SESSION)) items.push(NEW_SESSION)
+
+  const typed = query.trim() !== ''
+  const matchedRepos = input.projects.filter((project) => matchProject(query, project))
+  const filteredRepo = typed && matchedRepos.length === 1 ? matchedRepos[0] : undefined
+  const selectedRepo = input.selectedProjectId
+    ? input.projects.find((project) => project.id === input.selectedProjectId)
+    : undefined
+  const repo = filteredRepo ?? selectedRepo
+
+  if (repo) {
+    const onRepo: Extract<SearchItem, { kind: 'action' }> = {
+      kind: 'action',
+      id: 'action:new-session-on-repo',
+      action: 'new-session-on-repo',
+      label: 'New session on this repo',
+      projectId: repo.id,
+    }
+    const manage: Extract<SearchItem, { kind: 'action' }> = {
+      kind: 'action',
+      id: 'action:manage-environments',
+      action: 'manage-environments',
+      label: 'Manage environments',
+      projectId: repo.id,
+    }
+    const forced = filteredRepo !== undefined
+    if (forced || matchAction(query, onRepo)) items.push(onRepo)
+    if (forced || matchAction(query, manage)) items.push(manage)
+  }
+
+  const selected = input.selectedSessionId
+    ? input.sessions.find((session) => session.id === input.selectedSessionId)
+    : undefined
+  if (selected) {
+    const archive: Extract<SearchItem, { kind: 'action' }> = {
+      kind: 'action',
+      id: 'action:archive-session',
+      action: 'archive-session',
+      label: 'Archive current session',
+      sessionId: selected.id,
+    }
+    if (matchAction(query, archive)) items.push(archive)
+  }
+
+  return items
 }
 
 function matchAction(query: string, action: Extract<SearchItem, { kind: 'action' }>): boolean {

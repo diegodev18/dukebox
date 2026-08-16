@@ -69,6 +69,20 @@ export const setPermissionModeCommand = z.object({
 })
 
 /**
+ * Change the model this session's next turn should use.
+ *
+ * `providerId` is OpenCode's provider. The stored id is `provider/model` when
+ * both are set and `model` has no slash. Adapters that cannot hot-swap apply
+ * this on the next start rather than mid-process.
+ */
+export const setModelCommand = z.object({
+  type: z.literal('set_model'),
+  sessionId: z.string().uuid(),
+  model: z.string().min(1),
+  providerId: z.string().min(1).optional(),
+})
+
+/**
  * Terminal size in character cells.
  *
  * A PTY with zero rows or columns is not a degenerate terminal, it is an
@@ -153,6 +167,7 @@ export const clientCommand = z.discriminatedUnion('type', [
   permissionResponseCommand,
   interruptCommand,
   setPermissionModeCommand,
+  setModelCommand,
   terminalOpenCommand,
   terminalAttachCommand,
   terminalDetachCommand,

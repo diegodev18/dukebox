@@ -45,7 +45,10 @@ export function Terminal({
     if (!host.current) return
 
     const terminal = new Xterm({
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      // Same stack as --font-mono; xterm does not inherit from CSS.
+      fontFamily:
+        getComputedStyle(host.current).getPropertyValue('--font-mono').trim() ||
+        "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace",
       fontSize: 12.5,
       theme: themeFromCss(host.current),
       cursorBlink: true,

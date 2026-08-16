@@ -2,6 +2,7 @@ import {
   DEFAULT_COMMIT_IDENTITY,
   isTerminal,
   type DeviceRole,
+  type OpencodeProvider,
   type ProjectSummary,
   type SessionSummary,
 } from '@dukebox/protocol'
@@ -17,8 +18,10 @@ import {
   type CSSProperties,
 } from 'react'
 import { DukeboxClient, isAuthFailure } from '@/lib/client'
+import type { SessionCommands } from '@/lib/commands'
 import { removeConnection, type Connection } from '@/lib/connection'
 import { lastNewSessionFromSummary, type LastNewSession, type Settings } from '@/lib/settings'
+import { notifyWaitingInput, shouldNotifyWaiting } from '@/lib/waitingNotification'
 import type { SettingsCategory } from '@/lib/settingsCategories'
 import { INITIAL_RETRY_MS, MAX_RETRY_MS, isStreamConnected } from '@/lib/stream'
 import { NAV_DEFAULT, NAV_MIN, WORKSPACE_MIN } from '@/lib/columnWidths'
@@ -26,7 +29,13 @@ import { useColumnWidths } from '@/lib/useColumnWidths'
 import { useLiveSession } from '@/lib/liveSession'
 import { planTabs } from '@/lib/plans'
 import type { UseUpdate } from '@/lib/useUpdate'
-import { AgentIcon, hasAgentIcon } from '@/components/AgentIcon'
+import {
+  AgentIcon,
+  hasAgentIcon,
+  modelsForAgent,
+  providerIdFromModel,
+} from '@/components/AgentIcon'
+import { modelsForProvider } from '@/components/OpenCodeProviders'
 import { DukeHero } from '@/components/Duke'
 import { Composer, type ComposerHandle } from '@/components/Composer'
 import { AttachIcon } from '@/components/icons'
@@ -69,6 +78,7 @@ interface Props {
   onSaveSettings: (patch: Partial<Settings>) => void
   onSwitchServer: (connection: Connection) => void
   onDisconnected: () => void
+  onSessionCommands?: (commands: SessionCommands | null) => void
 }
 
 export function Session({
@@ -78,6 +88,7 @@ export function Session({
   onSaveSettings,
   onSwitchServer,
   onDisconnected,
+  onSessionCommands,
 }: Props) {
   // Memoised because it is passed to effects: a new client every render would
   // re-run them forever.
@@ -88,12 +99,15 @@ export function Session({
 
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
+  const [archivedSessions, setArchivedSessions] = useState<SessionSummary[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>('account')
   const [setupProjectId, setSetupProjectId] = useState<string | null>(null)
+  const [setupEnvironmentId, setSetupEnvironmentId] = useState<string | null>(null)
   const [preferProjectId, setPreferProjectId] = useState<string | null>(null)
   // Remember OpenCode when new session opens provider settings, so Back
   // restores the form with that agent still selected.
@@ -105,8 +119,23 @@ export function Session({
   const [archiveError, setArchiveError] = useState<string | null>(null)
   const [role, setRole] = useState<DeviceRole | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [pendingArchive, setPendingArchive] = useState<string | null>(null)
   // Prefill New Session from a merged PR, even before settings persist.
   const [continueFrom, setContinueFrom] = useState<LastNewSession | null>(null)
+
+  // Kept in sync so a session_update can compare against the last status
+  // without waiting for the next render — reconnects echo the same waiting
+  // row and must not toast again.
+  const sessionsRef = useRef<SessionSummary[]>([])
+  const focusedSessionRef = useRef<string | null>(null)
+  const selectSessionRef = useRef<(sessionId: string) => void>(() => undefined)
+  const notifyWhenWaitingRef = useRef(settings.notifyWhenWaiting)
+  sessionsRef.current = sessions
+  // Settings / New Session / Environments cover the transcript; leftover
+  // `selected` is not "looking at" that session.
+  focusedSessionRef.current =
+    creating || settingsOpen || managingProjectId !== null ? null : selected
+  notifyWhenWaitingRef.current = settings.notifyWhenWaiting
 
   const refreshProjects = async () => {
     try {
@@ -118,7 +147,12 @@ export function Session({
 
   const refreshSessions = async () => {
     try {
-      setSessions(await client.listSessions())
+      const [active, archived] = await Promise.all([
+        client.listSessions(),
+        client.listArchivedSessions(),
+      ])
+      setSessions((current) => keepKnownModels(current, active))
+      setArchivedSessions((current) => keepKnownModels(current, archived))
     } catch {
       // Same as projects: a blip must not empty the sidebar.
     }
@@ -129,11 +163,21 @@ export function Session({
     let timer: ReturnType<typeof setTimeout> | null = null
     let delay = INITIAL_RETRY_MS
 
+    // A leftover selection from the previous server would keep its UUID
+    // after the switch, so the new stream never subscribes and the
+    // sidebar still lists the old sessions.
+    setProjects([])
+    setSessions([])
+    setSelected(null)
+    setLoading(true)
+    setLoadError(null)
+
     const load = async () => {
       try {
-        const [loadedProjects, loadedSessions, me] = await Promise.all([
+        const [loadedProjects, loadedSessions, loadedArchived, me] = await Promise.all([
           client.listProjects(),
           client.listSessions(),
+          client.listArchivedSessions(),
           client.whoami(),
         ])
 
@@ -141,8 +185,10 @@ export function Session({
 
         setProjects(loadedProjects)
         setSessions(loadedSessions)
+        setArchivedSessions(loadedArchived)
         setRole(me.role)
         setSelected((current) => current ?? loadedSessions[0]?.id ?? null)
+        setLoadError(null)
         setLoading(false)
         delay = INITIAL_RETRY_MS
       } catch (error) {
@@ -156,7 +202,8 @@ export function Session({
           return
         }
 
-        setLoading(false)
+        // A failed first list must not look like a first-run empty server.
+        setLoadError('Couldn’t load sessions. Retrying…')
         const jitter = Math.random() * delay * 0.3
         timer = setTimeout(() => {
           timer = null
@@ -172,18 +219,41 @@ export function Session({
       if (timer) clearTimeout(timer)
     }
     // The client is derived from the connection, so this reruns when the user
-    // switches servers.
-  }, [client])
+    // switches servers. deviceId is the pairing identity even if host/token
+    // happen to match another entry.
+  }, [client, connection.deviceId])
 
   // Session summaries arrive over the socket too, so the sidebar's status dots
   // follow a running agent without polling.
+  const applySessionPatch = (sessionId: string, patch: Partial<SessionSummary>) => {
+    const apply = (rows: SessionSummary[]) =>
+      rows.map((session) => (session.id === sessionId ? { ...session, ...patch } : session))
+    setSessions(apply)
+    setArchivedSessions(apply)
+  }
+
   const live = useSession(
     connection,
     selected,
     (updated) => {
-      setSessions((current) =>
-        current.map((session) => (session.id === updated.id ? updated : session)),
+      const previous = sessionsRef.current.find((session) => session.id === updated.id)
+      const merged = keepKnownModel(previous ?? updated, updated)
+      applySessionPatch(updated.id, merged)
+      sessionsRef.current = sessionsRef.current.map((session) =>
+        session.id === updated.id ? merged : session,
       )
+
+      if (
+        shouldNotifyWaiting({
+          previousStatus: previous?.status,
+          nextStatus: updated.status,
+          lookingAtSession:
+            focusedSessionRef.current === updated.id && document.visibilityState !== 'hidden',
+          enabled: notifyWhenWaitingRef.current,
+        })
+      ) {
+        notifyWaitingInput(updated.title, () => selectSessionRef.current(updated.id))
+      }
     },
     () => {
       void removeConnection(connection.deviceId)
@@ -209,15 +279,22 @@ export function Session({
     void refreshSessions()
   }, [disconnected, streamStatus])
 
-  const current = sessions.find((session) => session.id === selected) ?? null
+  const current =
+    sessions.find((session) => session.id === selected) ??
+    archivedSessions.find((session) => session.id === selected) ??
+    null
 
   // A merge or close on GitHub does not arrive over the socket. Refresh the
   // selected session, and every open PR when the window is focused again.
-  useOpenPullRequestRefresh(client, sessions, selected, !disconnected, (sessionId, patch) => {
-    setSessions((rows) =>
-      rows.map((session) => (session.id === sessionId ? { ...session, ...patch } : session)),
-    )
-  })
+  useOpenPullRequestRefresh(
+    client,
+    [...sessions, ...archivedSessions],
+    selected,
+    !disconnected,
+    (sessionId, patch) => {
+      applySessionPatch(sessionId, patch)
+    },
+  )
 
   // Names for the environment a review session belongs to. Fetched only when a
   // review is on screen, and best-effort: failing to name an environment must
@@ -270,6 +347,7 @@ export function Session({
     setSelected(session.id)
     setCreating(false)
     setSetupProjectId(null)
+    setSetupEnvironmentId(null)
     setPreferProjectId(null)
     setManagingProjectId(null)
     setPreferAgentId(null)
@@ -279,6 +357,7 @@ export function Session({
   const openSettings = (category: SettingsCategory) => {
     setCreating(false)
     setSetupProjectId(null)
+    setSetupEnvironmentId(null)
     setPreferProjectId(null)
     setManagingProjectId(null)
     setPreferAgentId(null)
@@ -293,16 +372,43 @@ export function Session({
     setCreating(false)
     setSettingsOpen(false)
     setSetupProjectId(null)
+    setSetupEnvironmentId(null)
     setPreferProjectId(null)
     setManagingProjectId(null)
     setPreferAgentId(null)
     setSearchOpen(false)
     setContinueFrom(null)
     setSelected(sessionId)
+
+    // Opening an archived row puts it back. A follow-up would resume the
+    // container; leaving the hide flag set would drop that turn on restart.
+    if (!archivedSessions.some((session) => session.id === sessionId)) return
+
+    void (async () => {
+      try {
+        await client.unarchiveSession(sessionId)
+        setArchiveError(null)
+      } catch (error) {
+        setArchiveError(error instanceof Error ? error.message : 'Could not restore the session.')
+        return
+      }
+
+      const moved = archivedSessions.find((session) => session.id === sessionId) ?? null
+      setArchivedSessions((current) => current.filter((session) => session.id !== sessionId))
+      if (moved) {
+        setSessions((current) =>
+          [moved, ...current.filter((session) => session.id !== moved.id)].sort(
+            (left, right) => right.createdAt - left.createdAt,
+          ),
+        )
+      }
+    })()
   }
+  selectSessionRef.current = selectSession
 
   const startNewSession = (projectId?: string) => {
     setSetupProjectId(null)
+    setSetupEnvironmentId(null)
     setPreferProjectId(projectId ?? null)
     setManagingProjectId(null)
     setPreferAgentId(null)
@@ -312,9 +418,67 @@ export function Session({
     setCreating(true)
   }
 
+  const openEnvironments = (projectId: string) => {
+    setCreating(false)
+    setSettingsOpen(false)
+    setSetupProjectId(null)
+    setPreferProjectId(null)
+    setPreferAgentId(null)
+    setSearchOpen(false)
+    setContinueFrom(null)
+    setManagingProjectId(projectId)
+  }
+
+  const archiveById = (sessionId: string) => {
+    void (async () => {
+      try {
+        await client.archiveSession(sessionId)
+        setArchiveError(null)
+      } catch (error) {
+        // Leave the row where it is: a failed archive that vanishes
+        // from the list looks like the session was deleted.
+        setArchiveError(error instanceof Error ? error.message : 'Could not archive the session.')
+        return
+      }
+
+      const moved = sessions.find((session) => session.id === sessionId) ?? null
+      const fallback = sessions.find((session) => session.id !== sessionId)?.id ?? null
+      setSessions((current) => current.filter((session) => session.id !== sessionId))
+      if (moved) {
+        setArchivedSessions((current) =>
+          [moved, ...current.filter((session) => session.id !== moved.id)].sort(
+            (left, right) => right.updatedAt - left.updatedAt,
+          ),
+        )
+      }
+      setSelected((currentSelected) => (currentSelected === sessionId ? fallback : currentSelected))
+    })()
+  }
+
+  const stopById = useCallback(
+    async (sessionId: string) => {
+      try {
+        await client.stopSession(sessionId)
+        setArchiveError(null)
+      } catch (error) {
+        setArchiveError(error instanceof Error ? error.message : 'Could not stop the session.')
+        return
+      }
+
+      const markStopped = (rows: SessionSummary[]) =>
+        rows.map((session) =>
+          session.id === sessionId ? { ...session, status: 'stopped' as const } : session,
+        )
+      setSessions(markStopped)
+      setArchivedSessions(markStopped)
+    },
+    [client],
+  )
+
   const continueAfterMerge = (session: SessionSummary) => {
     const last = lastNewSessionFromSummary(session, projects)
     setSetupProjectId(null)
+    setSetupEnvironmentId(null)
     setPreferProjectId(session.projectId)
     setManagingProjectId(null)
     setPreferAgentId(session.agentId)
@@ -323,6 +487,33 @@ export function Session({
     setContinueFrom(last)
     setCreating(true)
   }
+
+  const actionSession = creating || !current ? null : current
+  const actionSessionActive = actionSession
+    ? sessions.some((session) => session.id === actionSession.id)
+    : false
+  // The last selected session stays in `current` while New Session or
+  // Environments is on screen. Prefer the pane's repo so search verbs
+  // target what the person is looking at, not the hidden session.
+  const actionProjectId =
+    managingProjectId ??
+    (creating ? null : current?.projectId) ??
+    preferProjectId ??
+    setupProjectId ??
+    null
+
+  useEffect(() => {
+    if (!onSessionCommands) return
+    onSessionCommands({
+      selectedId: actionSession?.id ?? null,
+      status: actionSession?.status ?? null,
+      stopSession: stopById,
+    })
+  }, [onSessionCommands, actionSession?.id, actionSession?.status, stopById])
+
+  useEffect(() => {
+    return () => onSessionCommands?.(null)
+  }, [onSessionCommands])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -372,31 +563,27 @@ export function Session({
             <Sidebar
               projects={projects}
               sessions={sessions}
+              archivedSessions={archivedSessions}
               selectedId={creating ? null : selected}
               identity={settings.commitIdentity ?? DEFAULT_COMMIT_IDENTITY}
               serverName={connection.serverName}
               role={role}
               disabled={disconnected}
+              loading={loading}
               onOpenSettings={openSettings}
               onSelect={selectSession}
               onNewSession={startNewSession}
               onSearch={() => setSearchOpen(true)}
               onConfigureEnvironment={(projectId) => {
                 setSetupProjectId(projectId)
+                setSetupEnvironmentId(null)
                 setPreferProjectId(null)
                 setManagingProjectId(null)
                 setPreferAgentId(null)
                 setSettingsOpen(false)
                 setCreating(true)
               }}
-              onManageEnvironments={(projectId) => {
-                setCreating(false)
-                setSettingsOpen(false)
-                setSetupProjectId(null)
-                setPreferProjectId(null)
-                setPreferAgentId(null)
-                setManagingProjectId(projectId)
-              }}
+              onManageEnvironments={openEnvironments}
               archiveError={archiveError}
               onDelete={(sessionId) => {
                 void (async () => {
@@ -418,6 +605,9 @@ export function Session({
                     fallback = next[0]?.id ?? null
                     return next
                   })
+                  setArchivedSessions((current) =>
+                    current.filter((session) => session.id !== sessionId),
+                  )
                   setSelected((currentSelected) =>
                     currentSelected === sessionId ? fallback : currentSelected,
                   )
@@ -436,11 +626,20 @@ export function Session({
                   }
 
                   const remaining = sessions.filter((session) => session.projectId !== projectId)
+                  const remainingArchived = archivedSessions.filter(
+                    (session) => session.projectId !== projectId,
+                  )
                   setProjects((current) => current.filter((project) => project.id !== projectId))
                   setSessions(remaining)
+                  setArchivedSessions(remainingArchived)
                   setSelected((currentSelected) => {
                     if (!currentSelected) return currentSelected
                     if (remaining.some((session) => session.id === currentSelected)) {
+                      return currentSelected
+                    }
+                    // An archived selection is not in `remaining`. Keep it
+                    // unless this project owned that row.
+                    if (remainingArchived.some((session) => session.id === currentSelected)) {
                       return currentSelected
                     }
                     return remaining[0]?.id ?? null
@@ -452,35 +651,13 @@ export function Session({
                   }
                   if (preferProjectId === projectId) {
                     setPreferProjectId(null)
+                    setSetupEnvironmentId(null)
                     setCreating(false)
                   }
                 })()
               }}
-              onArchive={(sessionId) => {
-                void (async () => {
-                  try {
-                    await client.archiveSession(sessionId)
-                    setArchiveError(null)
-                  } catch (error) {
-                    // Leave the row where it is: a failed archive that vanishes
-                    // from the list looks like the session was deleted.
-                    setArchiveError(
-                      error instanceof Error ? error.message : 'Could not archive the session.',
-                    )
-                    return
-                  }
-
-                  let fallback: string | null = null
-                  setSessions((current) => {
-                    const next = current.filter((session) => session.id !== sessionId)
-                    fallback = next[0]?.id ?? null
-                    return next
-                  })
-                  setSelected((currentSelected) =>
-                    currentSelected === sessionId ? fallback : currentSelected,
-                  )
-                })()
-              }}
+              onRestore={selectSession}
+              onArchive={archiveById}
             />
           )}
           <ResizeHandle
@@ -496,7 +673,7 @@ export function Session({
 
         {loading ? (
           <p role="status" className="grid place-items-center text-[13px] text-muted-foreground">
-            Loading sessions…
+            {loadError ?? 'Loading sessions…'}
           </p>
         ) : settingsOpen ? (
           <Suspense fallback={<PaneFallback />}>
@@ -519,6 +696,16 @@ export function Session({
               client={client}
               projectId={managingProjectId}
               disabled={disconnected}
+              onRunSetup={(environmentId) => {
+                setSetupProjectId(null)
+                setSetupEnvironmentId(environmentId)
+                setPreferProjectId(managingProjectId)
+                setPreferAgentId(null)
+                setContinueFrom(null)
+                setSettingsOpen(false)
+                setManagingProjectId(null)
+                setCreating(true)
+              }}
             />
           </Suspense>
         ) : creating ? (
@@ -531,6 +718,7 @@ export function Session({
               gitPreferences={settings.git}
               onCreated={onSessionCreated}
               preferSetupProjectId={setupProjectId}
+              preferSetupEnvironmentId={setupEnvironmentId}
               preferProjectId={preferProjectId}
               preferAgentId={preferAgentId}
               lastNewSession={
@@ -540,6 +728,7 @@ export function Session({
               }
               onRemember={(last) => onSaveSettings({ lastNewSession: last })}
               disabled={disconnected}
+              role={role}
               onConfigureProviders={() => {
                 if (role !== 'owner') return
                 setPreferAgentId('opencode')
@@ -555,6 +744,13 @@ export function Session({
               session={current}
               live={live}
               connection={connection}
+              client={client}
+              onConfigureProviders={() => {
+                if (role !== 'owner') return
+                setPreferAgentId('opencode')
+                setSettingsCategory('agents')
+                setSettingsOpen(true)
+              }}
               onContinueAfterMerge={() => continueAfterMerge(current)}
             />
             <ConnectedWorkspace
@@ -578,12 +774,10 @@ export function Session({
                 current.purpose === 'coding'
                   ? {
                       client,
-                      onUpdated: (patch) =>
-                        setSessions((sessions) =>
-                          sessions.map((session) =>
-                            session.id === selected ? { ...session, ...patch } : session,
-                          ),
-                        ),
+                      onUpdated: (patch) => {
+                        if (!selected) return
+                        applySessionPatch(selected, patch)
+                      },
                       onContinue: () => continueAfterMerge(current),
                     }
                   : null
@@ -616,14 +810,131 @@ export function Session({
       {searchOpen && (
         <SearchPalette
           sessions={sessions}
+          archivedSessions={archivedSessions}
           projects={projects}
           role={role}
+          selectedSessionId={actionSession && actionSessionActive ? actionSession.id : null}
+          selectedProjectId={actionProjectId}
           onSelect={selectSession}
           onNewSession={startNewSession}
+          onManageEnvironments={openEnvironments}
+          onArchive={(sessionId) => setPendingArchive(sessionId)}
           onOpenSettings={openSettings}
           onDismiss={() => setSearchOpen(false)}
         />
       )}
+
+      {pendingArchive && (
+        <ConfirmArchive
+          onConfirm={() => {
+            const sessionId = pendingArchive
+            setPendingArchive(null)
+            archiveById(sessionId)
+          }}
+          onDismiss={() => setPendingArchive(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ConfirmArchive({
+  onConfirm,
+  onDismiss,
+}: {
+  onConfirm: () => void
+  onDismiss: () => void
+}) {
+  const panel = useRef<HTMLDivElement>(null)
+  const dismiss = useRef(onDismiss)
+  dismiss.current = onDismiss
+
+  useEffect(() => {
+    panel.current?.querySelector<HTMLButtonElement>('button')?.focus()
+
+    const focusable = () => {
+      const nodes = panel.current?.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )
+      return nodes ? Array.from(nodes) : []
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        dismiss.current()
+        return
+      }
+
+      if (event.key !== 'Tab') return
+
+      const items = focusable()
+      if (items.length === 0) {
+        event.preventDefault()
+        panel.current?.focus()
+        return
+      }
+
+      const first = items[0]!
+      const last = items[items.length - 1]!
+      const active = document.activeElement
+
+      if (event.shiftKey && (active === first || active === panel.current)) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (active === last || active === panel.current)) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-6"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onDismiss()
+      }}
+    >
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-archive-title"
+        tabIndex={-1}
+        className="w-full max-w-sm overflow-hidden rounded-[calc(var(--radius)*1.1)] border border-border bg-background shadow-lg outline-none"
+      >
+        <div className="border-b border-border px-4 py-3">
+          <h2 id="confirm-archive-title" className="font-medium">
+            Archive this session?
+          </h2>
+        </div>
+        <div className="px-4 py-3">
+          <p className="text-[13px] text-muted-foreground">
+            Hide from the sidebar. You can restore it later.
+          </p>
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="rounded-[calc(var(--radius)*0.6)] px-2.5 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="rounded-[calc(var(--radius)*0.6)] border border-border px-2.5 py-1 text-[12px] font-medium hover:bg-muted"
+            >
+              Archive
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -632,11 +943,15 @@ function SessionColumn({
   session,
   live,
   connection,
+  client,
+  onConfigureProviders,
   onContinueAfterMerge,
 }: {
   session: SessionSummary
   live: LiveSession
   connection: Connection
+  client: DukeboxClient
+  onConfigureProviders: () => void
   onContinueAfterMerge: () => void
 }) {
   const transcript = useLiveSession((state) => state.transcript)
@@ -653,6 +968,64 @@ function SessionColumn({
     setComposerDraft({ text, key: Date.now() })
   }, [])
   const connected = isStreamConnected(streamStatus)
+  const usingOpenCode = session.agentId === 'opencode'
+  const remoteModel = session.model ?? transcript.model ?? ''
+  const [opencodeProviders, setOpencodeProviders] = useState<OpencodeProvider[]>([])
+  const [opencodeProvidersStatus, setOpencodeProvidersStatus] = useState<
+    'loading' | 'loaded' | 'failed'
+  >(usingOpenCode ? 'loading' : 'loaded')
+  const [model, setModel] = useState(remoteModel)
+  const [providerId, setProviderId] = useState(providerIdFromModel(remoteModel))
+
+  useEffect(() => {
+    if (remoteModel) setModel(remoteModel)
+    const fromRemote = providerIdFromModel(remoteModel)
+    if (fromRemote) setProviderId(fromRemote)
+  }, [remoteModel])
+
+  useEffect(() => {
+    if (!usingOpenCode) return
+    let cancelled = false
+
+    client
+      .listOpencodeProviders()
+      .then((found) => {
+        if (cancelled) return
+        setOpencodeProviders(found)
+        setOpencodeProvidersStatus('loaded')
+      })
+      .catch(() => {
+        if (cancelled) return
+        setOpencodeProviders([])
+        setOpencodeProvidersStatus('failed')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [client, usingOpenCode])
+
+  const selectedProvider = opencodeProviders.find((provider) => provider.id === providerId)
+  const models = useMemo(() => {
+    if (usingOpenCode) {
+      return selectedProvider ? modelsForProvider(selectedProvider) : []
+    }
+    return modelsForAgent(session.agentId)
+  }, [usingOpenCode, selectedProvider, session.agentId])
+
+  const changeModel = (next: string) => {
+    setModel(next)
+    live.setModel(next, usingOpenCode ? providerId : undefined)
+  }
+
+  const changeProvider = (next: string) => {
+    setProviderId(next)
+    const provider = opencodeProviders.find((candidate) => candidate.id === next)
+    const first = provider ? modelsForProvider(provider)[0]?.id : undefined
+    if (!first) return
+    setModel(first)
+    live.setModel(first, next)
+  }
   const { dragging, onDragEnter, onDragOver, onDragLeave, onDrop } = useFileDrop({
     disabled: !connected,
     onFiles: (files) => composer.current?.attachFiles(files),
@@ -747,6 +1120,22 @@ function SessionColumn({
         disabled={!isStreamConnected(streamStatus)}
         error={error}
         agentId={session.agentId}
+        {...(models.length > 0
+          ? {
+              model,
+              models,
+              onModelChange: changeModel,
+            }
+          : {})}
+        {...(usingOpenCode
+          ? {
+              providerId,
+              providers: opencodeProviders,
+              providersStatus: opencodeProvidersStatus,
+              onProviderChange: changeProvider,
+              onAddProvider: onConfigureProviders,
+            }
+          : {})}
         {...(composerDraft ? { draft: composerDraft } : {})}
         {...(session.purpose !== 'environment_setup' && session.permissionMode
           ? {
@@ -785,6 +1174,18 @@ function PaneFallback() {
 
 function NavFallback() {
   return <div className="h-full border-r border-border bg-surface" />
+}
+
+/** Null means unknown, not "clear the picker" — a stale REST snapshot must not clobber a live value. */
+function keepKnownModel(current: SessionSummary, incoming: SessionSummary): SessionSummary {
+  return incoming.model ? incoming : { ...incoming, model: current.model }
+}
+
+function keepKnownModels(current: SessionSummary[], incoming: SessionSummary[]): SessionSummary[] {
+  return incoming.map((row) => {
+    const previous = current.find((session) => session.id === row.id)
+    return previous ? keepKnownModel(previous, row) : row
+  })
 }
 
 function EmptySession({

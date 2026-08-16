@@ -3,6 +3,7 @@ import {
   resolveEnvironment,
   resolvePermissionMode,
   type CommitIdentity,
+  type DeviceRole,
   type EnvironmentSummary,
   type GitPreferences,
   type OpencodeProvider,
@@ -20,14 +21,13 @@ import {
   DEFAULT_PERMISSION_MODE,
   GROK_BUILD_MODELS,
   agentHasPermissionModes,
-  availablePermissionModes,
   cyclePermissionMode,
   type AvailablePermissionModeId,
 } from '@/components/AgentIcon'
 import { AttachmentChips } from '@/components/AttachmentChips'
-import { readFile, type ComposerFile } from '@/components/Composer'
+import { readPickedFiles, type ComposerFile } from '@/components/Composer'
 import { modelsForProvider } from '@/components/OpenCodeProviders'
-import { AttachIcon, SendIcon } from '@/components/icons'
+import { AttachIcon } from '@/components/icons'
 import { filesFromPaste, useFileDrop } from '@/lib/useFileDrop'
 import {
   AgentPicker,
@@ -35,9 +35,7 @@ import {
   BranchPicker,
   EnvironmentPicker,
   InstancePicker,
-  ModelPicker,
-  PermissionModePicker,
-  ProviderPicker,
+  SessionMutablePickers,
   RepoPicker,
 } from '@/components/RepoBranchPickers'
 import type { DukeboxClient } from '@/lib/client'
@@ -78,6 +76,11 @@ interface Props {
   onCreated: (session: SessionSummary, project: ProjectSummary | null) => void
   /** Prefer starting environment setup for this project (e.g. from sidebar). */
   preferSetupProjectId?: string | null
+  /**
+   * Re-run setup for this existing environment. Unlike preferSetupProjectId,
+   * this must not create a sibling row.
+   */
+  preferSetupEnvironmentId?: string | null
   /** Prefill this project without forcing setup (e.g. from the project menu). */
   preferProjectId?: string | null
   /** Restore this agent after returning from provider settings. */
@@ -88,6 +91,11 @@ interface Props {
   onRemember?: (last: LastNewSession) => void
   /** Open Settings → Agents to add or edit OpenCode providers. */
   onConfigureProviders: () => void
+  /**
+   * Who is paired. Members cannot open Settings → Agents, so a missing-agent
+   * state must not offer a button that no-ops.
+   */
+  role?: DeviceRole | null
   /** Starting a session needs the server. */
   disabled?: boolean
 }
@@ -110,11 +118,13 @@ export function NewSession({
   gitPreferences,
   onCreated,
   preferSetupProjectId,
+  preferSetupEnvironmentId,
   preferProjectId,
   preferAgentId,
   lastNewSession = null,
   onRemember,
   onConfigureProviders,
+  role = null,
   disabled = false,
 }: Props) {
   const preferredId = preferSetupProjectId ?? preferProjectId
@@ -134,7 +144,14 @@ export function NewSession({
   const [branches, setBranches] = useState<string[]>([])
   const [branchesLoading, setBranchesLoading] = useState(false)
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([])
-  const [environmentId, setEnvironmentId] = useState<string>(BASE_IMAGE_VALUE)
+  const [environmentId, setEnvironmentId] = useState<string>(
+    preferSetupEnvironmentId ?? BASE_IMAGE_VALUE,
+  )
+  // Local so Back or a repo change can drop the re-run without the prop
+  // staying sticky and sending that id after the person has left the card.
+  const [reuseEnvironmentId, setReuseEnvironmentId] = useState<string | null>(
+    preferSetupEnvironmentId ?? null,
+  )
   const [agentId, setAgentId] = useState<string>(initialAgent)
   const [model, setModel] = useState<string>(initialModel(lastNewSession, initialAgent))
   const [permissionMode, setPermissionMode] = useState(initialPermissionMode(lastNewSession))
@@ -144,11 +161,15 @@ export function NewSession({
   >('loading')
   const [claudeConfigured, setClaudeConfigured] = useState(false)
   const [grokConfigured, setGrokConfigured] = useState(false)
-  const [agentsStatus, setAgentsStatus] = useState<'loading' | 'loaded'>('loading')
+  const [agentsStatus, setAgentsStatus] = useState<'loading' | 'loaded' | 'failed'>('loading')
+  const [agentsReload, setAgentsReload] = useState(0)
   const [providerId, setProviderId] = useState(initialProviderId(lastNewSession, initialAgent))
   const [prompt, setPrompt] = useState(loadNewSessionDraft)
   const [files, setFiles] = useState<ComposerFile[]>([])
-  const [forceSetup, setForceSetup] = useState(Boolean(preferSetupProjectId))
+  const [attachError, setAttachError] = useState<string | null>(null)
+  const [forceSetup, setForceSetup] = useState(
+    Boolean(preferSetupProjectId || preferSetupEnvironmentId),
+  )
   const [newEnvironmentName, setNewEnvironmentName] = useState('Default')
   const [newEnvironmentPattern, setNewEnvironmentPattern] = useState('**')
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
@@ -296,6 +317,9 @@ export function NewSession({
   const matching = environments
     .filter((environment) => matchesBranch(environment.branchPattern, baseBranch))
     .sort((left, right) => left.position - right.position)
+  const reuseEnvironment = reuseEnvironmentId
+    ? environments.find((environment) => environment.id === reuseEnvironmentId)
+    : undefined
 
   // Changing branch re-resolves the environment with the same rule the server
   // uses, so the picker never shows one the server would not have chosen. A
@@ -307,6 +331,11 @@ export function NewSession({
   // selected, keep the environment it ran in — including an explicit base
   // image — rather than overwriting it with the auto-resolved match.
   useEffect(() => {
+    if (reuseEnvironmentId) {
+      setEnvironmentId(reuseEnvironmentId)
+      return
+    }
+
     const resolved = resolveEnvironment(environments, baseBranch)?.id ?? BASE_IMAGE_VALUE
     const sameContext =
       lastNewSession != null &&
@@ -332,22 +361,30 @@ export function NewSession({
     }
 
     setEnvironmentId(resolved)
-  }, [baseBranch, environments, target, lastNewSession])
+  }, [baseBranch, environments, target, lastNewSession, reuseEnvironmentId])
 
   useEffect(() => {
     let cancelled = false
 
     Promise.all([
-      client.agentCredentialsConfigured().catch(() => false),
-      client.grokCredentialsConfigured().catch(() => false),
+      client.agentCredentialsConfigured().then(
+        (configured) => ({ ok: true as const, configured }),
+        () => ({ ok: false as const }),
+      ),
+      client.grokCredentialsConfigured().then(
+        (configured) => ({ ok: true as const, configured }),
+        () => ({ ok: false as const }),
+      ),
       client.listOpencodeProviders().then(
         (found) => ({ ok: true as const, found }),
         () => ({ ok: false as const }),
       ),
     ]).then(([claude, grok, providers]) => {
       if (cancelled) return
-      setClaudeConfigured(claude)
-      setGrokConfigured(grok)
+      const claudeOn = claude.ok && claude.configured
+      const grokOn = grok.ok && grok.configured
+      setClaudeConfigured(claudeOn)
+      setGrokConfigured(grokOn)
       if (providers.ok) {
         setOpencodeProviders(providers.found)
         setOpencodeProvidersStatus('loaded')
@@ -357,13 +394,17 @@ export function NewSession({
         setOpencodeProviders([])
         setOpencodeProvidersStatus('failed')
       }
-      setAgentsStatus('loaded')
+      // A failed check must not look like "none configured": that screen
+      // offers a Settings button members cannot use.
+      const anyConfigured = claudeOn || grokOn || (providers.ok && providers.found.length > 0)
+      const listingFailed = !claude.ok || !grok.ok || !providers.ok
+      setAgentsStatus(anyConfigured ? 'loaded' : listingFailed ? 'failed' : 'loaded')
     })
 
     return () => {
       cancelled = true
     }
-  }, [client])
+  }, [client, agentsReload])
 
   const usingOpenCode = agentId === 'opencode'
   const usingGrokBuild = agentId === 'grok-build'
@@ -387,6 +428,7 @@ export function NewSession({
   }, [agentsStatus, claudeConfigured, grokConfigured, opencodeProviders.length])
 
   const hasNoAgents = agentsStatus === 'loaded' && configuredAgents.length === 0
+  const canConfigureAgents = role === 'owner'
 
   useEffect(() => {
     if (!usingOpenCode) return
@@ -444,9 +486,14 @@ export function NewSession({
     if (first) setModel(first)
   }
 
+  const leaveReuse = () => {
+    setReuseEnvironmentId(null)
+    setForceSetup(false)
+  }
+
   const selectRepo = (fullName: string) => {
     setTarget(fullName)
-    setForceSetup(false)
+    leaveReuse()
     const project = projects.find((candidate) => candidate.repoFullName === fullName)
     const repository = repositories.find((candidate) => candidate.fullName === fullName)
     setBaseBranch(project?.defaultBranch || repository?.defaultBranch || 'main')
@@ -458,12 +505,10 @@ export function NewSession({
   const attachFiles = (picked: File[]) => {
     if (picked.length === 0 || busy) return
 
-    void Promise.all(picked.map(readFile))
-      .then((read) => setFiles((current) => [...current, ...read]))
-      .catch(() => {
-        // A file that could not be read is dropped rather than blocking the
-        // ones that could.
-      })
+    void readPickedFiles(picked).then(({ files: read, error: readError }) => {
+      if (read.length > 0) setFiles((current) => [...current, ...read])
+      setAttachError(readError)
+    })
   }
 
   const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
@@ -492,6 +537,8 @@ export function NewSession({
     if (!target || !baseBranch || !agentId) return
     if (!needsEnvironment && !prompt.trim()) return
 
+    // The start is in flight; a leftover read error would look like this failed.
+    setAttachError(null)
     setStatus({ kind: 'starting' })
 
     try {
@@ -511,6 +558,31 @@ export function NewSession({
       )
 
       if (needsEnvironment) {
+        if (reuseEnvironmentId) {
+          // Seeded from the prop and locked while this card is open. Refuse a
+          // foreign id rather than start setup on another project's row.
+          if (!reuseEnvironment || reuseEnvironment.projectId !== project.id) {
+            throw new Error('This environment does not belong to the selected repository.')
+          }
+
+          const session = await client.startSession({
+            projectId: project.id,
+            agentId,
+            model,
+            baseBranch,
+            purpose: 'environment_setup',
+            environmentId,
+            ...(mode ? { permissionMode: mode } : {}),
+            ...(identity ? { commitIdentity: identity } : {}),
+            ...(gitPreferences ? { gitPreferences } : {}),
+          })
+
+          remember(environmentId)
+          clearNewSessionDraft()
+          onCreated(session, created)
+          return
+        }
+
         // The environment has to exist before the session starts, so the setup
         // run has somewhere to write its draft. If starting then fails, the row
         // is removed again: a retry with the same name would otherwise collide
@@ -593,7 +665,12 @@ export function NewSession({
   const agentReady = configuredAgents.some((agent) => agent.id === agentId)
 
   const canSend = needsEnvironment
-    ? !busy && Boolean(target) && Boolean(baseBranch) && agentReady && hasModel
+    ? !busy &&
+      Boolean(target) &&
+      Boolean(baseBranch) &&
+      agentReady &&
+      hasModel &&
+      (!reuseEnvironmentId || Boolean(reuseEnvironment))
     : !busy &&
       Boolean(target) &&
       Boolean(baseBranch) &&
@@ -601,22 +678,50 @@ export function NewSession({
       hasModel &&
       prompt.trim() !== ''
 
+  if (agentsStatus === 'failed') {
+    return (
+      <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
+        <div className="w-full max-w-xl rounded-[calc(var(--radius)*1.1)] border border-border bg-surface px-3.5 py-3.5">
+          <h2 className="text-[14px] font-medium">Couldn’t load agents</h2>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            Check the connection and try again.
+          </p>
+          <button
+            type="button"
+            onClick={() => setAgentsReload((current) => current + 1)}
+            className="mt-3 rounded-full bg-foreground px-3.5 py-1.5 text-[13px] font-medium text-background"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (hasNoAgents) {
     return (
       <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
         <div className="w-full max-w-xl rounded-[calc(var(--radius)*1.1)] border border-border bg-surface px-3.5 py-3.5">
           <h2 className="text-[14px] font-medium">Configure an agent</h2>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            Add a Claude Code token, a Grok Build API key, or an OpenCode provider in Settings
-            before starting a session.
-          </p>
-          <button
-            type="button"
-            onClick={onConfigureProviders}
-            className="mt-3 rounded-full bg-foreground px-3.5 py-1.5 text-[13px] font-medium text-background"
-          >
-            Configure agents
-          </button>
+          {canConfigureAgents ? (
+            <>
+              <p className="mt-1 text-[13px] text-muted-foreground">
+                Add a Claude Code token, a Grok Build API key, or an OpenCode provider in Settings
+                before starting a session.
+              </p>
+              <button
+                type="button"
+                onClick={onConfigureProviders}
+                className="mt-3 rounded-full bg-foreground px-3.5 py-1.5 text-[13px] font-medium text-background"
+              >
+                Configure agents
+              </button>
+            </>
+          ) : (
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              Ask the server owner to configure an agent.
+            </p>
+          )}
         </div>
       </div>
     )
@@ -637,7 +742,12 @@ export function NewSession({
           </p>
         )}
         <div className="mb-3 flex flex-wrap items-center gap-1">
-          <RepoPicker options={options} value={target} onChange={selectRepo} disabled={busy} />
+          <RepoPicker
+            options={options}
+            value={target}
+            onChange={selectRepo}
+            disabled={busy || Boolean(reuseEnvironmentId)}
+          />
           <BranchPicker
             branches={branches}
             value={baseBranch}
@@ -645,9 +755,9 @@ export function NewSession({
             disabled={busy || !target}
             loading={branchesLoading}
           />
-          {/* A lone "base image" entry would be noise, so it stays hidden
-              until the project actually has environments to choose between. */}
-          {environments.length > 0 && (
+          {/* Hidden while re-running: a matching-only list would label the
+              locked id as Base image, and the heading already names it. */}
+          {environments.length > 0 && !reuseEnvironmentId && (
             <EnvironmentPicker
               environments={matching}
               value={environmentId}
@@ -666,35 +776,43 @@ export function NewSession({
 
         {needsEnvironment ? (
           <div className="rounded-[calc(var(--radius)*1.1)] border border-border bg-surface px-3.5 py-3.5">
-            <h2 className="text-[14px] font-medium">Configure environment</h2>
+            <h2 className="text-[14px] font-medium">
+              {reuseEnvironmentId
+                ? `Run setup again${reuseEnvironment ? ` · ${reuseEnvironment.name}` : ''}`
+                : 'Configure environment'}
+            </h2>
             <p className="mt-1 text-[13px] text-muted-foreground">
               {agentId} will inspect the repository and propose setup commands and environment
               variables. You review and save them, and branches this environment covers use them
               from then on.
             </p>
-            <label className="mt-3 block text-[12px] text-muted-foreground">
-              Name
-              <input
-                value={newEnvironmentName}
-                onChange={(event) => setNewEnvironmentName(event.target.value)}
-                disabled={busy}
-                className={INPUT_CLASS}
-              />
-            </label>
-            <label className="mt-2 block text-[12px] text-muted-foreground">
-              Branches
-              <input
-                value={newEnvironmentPattern}
-                onChange={(event) => setNewEnvironmentPattern(event.target.value)}
-                aria-describedby="pattern-help"
-                disabled={busy}
-                className={INPUT_CLASS}
-              />
-            </label>
-            <p id="pattern-help" className="mt-1 text-[11px] text-muted-foreground">
-              Glob like <code>refact/*</code> or <code>**</code> for every branch. Prefix with{' '}
-              <code>re:</code> for a regular expression.
-            </p>
+            {!reuseEnvironmentId && (
+              <>
+                <label className="mt-3 block text-[12px] text-muted-foreground">
+                  Name
+                  <input
+                    value={newEnvironmentName}
+                    onChange={(event) => setNewEnvironmentName(event.target.value)}
+                    disabled={busy}
+                    className={INPUT_CLASS}
+                  />
+                </label>
+                <label className="mt-2 block text-[12px] text-muted-foreground">
+                  Branches
+                  <input
+                    value={newEnvironmentPattern}
+                    onChange={(event) => setNewEnvironmentPattern(event.target.value)}
+                    aria-describedby="pattern-help"
+                    disabled={busy}
+                    className={INPUT_CLASS}
+                  />
+                </label>
+                <p id="pattern-help" className="mt-1 text-[11px] text-muted-foreground">
+                  Glob like <code>refact/*</code> or <code>**</code> for every branch. Prefix with{' '}
+                  <code>re:</code> for a regular expression.
+                </p>
+              </>
+            )}
 
             <div className="mt-3 flex items-center justify-between gap-2">
               <SessionMutablePickers
@@ -716,7 +834,7 @@ export function NewSession({
               <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setForceSetup(false)}
+                  onClick={leaveReuse}
                   disabled={busy}
                   className="text-[12px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-40"
                 >
@@ -740,7 +858,12 @@ export function NewSession({
             <textarea
               ref={field}
               value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
+              onChange={(event) => {
+                const element = event.currentTarget
+                setPrompt(element.value)
+                element.style.height = 'auto'
+                element.style.height = `${Math.min(element.scrollHeight, 200)}px`
+              }}
               onKeyDown={(event) => {
                 if (
                   event.key === 'Tab' &&
@@ -777,7 +900,7 @@ export function NewSession({
             )}
 
             <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
-              <div className="flex min-w-0 items-center gap-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-1">
                 <button
                   type="button"
                   onClick={() => picker.current?.click()}
@@ -803,19 +926,20 @@ export function NewSession({
                   permissionMode={permissionMode}
                   onPermissionModeChange={setPermissionMode}
                 />
+                <p className="text-[11.5px] text-muted-foreground">
+                  {agentHasPermissionModes(agentId)
+                    ? '↵ Start · ⇧↵ Newline · ⇧⇥ Mode'
+                    : '↵ Start · ⇧↵ Newline'}
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => void submit()}
                 disabled={!canSend}
                 aria-label={status.kind === 'starting' ? 'Starting' : 'Start session'}
-                className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background disabled:opacity-40"
+                className="shrink-0 rounded-[calc(var(--radius)*0.6)] bg-foreground px-3 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
               >
-                {status.kind === 'starting' ? (
-                  <span className="text-[11px] font-medium">…</span>
-                ) : (
-                  <SendIcon size={16} />
-                )}
+                {status.kind === 'starting' ? 'Starting…' : 'Start'}
               </button>
             </div>
             <input ref={picker} type="file" multiple className="hidden" onChange={handleFiles} />
@@ -849,6 +973,11 @@ export function NewSession({
           </p>
         )}
 
+        {attachError && (
+          <p role="alert" className="mt-3 text-[13px] text-destructive">
+            {attachError}
+          </p>
+        )}
         {status.kind === 'failed' && (
           <p role="alert" className="mt-3 text-[13px] text-destructive">
             {status.message}
@@ -863,64 +992,6 @@ export function NewSession({
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-function SessionMutablePickers({
-  busy,
-  usingOpenCode,
-  opencodeProvidersStatus,
-  opencodeProviders,
-  providerId,
-  onProviderChange,
-  onAddProvider,
-  models,
-  model,
-  onModelChange,
-  agentId,
-  permissionMode,
-  onPermissionModeChange,
-  showPermissionMode = true,
-}: {
-  busy: boolean
-  usingOpenCode: boolean
-  opencodeProvidersStatus: 'loading' | 'loaded' | 'failed'
-  opencodeProviders: OpencodeProvider[]
-  providerId: string
-  onProviderChange: (providerId: string) => void
-  onAddProvider: () => void
-  models: readonly { id: string; label: string }[]
-  model: string
-  onModelChange: (modelId: string) => void
-  agentId: string
-  permissionMode: AvailablePermissionModeId
-  onPermissionModeChange: (mode: AvailablePermissionModeId) => void
-  /** Setup sessions always run in bypass, so the picker is noise there. */
-  showPermissionMode?: boolean
-}) {
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1">
-      {usingOpenCode && opencodeProvidersStatus === 'loaded' && (
-        <ProviderPicker
-          providers={opencodeProviders}
-          value={providerId}
-          onChange={onProviderChange}
-          onAddProvider={onAddProvider}
-          disabled={busy}
-        />
-      )}
-      {!(usingOpenCode && models.length === 0) && (
-        <ModelPicker value={model} onChange={onModelChange} disabled={busy} models={models} />
-      )}
-      {showPermissionMode && agentHasPermissionModes(agentId) && (
-        <PermissionModePicker
-          value={permissionMode}
-          onChange={onPermissionModeChange}
-          disabled={busy}
-          modes={availablePermissionModes(agentId)}
-        />
-      )}
     </div>
   )
 }

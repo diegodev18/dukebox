@@ -193,6 +193,16 @@ export class DukeboxClient {
     return body.sessions
   }
 
+  /**
+   * Sessions hidden from the sidebar. History is still on the server.
+   */
+  async listArchivedSessions(projectId?: string): Promise<SessionSummary[]> {
+    const params = new URLSearchParams({ archived: '1' })
+    if (projectId) params.set('projectId', projectId)
+    const body = await this.request<{ sessions: SessionSummary[] }>(`/api/sessions?${params}`)
+    return body.sessions
+  }
+
   async startSession(options: {
     projectId: string
     agentId: string
@@ -387,6 +397,11 @@ export class DukeboxClient {
    */
   async archiveSession(sessionId: string): Promise<void> {
     await this.request(`/api/sessions/${sessionId}/archive`, { method: 'POST' })
+  }
+
+  /** Put an archived session back in the sidebar. */
+  async unarchiveSession(sessionId: string): Promise<void> {
+    await this.request(`/api/sessions/${sessionId}/unarchive`, { method: 'POST' })
   }
 
   /**

@@ -402,6 +402,13 @@ export const sessionSummary = z.object({
    * as `bypass` by the server.
    */
   permissionMode: permissionMode.nullable(),
+  /**
+   * The model this session is running, or null when unknown.
+   *
+   * Written at create and on set_model so REST and live updates agree.
+   * Resume after a restart uses this stored value.
+   */
+  model: z.string().nullable().optional(),
 })
 
 export type SessionSummary = z.infer<typeof sessionSummary>

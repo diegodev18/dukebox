@@ -124,6 +124,7 @@ async function main() {
     onPermissionResponse: (sessionId, id, allow) =>
       sessions.respondToPermission(sessionId, id, allow),
     onSetPermissionMode: (sessionId, mode) => sessions.setPermissionMode(sessionId, mode),
+    onSetModel: (sessionId, model, providerId) => sessions.setModel(sessionId, model, providerId),
     terminals,
     // Only that a shell was opened or closed, and by which device. What was
     // typed in it never reaches the event stream.

@@ -103,6 +103,19 @@ export function agentHasPermissionModes(agentId: string): boolean {
   return agentId === 'claude-code' || agentId === 'opencode' || agentId === 'grok-build'
 }
 
+/** Built-in models for an agent. OpenCode's list comes from its providers. */
+export function modelsForAgent(agentId: string): readonly { id: string; label: string }[] {
+  if (agentId === 'grok-build') return GROK_BUILD_MODELS
+  if (agentId === 'claude-code') return AVAILABLE_MODELS
+  return []
+}
+
+/** OpenCode stores `provider/model`; the prefix is the provider id. */
+export function providerIdFromModel(model: string): string {
+  const slash = model.indexOf('/')
+  return slash === -1 ? '' : model.slice(0, slash)
+}
+
 /** Human name for a model id, when one is known. */
 export function modelLabel(modelId: string): string | undefined {
   return (

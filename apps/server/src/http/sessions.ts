@@ -5,7 +5,7 @@ import {
   mergePullRequestRequest,
   openPullRequestRequest,
 } from '@dukebox/protocol'
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import { Hono, type Context } from 'hono'
 import type { EventBus } from '@/events/bus'
 import { GitHubError, pullRequestFailureMessage } from '@/github/client'
@@ -47,17 +47,18 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
   app.get('/sessions', async (c) => {
     const projectId = c.req.query('projectId')
 
-    // Archived sessions stay in the database for history, but the sidebar only
-    // wants the ones a person can still open.
-    const active = isNull(sessions.archivedAt)
+    // Archived sessions stay in the database for history. The sidebar lists
+    // live rows by default; `?archived=1` is the restore list.
+    const visibility =
+      c.req.query('archived') === '1' ? isNotNull(sessions.archivedAt) : isNull(sessions.archivedAt)
 
     const rows = await (projectId
       ? deps.db
           .select()
           .from(sessions)
-          .where(and(eq(sessions.projectId, projectId), active))
+          .where(and(eq(sessions.projectId, projectId), visibility))
           .orderBy(desc(sessions.createdAt))
-      : deps.db.select().from(sessions).where(active).orderBy(desc(sessions.createdAt)))
+      : deps.db.select().from(sessions).where(visibility).orderBy(desc(sessions.createdAt)))
 
     return c.json({ sessions: rows.map(toSummary) })
   })
@@ -338,6 +339,25 @@ export function sessionRoutes(deps: SessionRoutesDeps) {
     try {
       await deps.sessions.archive(sessionId)
       return c.json({ archived: true })
+    } catch (error) {
+      if (error instanceof SessionError) {
+        return c.json({ error: 'not_found', message: error.message }, 404)
+      }
+      throw error
+    }
+  })
+
+  /**
+   * Restore an archived session to the sidebar.
+   *
+   * History never left; this only clears the hide flag.
+   */
+  app.post('/sessions/:id/unarchive', async (c) => {
+    const sessionId = routeParam(c, 'id')
+
+    try {
+      await deps.sessions.unarchive(sessionId)
+      return c.json({ unarchived: true })
     } catch (error) {
       if (error instanceof SessionError) {
         return c.json({ error: 'not_found', message: error.message }, 404)

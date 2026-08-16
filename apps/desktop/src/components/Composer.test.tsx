@@ -92,6 +92,118 @@ describe('Composer', () => {
     expect(screen.queryByRole('button', { name: 'Permission mode' })).not.toBeInTheDocument()
   })
 
+  it('shows a model picker when the session has models', () => {
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        model="claude-sonnet-5"
+        models={[
+          { id: 'claude-sonnet-5', label: 'Sonnet 5' },
+          { id: 'claude-opus-5', label: 'Opus 5' },
+        ]}
+        onModelChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Model' })).toBeInTheDocument()
+    expect(screen.getByText('Sonnet 5')).toBeInTheDocument()
+  })
+
+  it('hides the model picker when the agent has no models', () => {
+    render(<Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} agentId="codex" />)
+
+    expect(screen.queryByRole('button', { name: 'Model' })).not.toBeInTheDocument()
+  })
+
+  it('notifies when the model changes', async () => {
+    const onModelChange = vi.fn()
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        model="claude-sonnet-5"
+        models={[
+          { id: 'claude-sonnet-5', label: 'Sonnet 5' },
+          { id: 'claude-opus-5', label: 'Opus 5' },
+        ]}
+        onModelChange={onModelChange}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Model' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Opus 5' }))
+
+    expect(onModelChange).toHaveBeenCalledWith('claude-opus-5')
+  })
+
+  it('notifies when the OpenCode provider changes', async () => {
+    const onProviderChange = vi.fn()
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        agentId="opencode"
+        model="anthropic/claude-sonnet-4"
+        models={[{ id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' }]}
+        onModelChange={vi.fn()}
+        providerId="anthropic"
+        providers={[
+          {
+            id: 'anthropic',
+            kind: 'anthropic',
+            name: 'Anthropic',
+            models: [{ id: 'claude-sonnet-4', label: 'Claude Sonnet 4' }],
+          },
+          {
+            id: 'openai',
+            kind: 'openai',
+            name: 'OpenAI',
+            models: [{ id: 'gpt-5', label: 'GPT-5' }],
+          },
+        ]}
+        providersStatus="loaded"
+        onProviderChange={onProviderChange}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Provider' }))
+    await userEvent.click(screen.getByRole('option', { name: 'OpenAI' }))
+
+    expect(onProviderChange).toHaveBeenCalledWith('openai')
+  })
+
+  it('shows an OpenCode provider picker', () => {
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        agentId="opencode"
+        model="anthropic/claude-sonnet-4"
+        models={[{ id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' }]}
+        onModelChange={vi.fn()}
+        providerId="anthropic"
+        providers={[
+          {
+            id: 'anthropic',
+            kind: 'anthropic',
+            name: 'Anthropic',
+            models: [{ id: 'claude-sonnet-4', label: 'Claude Sonnet 4' }],
+          },
+        ]}
+        providersStatus="loaded"
+        onProviderChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Provider' })).toBeInTheDocument()
+    expect(screen.getByText('Anthropic')).toBeInTheDocument()
+  })
+
   it('notifies when the mode changes', async () => {
     const onPermissionModeChange = vi.fn()
     render(
@@ -244,6 +356,85 @@ describe('Composer', () => {
 
     expect(await screen.findByText('one.txt')).toBeInTheDocument()
     expect(await screen.findByText('two.txt')).toBeInTheDocument()
+  })
+
+  it('keeps a readable file when another fails', async () => {
+    const restore = stubFileReaderFailing('broken.bin')
+    try {
+      const { container } = render(
+        <Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />,
+      )
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      fireEvent.change(input, {
+        target: {
+          files: [
+            new File(['a'], 'notes.txt', { type: 'text/plain' }),
+            new File(['b'], 'broken.bin', { type: 'application/octet-stream' }),
+          ],
+        },
+      })
+
+      expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+      expect(screen.queryByText('broken.bin')).not.toBeInTheDocument()
+      expect(await screen.findByRole('alert')).toHaveTextContent(/broken\.bin/)
+    } finally {
+      restore()
+    }
+  })
+
+  it('shows a read error beside a stream error', async () => {
+    const restore = stubFileReaderFailing('broken.bin')
+    try {
+      const { container } = render(
+        <Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} error="rejected" />,
+      )
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      fireEvent.change(input, {
+        target: {
+          files: [
+            new File(['a'], 'notes.txt', { type: 'text/plain' }),
+            new File(['b'], 'broken.bin', { type: 'application/octet-stream' }),
+          ],
+        },
+      })
+
+      expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+      const alerts = screen.getAllByRole('alert').map((node) => node.textContent ?? '')
+      expect(alerts).toHaveLength(2)
+      expect(alerts.some((text) => /rejected/.test(text))).toBe(true)
+      expect(alerts.some((text) => /broken\.bin/.test(text))).toBe(true)
+    } finally {
+      restore()
+    }
+  })
+
+  it('clears the read error when the prompt is sent', async () => {
+    const restore = stubFileReaderFailing('broken.bin')
+    try {
+      const { container } = render(
+        <Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} />,
+      )
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      fireEvent.change(input, {
+        target: {
+          files: [
+            new File(['a'], 'notes.txt', { type: 'text/plain' }),
+            new File(['b'], 'broken.bin', { type: 'application/octet-stream' }),
+          ],
+        },
+      })
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(/broken\.bin/)
+      await userEvent.type(screen.getByLabelText('Message'), 'read this')
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    } finally {
+      restore()
+    }
   })
 
   it('removes an attached file from the draft', async () => {
@@ -469,3 +660,28 @@ describe('Composer drag and drop', () => {
     expect(screen.queryByText('image.png')).not.toBeInTheDocument()
   })
 })
+
+/** Make `readAsDataURL` fail for one name so a mixed pick can be asserted. */
+function stubFileReaderFailing(badName: string) {
+  const Original = globalThis.FileReader
+  class FailingReader {
+    result: string | null = null
+    error: DOMException | null = null
+    onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null
+    onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null
+    readAsDataURL(blob: Blob) {
+      const name = blob instanceof File ? blob.name : ''
+      queueMicrotask(() => {
+        if (name === badName) {
+          this.error = new DOMException(`could not read ${name}`)
+          this.onerror?.call(this as unknown as FileReader, new ProgressEvent('error'))
+          return
+        }
+        this.result = 'data:text/plain;base64,YQ=='
+        this.onload?.call(this as unknown as FileReader, new ProgressEvent('load'))
+      })
+    }
+  }
+  vi.stubGlobal('FileReader', FailingReader)
+  return () => vi.stubGlobal('FileReader', Original)
+}

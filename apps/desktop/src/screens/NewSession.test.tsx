@@ -1,3 +1,4 @@
+import type { DeviceRole } from '@dukebox/protocol'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -78,9 +79,11 @@ function renderScreen(
     onRemember?: ReturnType<typeof vi.fn>
     preferAgentId?: string | null
     preferProjectId?: string | null
+    preferSetupEnvironmentId?: string | null
     lastNewSession?: LastNewSession | null
     projects?: (typeof project)[]
     disabled?: boolean
+    role?: DeviceRole | null
   } = {},
 ) {
   return render(
@@ -94,8 +97,10 @@ function renderScreen(
       onRemember={extra.onRemember}
       preferAgentId={extra.preferAgentId}
       preferProjectId={extra.preferProjectId}
+      preferSetupEnvironmentId={extra.preferSetupEnvironmentId}
       lastNewSession={extra.lastNewSession}
       disabled={extra.disabled}
+      role={extra.role}
     />,
   )
 }
@@ -271,7 +276,7 @@ describe('NewSession configured agents', () => {
         listOpencodeProviders: vi.fn().mockResolvedValue([]),
       }),
       {},
-      { onConfigureProviders },
+      { onConfigureProviders, role: 'owner' },
     )
 
     expect(await screen.findByRole('heading', { name: /configure an agent/i })).toBeInTheDocument()
@@ -280,6 +285,49 @@ describe('NewSession configured agents', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /configure agents/i }))
     expect(onConfigureProviders).toHaveBeenCalled()
+  })
+
+  it('does not offer Configure agents to a member when none are configured', async () => {
+    const onConfigureProviders = vi.fn()
+    renderScreen(
+      makeClient({
+        agentCredentialsConfigured: vi.fn().mockResolvedValue(false),
+        grokCredentialsConfigured: vi.fn().mockResolvedValue(false),
+        listOpencodeProviders: vi.fn().mockResolvedValue([]),
+      }),
+      {},
+      { onConfigureProviders, role: 'member' },
+    )
+
+    expect(
+      await screen.findByText('Ask the server owner to configure an agent.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /configure agents/i })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/what should it do/i)).not.toBeInTheDocument()
+    expect(onConfigureProviders).not.toHaveBeenCalled()
+  })
+
+  it('shows an error and retry when credential listing fails', async () => {
+    const client = makeClient({
+      agentCredentialsConfigured: vi.fn().mockRejectedValue(new Error('network')),
+      grokCredentialsConfigured: vi.fn().mockRejectedValue(new Error('network')),
+      listOpencodeProviders: vi.fn().mockRejectedValue(new Error('network')),
+    })
+    renderScreen(client, {}, { role: 'owner' })
+
+    expect(
+      await screen.findByRole('heading', { name: /couldn’t load agents/i }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /configure agents/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/ask the server owner/i)).not.toBeInTheDocument()
+
+    client.agentCredentialsConfigured.mockResolvedValue(false)
+    client.grokCredentialsConfigured.mockResolvedValue(false)
+    client.listOpencodeProviders.mockResolvedValue([])
+    await userEvent.click(screen.getByRole('button', { name: /retry/i }))
+
+    expect(await screen.findByRole('heading', { name: /configure an agent/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /configure agents/i })).toBeInTheDocument()
   })
 
   it('falls back when the last agent is no longer configured', async () => {
@@ -585,6 +633,62 @@ describe('NewSession permission mode', () => {
     )
   })
 
+  it('re-runs setup on an existing environment without creating another', async () => {
+    const client = makeClient({
+      createEnvironment: vi.fn(),
+      listRepositories: vi
+        .fn()
+        .mockResolvedValue([{ fullName: 'acme/app', defaultBranch: 'main', isRegistered: true }]),
+    })
+    renderScreen(
+      client,
+      {},
+      { preferSetupEnvironmentId: environments[0].id, preferProjectId: project.id },
+    )
+
+    // Default branch is `main`; Refactors is `refact/*`. The chip must not
+    // fall back to Base image while the submit still sends that id.
+    expect(await screen.findByRole('heading', { name: /run setup again/i })).toHaveTextContent(
+      'Refactors',
+    )
+    expect(screen.queryByRole('button', { name: 'Environment' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/base image/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Repository' })).toBeDisabled()
+
+    await userEvent.click(await screen.findByRole('button', { name: /start setup/i }))
+
+    await waitFor(() =>
+      expect(client.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          purpose: 'environment_setup',
+          environmentId: environments[0].id,
+        }),
+      ),
+    )
+    expect(client.createEnvironment).not.toHaveBeenCalled()
+  })
+
+  it('stops reusing the environment after leaving the setup card', async () => {
+    const client = makeClient({
+      createEnvironment: vi.fn(),
+      listRepositories: vi
+        .fn()
+        .mockResolvedValue([{ fullName: 'acme/app', defaultBranch: 'main', isRegistered: true }]),
+    })
+    renderScreen(
+      client,
+      {},
+      { preferSetupEnvironmentId: environments[0].id, preferProjectId: project.id },
+    )
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Back' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Repository' })).toBeEnabled())
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reconfigure environment' }))
+    expect(screen.getByRole('heading', { name: 'Configure environment' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Name')).toBeInTheDocument()
+  })
+
   it('starts environment setup in bypass even when Plan is selected', async () => {
     const client = makeClient({
       listEnvironments: vi.fn().mockResolvedValue([]),
@@ -659,6 +763,35 @@ describe('NewSession preferProjectId', () => {
     expect(field).toBeDisabled()
     expect(field).toHaveAttribute('placeholder', 'Waiting for connection…')
     expect(screen.getByRole('button', { name: 'Start session' })).toBeDisabled()
+  })
+})
+
+describe('NewSession composer chrome', () => {
+  it('uses a labeled Start button like the live composer', async () => {
+    renderScreen(makeClient())
+
+    const start = await screen.findByRole('button', { name: 'Start session' })
+    expect(start).toHaveTextContent('Start')
+    expect(start).toHaveClass('rounded-[calc(var(--radius)*0.6)]')
+  })
+
+  it('labels the start control Starting… while the session is in flight', async () => {
+    const client = makeClient({
+      startSession: vi.fn(() => new Promise(() => undefined)),
+    })
+    renderScreen(client)
+
+    await userEvent.type(await screen.findByLabelText(/what should it do/i), 'do a thing')
+    await userEvent.click(screen.getByRole('button', { name: 'Start session' }))
+
+    expect(await screen.findByRole('button', { name: 'Starting' })).toHaveTextContent('Starting…')
+  })
+
+  it('hints how to start', async () => {
+    renderScreen(makeClient())
+
+    expect(await screen.findByText(/↵ Start/)).toBeInTheDocument()
+    expect(screen.getByText(/⇧⇥ Mode/)).toBeInTheDocument()
   })
 })
 
@@ -896,6 +1029,97 @@ describe('NewSession file attachments', () => {
     expect(await screen.findByText('two.txt')).toBeInTheDocument()
   })
 
+  it('keeps a readable file when another fails', async () => {
+    const restore = stubFileReaderFailing('broken.bin')
+    try {
+      const { container } = renderScreen(makeClient())
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Environment' })).toHaveTextContent('Default'),
+      )
+
+      fireEvent.change(fileInput(container), {
+        target: {
+          files: [
+            new File(['a'], 'notes.txt', { type: 'text/plain' }),
+            new File(['b'], 'broken.bin', { type: 'application/octet-stream' }),
+          ],
+        },
+      })
+
+      expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+      expect(screen.queryByText('broken.bin')).not.toBeInTheDocument()
+      expect(await screen.findByRole('alert')).toHaveTextContent(/broken\.bin/)
+    } finally {
+      restore()
+    }
+  })
+
+  it('shows a read error beside a start failure', async () => {
+    const restore = stubFileReaderFailing('broken.bin')
+    try {
+      const client = makeClient({
+        startSession: vi.fn().mockRejectedValue(new Error('sandbox unavailable')),
+      })
+      const { container } = renderScreen(client)
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Environment' })).toHaveTextContent('Default'),
+      )
+
+      await userEvent.type(screen.getByLabelText(/what should it do/i), 'do a thing')
+      await userEvent.click(screen.getByRole('button', { name: /start session/i }))
+      expect(await screen.findByRole('alert')).toHaveTextContent(/sandbox unavailable/i)
+
+      fireEvent.change(fileInput(container), {
+        target: {
+          files: [
+            new File(['a'], 'notes.txt', { type: 'text/plain' }),
+            new File(['b'], 'broken.bin', { type: 'application/octet-stream' }),
+          ],
+        },
+      })
+
+      expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+      const alerts = screen.getAllByRole('alert').map((node) => node.textContent ?? '')
+      expect(alerts).toHaveLength(2)
+      expect(alerts.some((text) => /sandbox unavailable/i.test(text))).toBe(true)
+      expect(alerts.some((text) => /broken\.bin/.test(text))).toBe(true)
+    } finally {
+      restore()
+    }
+  })
+
+  it('clears the read error when a session starts', async () => {
+    const restore = stubFileReaderFailing('broken.bin')
+    try {
+      const client = makeClient()
+      const { container } = renderScreen(client)
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Environment' })).toHaveTextContent('Default'),
+      )
+
+      fireEvent.change(fileInput(container), {
+        target: {
+          files: [
+            new File(['a'], 'notes.txt', { type: 'text/plain' }),
+            new File(['b'], 'broken.bin', { type: 'application/octet-stream' }),
+          ],
+        },
+      })
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(/broken\.bin/)
+      await userEvent.type(screen.getByLabelText(/what should it do/i), 'read this')
+      await userEvent.click(screen.getByRole('button', { name: /start session/i }))
+
+      await waitFor(() => expect(client.startSession).toHaveBeenCalled())
+      expect(screen.queryByText(/broken\.bin/)).not.toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
   it('removes an attached file from the draft', async () => {
     const { container } = renderScreen(makeClient())
 
@@ -974,6 +1198,31 @@ function promptComposer() {
   const box = field.parentElement
   if (!box) throw new Error('expected the prompt composer')
   return box
+}
+
+/** Make `readAsDataURL` fail for one name so a mixed pick can be asserted. */
+function stubFileReaderFailing(badName: string) {
+  const Original = globalThis.FileReader
+  class FailingReader {
+    result: string | null = null
+    error: DOMException | null = null
+    onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null
+    onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null
+    readAsDataURL(blob: Blob) {
+      const name = blob instanceof File ? blob.name : ''
+      queueMicrotask(() => {
+        if (name === badName) {
+          this.error = new DOMException(`could not read ${name}`)
+          this.onerror?.call(this as unknown as FileReader, new ProgressEvent('error'))
+          return
+        }
+        this.result = 'data:text/plain;base64,YQ=='
+        this.onload?.call(this as unknown as FileReader, new ProgressEvent('load'))
+      })
+    }
+  }
+  vi.stubGlobal('FileReader', FailingReader)
+  return () => vi.stubGlobal('FileReader', Original)
 }
 
 describe('NewSession picker placement', () => {

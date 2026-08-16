@@ -33,6 +33,7 @@ export interface LiveSession {
   interrupt: () => void
   respond: (id: string, allow: boolean) => void
   setPermissionMode: (mode: PermissionMode) => void
+  setModel: (model: string, providerId?: string) => void
   openTerminal: (cols: number, rows: number) => void
   attachTerminal: (terminalId: string, cols: number, rows: number) => void
   detachTerminal: (terminalId: string) => void
@@ -117,6 +118,9 @@ export function useSession(
           // socket is live it would sit under the composer as if the send failed.
           if (isStreamConnected(next)) useLiveSession.setState({ error: null })
         },
+        onFailure: (reason) => {
+          useLiveSession.setState({ error: reason })
+        },
         onRevoked: () => revokedRef.current?.(),
         onMessage: (message) => {
           switch (message.type) {
@@ -182,6 +186,8 @@ export function useSession(
 
   // Switching sessions resets the transcript before subscribing, so the
   // previous session's messages never appear under the new one's header.
+  // The stream is a new instance when the server changes, even if the
+  // id is unchanged — without those deps the subscribe never re-fires.
   useEffect(() => {
     if (!sessionId) return
 
@@ -196,7 +202,14 @@ export function useSession(
       cancelFlush()
       stream?.unsubscribe(sessionId)
     }
-  }, [sessionId, cancelFlush])
+  }, [
+    sessionId,
+    connection.deviceId,
+    connection.deviceToken,
+    connection.address.host,
+    connection.address.port,
+    cancelFlush,
+  ])
 
   const send = useCallback(
     (text: string, files?: { name: string; data: string }[]) => {
@@ -232,6 +245,14 @@ export function useSession(
     (mode: PermissionMode) => {
       if (!sessionId) return
       streamRef.current?.setPermissionMode(sessionId, mode)
+    },
+    [sessionId],
+  )
+
+  const setModel = useCallback(
+    (model: string, providerId?: string) => {
+      if (!sessionId) return
+      streamRef.current?.setModel(sessionId, model, providerId)
     },
     [sessionId],
   )
@@ -314,6 +335,7 @@ export function useSession(
     interrupt,
     respond,
     setPermissionMode,
+    setModel,
     openTerminal,
     attachTerminal,
     detachTerminal,

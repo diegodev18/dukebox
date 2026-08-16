@@ -28,6 +28,13 @@ export interface Settings {
   /** Whether launching asks the release feed for a newer build. */
   checkForUpdatesOnLaunch: boolean
   /**
+   * Desktop notification when a session transitions to `waiting_input`.
+   *
+   * The protocol already treats that status as the alert; this is the switch
+   * for whether this device should fire it.
+   */
+  notifyWhenWaiting: boolean
+  /**
    * Who commits are authored as, sent with every new session.
    *
    * Null means the default identity — the fallback this becomes once a
@@ -66,6 +73,7 @@ export function defaultSettings(): Settings {
   return {
     theme: 'system',
     checkForUpdatesOnLaunch: true,
+    notifyWhenWaiting: true,
     commitIdentity: null,
     git: DEFAULT_GIT_PREFERENCES,
     lastNewSession: null,

@@ -135,4 +135,16 @@ describe('App', () => {
 
     expect(checkForUpdates).toHaveBeenCalledWith(true)
   })
+
+  it('shows Stop this session disabled when no session is open', async () => {
+    activeConnection.mockResolvedValueOnce(null)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Connect to your server' })
+
+    await userEvent.keyboard('{Control>}{Shift>}p{/Shift}{/Control}')
+    expect(screen.getByRole('option', { name: /Stop this session/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+  })
 })

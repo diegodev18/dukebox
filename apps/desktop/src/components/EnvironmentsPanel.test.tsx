@@ -44,6 +44,13 @@ function makeClient(overrides = {}) {
     deleteEnvironment: vi.fn().mockResolvedValue(undefined),
     reorderEnvironments: vi.fn().mockResolvedValue(environments),
     listBranches: vi.fn().mockResolvedValue(['main', 'refact/auth', 'refact/api']),
+    getEnvironment: vi.fn().mockResolvedValue({
+      config: null,
+      draft: null,
+      secretNames: [],
+    }),
+    getEnvironmentProposal: vi.fn(),
+    putEnvironment: vi.fn().mockResolvedValue({}),
     ...overrides,
   }
 }
@@ -245,6 +252,59 @@ describe('EnvironmentsPanel', () => {
     await waitFor(() =>
       expect(client.updateEnvironment).toHaveBeenCalledWith('env-1', { branchPattern: 'feat/*' }),
     )
+  })
+
+  it('edits setup through EnvironmentReview without a setup session', async () => {
+    const client = makeClient({
+      getEnvironment: vi.fn().mockResolvedValue({
+        config: {
+          image: 'dukebox/base-node:latest',
+          setup: ['pnpm install'],
+          env: { NODE_ENV: 'test', DATABASE_URL: '${secret.DATABASE_URL}' },
+          instructions: 'Use pnpm',
+        },
+        draft: null,
+        secretNames: ['DATABASE_URL'],
+      }),
+    })
+    render(<EnvironmentsPanel client={client as never} projectId="p1" />)
+
+    const row = await rowFor('refact/*')
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit setup' }))
+
+    await waitFor(() => expect(client.getEnvironment).toHaveBeenCalledWith('p1', 'env-1'))
+    expect(client.getEnvironmentProposal).not.toHaveBeenCalled()
+
+    expect(await screen.findByLabelText(/setup commands/i)).toHaveValue('pnpm install')
+    expect(screen.getByRole('heading', { name: /edit setup/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/agent instructions/i)).toHaveValue('Use pnpm')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save environment' }))
+
+    await waitFor(() =>
+      expect(client.putEnvironment).toHaveBeenCalledWith(
+        'p1',
+        'env-1',
+        expect.objectContaining({
+          setup: ['pnpm install'],
+          secretEnv: ['DATABASE_URL'],
+          literalEnv: { NODE_ENV: 'test' },
+        }),
+      ),
+    )
+  })
+
+  it('runs setup again on the existing environment rather than creating a sibling', async () => {
+    const onRunSetup = vi.fn()
+    const client = makeClient()
+    render(<EnvironmentsPanel client={client as never} projectId="p1" onRunSetup={onRunSetup} />)
+
+    const row = await rowFor('refact/*')
+    await userEvent.click(within(row).getByRole('button', { name: 'Run setup again' }))
+
+    expect(onRunSetup).toHaveBeenCalledWith('env-1')
+    expect(onRunSetup).toHaveBeenCalledTimes(1)
+    expect(client.createEnvironment).not.toHaveBeenCalled()
   })
 
   it('bumps the default name when "New environment" is already taken', async () => {

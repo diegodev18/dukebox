@@ -71,6 +71,8 @@ class FakeAdapter implements AgentAdapter {
     this.permissionModes.push(mode)
   }
 
+  async setModel(): Promise<void> {}
+
   agentSessionId(): string | undefined {
     return 'fake-agent-session'
   }

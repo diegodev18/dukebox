@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CommandPalette } from '@/components/CommandPalette'
 import { UpdateBanner } from '@/components/UpdateBanner'
-import { commandsFor, runCommand } from '@/lib/commands'
+import { commandsFor, runCommand, type SessionCommands } from '@/lib/commands'
 import { DukeboxClient, isAuthFailure } from '@/lib/client'
 import { activeConnection, removeConnection, type Connection } from '@/lib/connection'
 import { preventWindowFileNavigation } from '@/lib/useFileDrop'
@@ -41,6 +41,7 @@ function Loaded({
 }) {
   const [state, setState] = useState<State>({ kind: 'checking' })
   const [commandOpen, setCommandOpen] = useState(false)
+  const [sessionCommands, setSessionCommands] = useState<SessionCommands | null>(null)
 
   // Self-updates are app-level: whether an update exists does not depend on
   // which server this copy is paired to, so the check lives here rather than
@@ -153,6 +154,7 @@ function Loaded({
         onSaveSettings={onSaveSettings}
         onSwitchServer={switchServer}
         onDisconnected={() => setState({ kind: 'unpaired' })}
+        onSessionCommands={setSessionCommands}
       />
     )
   }
@@ -175,7 +177,7 @@ function Loaded({
 
       {commandOpen && (
         <CommandPalette
-          commands={commandsFor(settings)}
+          commands={commandsFor(settings, sessionCommands)}
           onRun={(command) => {
             setCommandOpen(false)
             runCommand(command.id, {
@@ -183,6 +185,11 @@ function Loaded({
               save: onSaveSettings,
               checkForUpdates: () => update.check(true),
               reload: () => window.location.reload(),
+              stopSession: () => {
+                const id = sessionCommands?.selectedId
+                if (!id) return
+                void sessionCommands.stopSession(id)
+              },
             })
           }}
           onDismiss={() => setCommandOpen(false)}

@@ -49,6 +49,7 @@ afterEach(() => {
 
 function renderSidebar({
   onArchive = vi.fn(),
+  onRestore = vi.fn(),
   onDelete = vi.fn(),
   onNewSession = vi.fn(),
   onConfigureEnvironment = vi.fn(),
@@ -56,10 +57,12 @@ function renderSidebar({
   onRemoveProject = vi.fn(),
   projectOverride = {},
   sessionOverride = {},
+  archivedSessions = [],
   selectedId,
   disabled = false,
 }: {
   onArchive?: ReturnType<typeof vi.fn>
+  onRestore?: ReturnType<typeof vi.fn>
   onDelete?: ReturnType<typeof vi.fn>
   onNewSession?: ReturnType<typeof vi.fn>
   onConfigureEnvironment?: ReturnType<typeof vi.fn>
@@ -67,6 +70,7 @@ function renderSidebar({
   onRemoveProject?: ReturnType<typeof vi.fn>
   projectOverride?: Partial<ProjectSummary>
   sessionOverride?: Partial<SessionSummary>
+  archivedSessions?: SessionSummary[]
   selectedId?: string | null
   disabled?: boolean
 } = {}) {
@@ -75,6 +79,7 @@ function renderSidebar({
     <Sidebar
       projects={[{ ...project, ...projectOverride }]}
       sessions={[row]}
+      archivedSessions={archivedSessions}
       selectedId={selectedId === undefined ? row.id : selectedId}
       identity={DEFAULT_COMMIT_IDENTITY}
       serverName="debian-01"
@@ -86,6 +91,7 @@ function renderSidebar({
       onConfigureEnvironment={onConfigureEnvironment}
       onManageEnvironments={onManageEnvironments}
       onArchive={onArchive}
+      onRestore={onRestore}
       onDelete={onDelete}
       onRemoveProject={onRemoveProject}
       disabled={disabled}
@@ -93,6 +99,7 @@ function renderSidebar({
   )
   return {
     onArchive,
+    onRestore,
     onDelete,
     onNewSession,
     onConfigureEnvironment,
@@ -175,15 +182,55 @@ describe('Sidebar', () => {
     expect(screen.getByRole('img', { name: 'Duke' })).toBeInTheDocument()
   })
 
+  it('does not treat an empty list as no projects while loading', () => {
+    render(
+      <Sidebar
+        projects={[]}
+        sessions={[]}
+        selectedId={null}
+        identity={DEFAULT_COMMIT_IDENTITY}
+        serverName="debian-01"
+        role="owner"
+        loading
+        onOpenSettings={vi.fn()}
+        onSelect={vi.fn()}
+        onNewSession={vi.fn()}
+        onSearch={vi.fn()}
+        onConfigureEnvironment={vi.fn()}
+        onManageEnvironments={vi.fn()}
+        onArchive={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveProject={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText(/No projects yet/)).not.toBeInTheDocument()
+  })
+
   it('archives from the row actions menu after confirming', async () => {
     const { onArchive } = renderSidebar()
 
     await userEvent.click(screen.getByRole('button', { name: /session actions/i }))
     await userEvent.click(screen.getByRole('menuitem', { name: 'Archive' }))
     expect(onArchive).not.toHaveBeenCalled()
+    expect(screen.getByText('Hide from the sidebar. You can restore it later.')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('menuitem', { name: 'Archive' }))
     expect(onArchive).toHaveBeenCalledWith(session.id)
+  })
+
+  it('keeps archived sessions folded until opened, then restores into the list', async () => {
+    const archived = { ...session, id: '00000000-0000-4000-8000-000000000099', title: 'Old work' }
+    const { onRestore } = renderSidebar({ archivedSessions: [archived] })
+
+    expect(screen.queryByRole('button', { name: /done, old work/i })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Archived' }))
+    expect(screen.getByRole('button', { name: /done, old work/i })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /session actions for old work/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Restore' }))
+    expect(onRestore).toHaveBeenCalledWith(archived.id)
   })
 
   it('opens the archive menu from Delete on a focused row', async () => {

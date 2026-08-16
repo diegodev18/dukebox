@@ -15,6 +15,7 @@ const { MockStream } = vi.hoisted(() => {
     interrupt = vi.fn()
     answerPermission = vi.fn()
     setPermissionMode = vi.fn()
+    setModel = vi.fn()
     handlers!: StreamHandlers
 
     constructor(_address: unknown, _token: unknown, handlers: StreamHandlers, _resume?: unknown) {
@@ -77,6 +78,46 @@ describe('useSession', () => {
     expect(MockStream.last?.close).toHaveBeenCalled()
   })
 
+  it('resets the transcript and resubscribes when the server changes', () => {
+    const otherConnection: Connection = {
+      ...connection,
+      serverName: 'debian-02',
+      address: { host: 'debian-02.tailnet.ts.net', port: 7777, tls: false },
+      deviceId: 'device-2',
+      deviceToken: 'token-2',
+    }
+
+    const { rerender } = renderHook(({ conn }: { conn: Connection }) => useSession(conn, SESSION), {
+      initialProps: { conn: connection },
+    })
+
+    const first = MockStream.last
+    expect(first?.subscribe).toHaveBeenCalledWith(SESSION)
+
+    act(() => {
+      first?.handlers.onMessage({
+        type: 'event',
+        event: {
+          seq: 1,
+          sessionId: SESSION,
+          ts: Date.now(),
+          event: { type: 'assistant_text', delta: 'hello' },
+        },
+      })
+      flushFrames()
+    })
+
+    expect(useLiveSession.getState().transcript.blocks).not.toHaveLength(0)
+
+    rerender({ conn: otherConnection })
+
+    expect(first?.unsubscribe).toHaveBeenCalledWith(SESSION)
+    expect(first?.close).toHaveBeenCalled()
+    expect(MockStream.last).not.toBe(first)
+    expect(MockStream.last?.subscribe).toHaveBeenCalledWith(SESSION)
+    expect(useLiveSession.getState().transcript.blocks).toHaveLength(0)
+  })
+
   it('subscribes when a session is selected and swaps on change', () => {
     const { rerender } = renderHook(
       ({ sessionId }: { sessionId: string | null }) => useSession(connection, sessionId),
@@ -125,6 +166,18 @@ describe('useSession', () => {
     })
 
     expect(useLiveSession.getState().error).toBe('session is not running')
+  })
+
+  it('surfaces a send failure as a live session error', () => {
+    renderHook(() => useSession(connection, SESSION))
+
+    act(() => {
+      MockStream.last?.handlers.onFailure?.('the connection was refused before reaching the server')
+    })
+
+    expect(useLiveSession.getState().error).toBe(
+      'the connection was refused before reaching the server',
+    )
   })
 
   it('forwards revoke from the stream', () => {

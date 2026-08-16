@@ -7,10 +7,10 @@ import {
   useState,
   type ChangeEvent,
 } from 'react'
-import type { PermissionMode } from '@dukebox/protocol'
-import { availablePermissionModes, cyclePermissionMode } from '@/components/AgentIcon'
+import type { OpencodeProvider, PermissionMode } from '@dukebox/protocol'
+import { cyclePermissionMode } from '@/components/AgentIcon'
 import { AttachmentChips } from '@/components/AttachmentChips'
-import { PermissionModePicker } from '@/components/RepoBranchPickers'
+import { SessionMutablePickers } from '@/components/RepoBranchPickers'
 import { AttachIcon } from '@/components/icons'
 import { filesFromPaste, useFileDrop } from '@/lib/useFileDrop'
 
@@ -47,6 +47,15 @@ interface Props {
   onPermissionModeChange?: (mode: PermissionMode) => void
   /** Which agent's modes the picker and Shift+Tab cycle should offer. */
   agentId?: string
+  /** Current model; absent or empty hides the picker when `models` is empty. */
+  model?: string | null
+  models?: readonly { id: string; label: string }[]
+  onModelChange?: (model: string) => void
+  providerId?: string
+  providers?: OpencodeProvider[]
+  providersStatus?: 'loading' | 'loaded' | 'failed'
+  onProviderChange?: (providerId: string) => void
+  onAddProvider?: () => void
   /**
    * A prompt loaded from the transcript (Edit). `key` changes when the same
    * text is edited again, so the field refills rather than looking unchanged.
@@ -75,6 +84,14 @@ export const Composer = memo(
       permissionMode,
       onPermissionModeChange,
       agentId,
+      model,
+      models = [],
+      onModelChange,
+      providerId = '',
+      providers = [],
+      providersStatus = 'loaded',
+      onProviderChange,
+      onAddProvider,
       draft,
       captureDrop = true,
     },
@@ -82,6 +99,8 @@ export const Composer = memo(
   ) {
     const [text, setText] = useState('')
     const [files, setFiles] = useState<ComposerFile[]>([])
+    // Local so a read failure is visible even when the stream has no error.
+    const [attachError, setAttachError] = useState<string | null>(null)
     const field = useRef<HTMLTextAreaElement>(null)
     const picker = useRef<HTMLInputElement>(null)
     const lastSent = useRef('')
@@ -127,6 +146,8 @@ export const Composer = memo(
       else onSend(trimmed)
       setText('')
       setFiles([])
+      // The pick is gone; a leftover read error would look like a send failure.
+      setAttachError(null)
     }
 
     // Selected files are read once, immediately, and held as base64 data URIs so
@@ -135,12 +156,10 @@ export const Composer = memo(
     const attachFiles = (picked: File[]) => {
       if (picked.length === 0 || disabled) return
 
-      void Promise.all(picked.map(readFile))
-        .then((read) => setFiles((current) => [...current, ...read]))
-        .catch(() => {
-          // A file that could not be read is dropped rather than blocking the
-          // ones that could.
-        })
+      void readPickedFiles(picked).then(({ files: read, error: readError }) => {
+        if (read.length > 0) setFiles((current) => [...current, ...read])
+        setAttachError(readError)
+      })
     }
 
     useImperativeHandle(ref, () => ({ attachFiles }), [disabled])
@@ -225,12 +244,24 @@ export const Composer = memo(
               >
                 <AttachIcon size={15} />
               </button>
-              {permissionMode && onPermissionModeChange ? (
-                <PermissionModePicker
-                  value={permissionMode}
-                  onChange={onPermissionModeChange}
-                  {...(agentId ? { modes: availablePermissionModes(agentId) } : {})}
-                  {...(disabled ? { disabled: true } : {})}
+              {(models.length > 0 && onModelChange) ||
+              (permissionMode && onPermissionModeChange) ? (
+                <SessionMutablePickers
+                  busy={disabled}
+                  usingOpenCode={agentId === 'opencode'}
+                  opencodeProvidersStatus={providersStatus}
+                  opencodeProviders={providers}
+                  providerId={providerId}
+                  onProviderChange={onProviderChange ?? (() => undefined)}
+                  onAddProvider={onAddProvider ?? (() => undefined)}
+                  models={onModelChange ? models : []}
+                  model={model ?? ''}
+                  onModelChange={onModelChange ?? (() => undefined)}
+                  agentId={agentId ?? ''}
+                  {...(permissionMode && onPermissionModeChange
+                    ? { permissionMode, onPermissionModeChange }
+                    : {})}
+                  showPermissionMode={Boolean(permissionMode && onPermissionModeChange)}
                 />
               ) : null}
               <p className="text-[11.5px] text-muted-foreground">
@@ -279,6 +310,11 @@ export const Composer = memo(
             {error}
           </p>
         )}
+        {attachError && (
+          <p role="alert" className="measure mt-2 text-[12.5px] text-destructive">
+            {attachError}
+          </p>
+        )}
       </div>
     )
   }),
@@ -293,4 +329,22 @@ export function readFile(file: File): Promise<ComposerFile> {
     reader.onerror = () => reject(reader.error ?? new Error(`could not read ${file.name}`))
     reader.readAsDataURL(file)
   })
+}
+
+/** Settle each read so one unreadable file does not drop the rest. */
+export async function readPickedFiles(picked: File[]): Promise<{
+  files: ComposerFile[]
+  error: string | null
+}> {
+  const results = await Promise.allSettled(picked.map(readFile))
+  const files: ComposerFile[] = []
+  const failed: string[] = []
+  for (const [index, result] of results.entries()) {
+    if (result.status === 'fulfilled') files.push(result.value)
+    else failed.push(picked[index]!.name)
+  }
+  return {
+    files,
+    error: failed.length === 0 ? null : `Couldn't read ${failed.join(', ')}.`,
+  }
 }

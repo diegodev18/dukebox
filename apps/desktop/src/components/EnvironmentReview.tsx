@@ -1,5 +1,6 @@
 import {
   ENVIRONMENT_SETUP_IMAGE_MISMATCH,
+  parseSecretReference,
   type EnvironmentProposal,
   type EnvironmentSetupVerification,
 } from '@dukebox/protocol'
@@ -10,13 +11,18 @@ import type { DukeboxClient } from '@/lib/client'
  * Review form for an environment_setup session's proposal.
  *
  * Lives in the workspace Environment tab so the transcript stays open for
- * follow-up context while the user edits setup commands and secrets.
+ * follow-up context while the user edits setup commands and secrets. The
+ * environments panel reuses it without a session to edit a saved config.
  */
 
 interface Props {
   client: DukeboxClient
   projectId: string
-  sessionId: string
+  /**
+   * Setup session that produced a proposal. Omitted when editing a saved
+   * environment from the panel — there is no proposal route to call.
+   */
+  sessionId?: string
   /**
    * Which environment this proposal belongs to.
    *
@@ -55,6 +61,20 @@ export function EnvironmentReview({
   const [instructions, setInstructions] = useState('')
   const [envRows, setEnvRows] = useState<EnvRow[]>([])
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
+  // Loaded is per session/environment: Workspace reuses this instance, and a
+  // leftover true would leave Save on the previous fields after a later load
+  // fails.
+  const identity = `${sessionId ?? ''}:${environmentId ?? ''}`
+  const [loadedIdentity, setLoadedIdentity] = useState<string | null>(null)
+  const loaded = loadedIdentity === identity
+  const [seenIdentity, setSeenIdentity] = useState(identity)
+  const [loadNonce, setLoadNonce] = useState(0)
+  const identityChanged = seenIdentity !== identity
+
+  if (identityChanged) {
+    setSeenIdentity(identity)
+    setStatus({ kind: 'loading' })
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -71,17 +91,19 @@ export function EnvironmentReview({
     const load = async () => {
       try {
         const [proposal, environment] = await Promise.all([
-          client.getEnvironmentProposal(sessionId),
+          sessionId ? client.getEnvironmentProposal(sessionId) : Promise.resolve(null),
           client.getEnvironment(projectId, environmentId),
         ])
 
         if (cancelled) return
 
-        const source: EnvironmentProposal = proposal ??
-          environment.draft ?? {
-            setup: [],
-            env: {},
-          }
+        // Edit setup is the live-config editor: a leftover draft must not
+        // replace saved literals. A session review still prefers the proposal.
+        const saved = sessionId ? null : sourceFromSavedConfig(environment.config)
+        const source: EnvironmentProposal = sessionId
+          ? (proposal ?? environment.draft ?? { setup: [], env: {} })
+          : (saved?.proposal ?? environment.draft ?? { setup: [], env: {} })
+        const literals = saved && source === saved.proposal ? saved.literals : {}
 
         setSetupText(source.setup.join('\n'))
         setProposedSetup(source.setup.join('\n'))
@@ -92,10 +114,11 @@ export function EnvironmentReview({
             name,
             secret: meta.secret,
             description: meta.description ?? '',
-            value: '',
+            value: meta.secret ? '' : (literals[name] ?? ''),
             configured: environment.secretNames.includes(name),
           })),
         )
+        setLoadedIdentity(identity)
         setStatus({ kind: 'ready' })
       } catch (error) {
         if (cancelled) return
@@ -111,7 +134,7 @@ export function EnvironmentReview({
     return () => {
       cancelled = true
     }
-  }, [client, projectId, sessionId, environmentId])
+  }, [client, projectId, sessionId, environmentId, identity, loadNonce])
 
   // Saved is a moment, not a lock: after a beat, or as soon as they edit,
   // the button is a save again.
@@ -172,22 +195,47 @@ export function EnvironmentReview({
     }
   }
 
-  if (status.kind === 'loading') {
-    return (
-      <div className="px-3.5 py-4 text-[12.5px] text-muted-foreground">
-        Loading environment proposal…
-      </div>
-    )
-  }
-
-  // No environment means no route to save to. Showing the form anyway would
-  // offer a Save button that cannot work.
+  // Checked before loading so an identity reset to null does not flash the
+  // spinner over a state that has nothing to fetch.
   if (!environmentId) {
     return (
       <p role="alert" className="px-3.5 py-4 text-[12.5px] text-destructive">
         {status.kind === 'failed' ? status.message : 'This session has no environment to review.'}
       </p>
     )
+  }
+
+  const loadingLabel = sessionId ? 'Loading environment proposal…' : 'Loading environment…'
+
+  if (status.kind === 'loading' || identityChanged) {
+    return <div className="px-3.5 py-4 text-[12.5px] text-muted-foreground">{loadingLabel}</div>
+  }
+
+  // An empty form with Save would PUT empty setup and secrets over whatever
+  // is already stored. After a successful load, a later save failure keeps
+  // the form (existing catch below).
+  if (!loaded) {
+    if (status.kind === 'failed') {
+      return (
+        <div className="px-3.5 py-4">
+          <p role="alert" className="text-[12.5px] text-destructive">
+            {status.message}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setStatus({ kind: 'loading' })
+              setLoadNonce((n) => n + 1)
+            }}
+            className="mt-2.5 rounded-md bg-foreground px-3 py-1.5 text-[12.5px] font-medium text-background"
+          >
+            Retry
+          </button>
+        </div>
+      )
+    }
+
+    return <div className="px-3.5 py-4 text-[12.5px] text-muted-foreground">{loadingLabel}</div>
   }
 
   return (
@@ -201,7 +249,7 @@ export function EnvironmentReview({
               project, "Review environment" alone does not say what is about to
               be overwritten. */}
           <h2 className="flex flex-wrap items-baseline gap-x-1.5 text-[13px] font-medium">
-            Review environment
+            {sessionId ? 'Review environment' : 'Edit setup'}
             {environmentName && (
               <span className="font-normal text-muted-foreground">· {environmentName}</span>
             )}
@@ -358,6 +406,33 @@ interface EnvRow {
   description: string
   value: string
   configured: boolean
+}
+
+function sourceFromSavedConfig(
+  config: {
+    setup: string[]
+    env: Record<string, string>
+    instructions: string
+  } | null,
+): { proposal: EnvironmentProposal; literals: Record<string, string> } | null {
+  if (!config) return null
+
+  const env: EnvironmentProposal['env'] = {}
+  const literals: Record<string, string> = {}
+  for (const [name, value] of Object.entries(config.env)) {
+    const secret = parseSecretReference(value) !== null
+    env[name] = { secret }
+    if (!secret) literals[name] = value
+  }
+
+  return {
+    proposal: {
+      setup: config.setup,
+      env,
+      ...(config.instructions ? { instructions: config.instructions } : {}),
+    },
+    literals,
+  }
 }
 
 function VerificationBanner({

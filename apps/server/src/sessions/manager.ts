@@ -29,6 +29,7 @@ import {
   type PullRequestSummary,
   type SessionPurpose,
   type SessionStatus,
+  type SessionSummary,
   type PermissionMode,
   DEFAULT_PERMISSION_MODE,
   resolvePermissionMode,
@@ -259,6 +260,12 @@ function grokAuthContext(
   return { grokAuth: grokAuthHooks(secrets) }
 }
 
+/** Compose OpenCode's `provider/model` when the picker sent them separately. */
+function resolveLiveModel(model: string, providerId?: string): string {
+  if (providerId && !model.includes('/')) return `${providerId}/${model}`
+  return model
+}
+
 function permissionModeContext(
   session: Session,
   override?: PermissionMode,
@@ -305,7 +312,27 @@ export class SessionManager {
    */
   private readonly resuming = new Map<string, Promise<RunningSession>>()
 
+  /**
+   * Model chosen mid-session, keyed by session.
+   *
+   * The session row is the source of truth (list/get/create and resume after
+   * a process restart). This map is the same value for the next adapter.start
+   * in this process without another read.
+   */
+  private readonly sessionModels = new Map<string, string>()
+
   constructor(private readonly deps: SessionManagerDeps) {}
+
+  private liveSummary(session: Session): SessionSummary {
+    return {
+      ...toSummary(session),
+      model:
+        this.sessionModels.get(session.id) ??
+        this.running.get(session.id)?.sessionModel ??
+        session.model ??
+        null,
+    }
+  }
 
   private createAdapter(agentId: string): AgentAdapter {
     if (this.deps.createAdapter) return this.deps.createAdapter(agentId)
@@ -326,7 +353,7 @@ export class SessionManager {
     // Announced from here because this is the one place a session's state
     // changes. A client that has to poll for this shows whatever was true when
     // it loaded, which for a running session is wrong within seconds.
-    if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
+    if (updated) await this.deps.bus.publishSessionUpdate(this.liveSummary(updated))
   }
 
   private async persistPermissionMode(sessionId: string, mode: PermissionMode): Promise<void> {
@@ -336,7 +363,25 @@ export class SessionManager {
       .where(eq(sessions.id, sessionId))
       .returning()
 
-    if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
+    if (updated) await this.deps.bus.publishSessionUpdate(this.liveSummary(updated))
+  }
+
+  private async persistModel(
+    sessionId: string,
+    model: string,
+    onlyIfAbsent = false,
+  ): Promise<void> {
+    const [updated] = await this.deps.db
+      .update(sessions)
+      .set({ model, updatedAt: new Date() })
+      .where(
+        onlyIfAbsent
+          ? and(eq(sessions.id, sessionId), isNull(sessions.model))
+          : eq(sessions.id, sessionId),
+      )
+      .returning()
+
+    if (updated) await this.deps.bus.publishSessionUpdate(this.liveSummary(updated))
   }
 
   /**
@@ -369,7 +414,7 @@ export class SessionManager {
         .where(eq(sessions.id, sessionId))
         .returning()
 
-      if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
+      if (updated) await this.deps.bus.publishSessionUpdate(this.liveSummary(updated))
     } catch {
       // Naming is best-effort. The heuristic title already on the row stands.
     }
@@ -437,12 +482,14 @@ export class SessionManager {
         title: purpose === 'environment_setup' ? 'Configure environment' : titleFromPrompt(prompt),
         prompt,
         permissionMode,
+        model: options.model ?? null,
         gitPreferences: parseGitPreferences(options.gitPreferences),
         createdByDeviceId: options.createdByDeviceId,
       })
       .returning()
 
     if (!session) throw new SessionError('failed to create session')
+    if (options.model) this.sessionModels.set(session.id, options.model)
 
     // Naming is a short model call and must not delay the 202. The heuristic
     // title is already on the row; a better one arrives as a session_update.
@@ -603,6 +650,8 @@ export class SessionManager {
       ...grokAuthContext(session.agentId, this.deps.secrets),
     })
 
+    if (model) this.sessionModels.set(session.id, model)
+
     this.running.set(session.id, {
       container,
       workspace,
@@ -647,7 +696,15 @@ export class SessionManager {
           // otherwise lose the id that `--resume` / `--session` needs.
           await this.persistAgentSessionId(sessionId, adapter.agentSessionId())
           const live = this.running.get(sessionId)
-          if (live && event.model) live.sessionModel = event.model
+          // A mid-session set_model is authoritative; a late session_started
+          // from the process that started on the old model must not overwrite it.
+          if (event.model && !this.sessionModels.has(sessionId)) {
+            this.sessionModels.set(sessionId, event.model)
+            if (live) live.sessionModel = event.model
+            await this.persistModel(sessionId, event.model, true)
+          } else if (live && event.model && !live.sessionModel) {
+            live.sessionModel = event.model
+          }
         }
 
         if (event.type === 'done') {
@@ -1382,7 +1439,7 @@ export class SessionManager {
       .where(eq(sessions.id, sessionId))
       .returning()
 
-    if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
+    if (updated) await this.deps.bus.publishSessionUpdate(this.liveSummary(updated))
   }
 
   private async repoFullName(projectId: string): Promise<string | null> {
@@ -1583,6 +1640,11 @@ export class SessionManager {
     const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
     if (!session) throw new SessionError('no such session')
 
+    // A follow-up must not stay hidden: restoreAfterRestart skips nothing that
+    // is in progress, but a row that is still archived would be easy to lose
+    // if a later filter ever excludes it again.
+    if (session.archivedAt) await this.unarchive(sessionId)
+
     const container = await this.deps.sandbox.get(sessionId)
     if (!container) {
       // The container is genuinely gone, so there is no workspace to resume
@@ -1616,6 +1678,8 @@ export class SessionManager {
     const purpose = (session.purpose as SessionPurpose) || 'coding'
     const config = await this.configFor(session.environmentId)
 
+    const model = this.sessionModels.get(sessionId) ?? session.model ?? undefined
+    if (model) this.sessionModels.set(sessionId, model)
     const adapter = this.createAdapter(session.agentId)
     await adapter.start({
       sessionId,
@@ -1625,6 +1689,7 @@ export class SessionManager {
       // conversation rather than from nothing.
       ...(session.agentSessionId ? { resumeFrom: session.agentSessionId } : {}),
       ...(config.instructions && purpose === 'coding' ? { instructions: config.instructions } : {}),
+      ...(model ? { model } : {}),
       ...permissionModeContext(session),
       ...grokAuthContext(session.agentId, this.deps.secrets),
     })
@@ -1639,6 +1704,7 @@ export class SessionManager {
       repoFullName: project.repoFullName,
       purpose,
       setupVerifyAttempts: 0,
+      ...(model ? { sessionModel: model } : {}),
       ...(credentials ? { credentials } : {}),
     }
 
@@ -1754,6 +1820,23 @@ export class SessionManager {
   }
 
   /**
+   * Remember a mid-session model change.
+   *
+   * Persisted on the session row so list/get/create and a process restart
+   * keep it. The next `adapter.start` and the next prompt (when the adapter
+   * can apply it) use the new model.
+   */
+  async setModel(sessionId: string, model: string, providerId?: string): Promise<void> {
+    const resolved = resolveLiveModel(model, providerId)
+    this.sessionModels.set(sessionId, resolved)
+
+    const running = await this.ensureRunning(sessionId)
+    running.sessionModel = resolved
+    await running.adapter.setModel(resolved)
+    await this.persistModel(sessionId, resolved)
+  }
+
+  /**
    * Park a session without marking it stopped.
    *
    * The container stays on disk and the row stays in-progress so the next
@@ -1825,6 +1908,28 @@ export class SessionManager {
   }
 
   /**
+   * Put an archived session back in the sidebar.
+   *
+   * History never left the server; this only clears the hide flag. The
+   * container stays stopped — opening the row starts it again, same as any
+   * other stopped session.
+   */
+  async unarchive(sessionId: string): Promise<void> {
+    const [session] = await this.deps.db
+      .select({ id: sessions.id, archivedAt: sessions.archivedAt })
+      .from(sessions)
+      .where(eq(sessions.id, sessionId))
+
+    if (!session) throw new SessionError(`no such session: ${sessionId}`)
+    if (!session.archivedAt) return
+
+    await this.deps.db
+      .update(sessions)
+      .set({ archivedAt: null, updatedAt: new Date() })
+      .where(eq(sessions.id, sessionId))
+  }
+
+  /**
    * Permanently delete a session.
    *
    * Unlike `stop` (the container stays for a follow-up) or `archive` (the row
@@ -1886,7 +1991,7 @@ export class SessionManager {
     const live = await this.deps.db
       .select()
       .from(sessions)
-      .where(and(inArray(sessions.status, IN_PROGRESS_STATUSES), isNull(sessions.archivedAt)))
+      .where(inArray(sessions.status, IN_PROGRESS_STATUSES))
 
     await Promise.all(live.map((session) => this.restoreOne(session)))
   }

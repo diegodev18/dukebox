@@ -1,5 +1,6 @@
 import { matchesBranch, validateBranchPattern, type EnvironmentSummary } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
+import { EnvironmentReview } from '@/components/EnvironmentReview'
 import type { DukeboxClient } from '@/lib/client'
 
 /**
@@ -20,13 +21,20 @@ interface Props {
   client: DukeboxClient
   projectId: string
   disabled?: boolean
+  /**
+   * Start an environment_setup session for an existing row. The panel cannot
+   * call startSession itself: that needs an agent, model, and identity that
+   * live on New Session.
+   */
+  onRunSetup?: (environmentId: string) => void
 }
 
-export function EnvironmentsPanel({ client, projectId, disabled = false }: Props) {
+export function EnvironmentsPanel({ client, projectId, disabled = false, onRunSetup }: Props) {
   const [environments, setEnvironments] = useState<EnvironmentSummary[]>([])
   const [branches, setBranches] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -137,6 +145,35 @@ export function EnvironmentsPanel({ client, projectId, disabled = false }: Props
     }
   }
 
+  if (editingId) {
+    return (
+      <div
+        className={`min-h-0 min-w-0 overflow-y-auto ${disabled ? 'pointer-events-none opacity-60' : ''}`}
+        {...(disabled ? { 'aria-disabled': true } : {})}
+      >
+        <div className="flex items-center px-6 pt-5">
+          <button
+            type="button"
+            onClick={() => setEditingId(null)}
+            className="text-[12.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            Back
+          </button>
+        </div>
+        <EnvironmentReview
+          client={client}
+          projectId={projectId}
+          environmentId={editingId}
+          environmentName={
+            environments.find((environment) => environment.id === editingId)?.name ?? null
+          }
+          onSaved={() => setError(null)}
+          disabled={disabled}
+        />
+      </div>
+    )
+  }
+
   return (
     <div
       className={`min-h-0 min-w-0 overflow-y-auto px-6 py-5 ${disabled ? 'pointer-events-none opacity-60' : ''}`}
@@ -168,6 +205,8 @@ export function EnvironmentsPanel({ client, projectId, disabled = false }: Props
             onCommit={(changes) => void patch(environment.id, changes)}
             onMove={(delta) => void move(index, delta)}
             onDelete={() => void remove(environment.id)}
+            onEditSetup={() => setEditingId(environment.id)}
+            onRunSetup={() => onRunSetup?.(environment.id)}
           />
         ))}
       </ul>
@@ -197,6 +236,8 @@ function EnvironmentRow({
   onCommit,
   onMove,
   onDelete,
+  onEditSetup,
+  onRunSetup,
 }: {
   environment: EnvironmentSummary
   branches: string[]
@@ -205,6 +246,8 @@ function EnvironmentRow({
   onCommit: (changes: { name?: string; branchPattern?: string }) => void
   onMove: (delta: number) => void
   onDelete: () => void
+  onEditSetup: () => void
+  onRunSetup: () => void
 }) {
   const [name, setName] = useState(environment.name)
   const [pattern, setPattern] = useState(environment.branchPattern)
@@ -316,6 +359,23 @@ function EnvironmentRow({
         )}
 
         {environment.hasSnapshot && <span className="text-muted-foreground">· snapshot ready</span>}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-1">
+        <button
+          type="button"
+          onClick={onEditSetup}
+          className="flex-none rounded-[calc(var(--radius)*0.6)] px-1.5 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          Edit setup
+        </button>
+        <button
+          type="button"
+          onClick={onRunSetup}
+          className="flex-none rounded-[calc(var(--radius)*0.6)] px-1.5 py-1 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          Run setup again
+        </button>
       </div>
     </li>
   )

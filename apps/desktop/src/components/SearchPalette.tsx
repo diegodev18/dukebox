@@ -1,7 +1,8 @@
 import type { DeviceRole, ProjectSummary, SessionSummary } from '@dukebox/protocol'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AgentIcon, hasAgentIcon } from '@/components/AgentIcon'
-import { BranchIcon, PlusIcon, SearchIcon, SettingsIcon } from '@/components/icons'
+import { BranchIcon, PlusIcon, SettingsIcon } from '@/components/icons'
+import { Palette, PaletteOption } from '@/components/Palette'
 import {
   cycleSearchFilter,
   flattenSearchGroups,
@@ -24,258 +25,144 @@ import type { SettingsCategory } from '@/lib/settingsCategories'
 
 interface Props {
   sessions: SessionSummary[]
+  archivedSessions?: SessionSummary[]
   projects: ProjectSummary[]
   role: DeviceRole | null
+  selectedSessionId?: string | null
+  selectedProjectId?: string | null
   onSelect: (sessionId: string) => void
   onNewSession: (projectId?: string) => void
+  onManageEnvironments?: (projectId: string) => void
+  onArchive?: (sessionId: string) => void
   onOpenSettings: (category: SettingsCategory) => void
   onDismiss: () => void
 }
 
 export function SearchPalette({
   sessions,
+  archivedSessions = [],
   projects,
   role,
+  selectedSessionId = null,
+  selectedProjectId = null,
   onSelect,
   onNewSession,
+  onManageEnvironments,
+  onArchive,
   onOpenSettings,
   onDismiss,
 }: Props) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<SearchFilter>('all')
-  const [selectedIndex, setSelectedIndex] = useState(0)
 
   const groups = useMemo(
-    () => searchPalette(query, filter, { sessions, projects, role }),
-    [query, filter, sessions, projects, role],
+    () =>
+      searchPalette(query, filter, {
+        sessions,
+        archivedSessions,
+        projects,
+        role,
+        selectedSessionId,
+        selectedProjectId,
+      }),
+    [
+      query,
+      filter,
+      sessions,
+      archivedSessions,
+      projects,
+      role,
+      selectedSessionId,
+      selectedProjectId,
+    ],
   )
   const items = useMemo(() => flattenSearchGroups(groups), [groups])
-  const selected = items[selectedIndex] ?? null
 
-  const panel = useRef<HTMLDivElement>(null)
-  const input = useRef<HTMLInputElement>(null)
-  const selectedIndexRef = useRef(selectedIndex)
-  const itemsRef = useRef(items)
-  const filterRef = useRef(filter)
-  const dismiss = useRef(onDismiss)
-  const runItem = useRef<(item: SearchItem) => void>(() => undefined)
-
-  selectedIndexRef.current = selectedIndex
-  itemsRef.current = items
-  filterRef.current = filter
-  dismiss.current = onDismiss
-  runItem.current = (item) => {
-    applySearchItem(item, sessions, { onSelect, onNewSession, onOpenSettings })
+  const runItem = (item: SearchItem) => {
+    applySearchItem(item, sessions, {
+      onSelect,
+      onNewSession,
+      onOpenSettings,
+      ...(onManageEnvironments ? { onManageEnvironments } : {}),
+      ...(onArchive ? { onArchive } : {}),
+    })
     onDismiss()
   }
-
-  useEffect(() => {
-    setSelectedIndex(0)
-  }, [query, filter])
-
-  useEffect(() => {
-    const node = panel.current?.querySelector<HTMLElement>('[aria-selected="true"]')
-    node?.scrollIntoView?.({ block: 'nearest' })
-  }, [selectedIndex, items])
-
-  useEffect(() => {
-    input.current?.focus()
-
-    const focusable = () => {
-      const nodes = panel.current?.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      )
-      return nodes ? Array.from(nodes) : []
-    }
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        dismiss.current()
-        return
-      }
-
-      const modifier = event.metaKey || event.ctrlKey
-      if (
-        modifier &&
-        event.shiftKey &&
-        (event.code === 'BracketLeft' || event.code === 'BracketRight')
-      ) {
-        event.preventDefault()
-        setFilter(cycleSearchFilter(filterRef.current, event.code === 'BracketRight' ? 1 : -1))
-        return
-      }
-
-      if (event.key === 'ArrowDown') {
-        event.preventDefault()
-        setSelectedIndex((current) => {
-          const last = Math.max(0, itemsRef.current.length - 1)
-          return Math.min(last, current + 1)
-        })
-        return
-      }
-
-      if (event.key === 'ArrowUp') {
-        event.preventDefault()
-        setSelectedIndex((current) => Math.max(0, current - 1))
-        return
-      }
-
-      if (event.key === 'Enter') {
-        const item = itemsRef.current[selectedIndexRef.current]
-        if (!item) return
-        event.preventDefault()
-        runItem.current(item)
-        return
-      }
-
-      if (event.key !== 'Tab') return
-
-      const nodes = focusable()
-      if (nodes.length === 0) {
-        event.preventDefault()
-        panel.current?.focus()
-        return
-      }
-
-      const first = nodes[0]!
-      const last = nodes[nodes.length - 1]!
-      const active = document.activeElement
-
-      if (event.shiftKey && (active === first || active === panel.current)) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && (active === last || active === panel.current)) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [])
 
   const emptyQuery = query.trim() === ''
   const modifier = shortcutModifier()
 
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-6"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onDismiss()
-      }}
-    >
-      <div
-        ref={panel}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="search-palette-title"
-        tabIndex={-1}
-        className="flex w-full max-w-xl flex-col overflow-hidden rounded-[calc(var(--radius)*1.1)] border border-border bg-background/95 shadow-lg outline-none backdrop-blur-md"
-      >
-        <h2 id="search-palette-title" className="sr-only">
-          Search
-        </h2>
-
-        <div className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
-          <span className="text-muted-foreground">
-            <SearchIcon size={16} />
-          </span>
-          <input
-            ref={input}
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search sessions, repos, actions…"
-            aria-label="Search sessions, repos, actions"
-            aria-controls="search-palette-results"
-            aria-activedescendant={selected ? `search-item-${selected.id}` : undefined}
-            className="min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-muted-foreground"
-          />
-        </div>
-
-        <div
-          role="tablist"
-          aria-label="Filter"
-          className="flex flex-wrap gap-1 border-b border-border px-3 py-2"
-        >
-          {SEARCH_FILTERS.map((id) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={filter === id}
-              onClick={() => {
-                setFilter(id)
-                input.current?.focus()
-              }}
-              className={`rounded-full px-2.5 py-0.5 text-[12px] ${
-                filter === id
-                  ? 'bg-muted font-medium text-foreground'
-                  : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'
-              }`}
-            >
-              {SEARCH_FILTER_LABELS[id]}
-            </button>
-          ))}
-        </div>
-
-        <div
-          id="search-palette-results"
-          role="listbox"
-          aria-label="Search results"
-          className="min-h-0 max-h-[min(24rem,50vh)] flex-1 overflow-y-auto py-1.5"
-        >
-          {items.length === 0 ? (
-            <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">
-              {emptyQuery ? 'Nothing to search yet.' : `No results for “${query.trim()}”.`}
-            </p>
-          ) : (
-            groups.map((group) => (
-              <section key={group.id} className="px-1.5 py-1">
-                <h3 className="px-2.5 pt-1.5 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-                  {group.heading}
-                </h3>
-                {group.items.map((item) => {
-                  const active = selected?.id === item.id
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      id={`search-item-${item.id}`}
-                      role="option"
-                      aria-selected={active}
-                      onMouseEnter={() => {
-                        const index = items.findIndex((candidate) => candidate.id === item.id)
-                        if (index >= 0) setSelectedIndex(index)
-                      }}
-                      onClick={() => runItem.current(item)}
-                      className={`flex w-full items-center gap-2.5 rounded-[calc(var(--radius)*0.7)] px-2 py-1.5 text-left text-[13px] ${
-                        active ? 'bg-muted text-foreground' : 'text-foreground hover:bg-muted/60'
-                      }`}
-                    >
-                      <span
-                        className={`size-1.5 flex-none rounded-full ${active ? 'bg-primary' : 'bg-transparent'}`}
-                      />
-                      <SearchItemIcon item={item} />
-                      <SearchItemLabel item={item} />
-                    </button>
-                  )
-                })}
-              </section>
-            ))
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-x-3.5 gap-y-1 border-t border-border px-3.5 py-2 text-[11px] text-muted-foreground">
+    <Palette
+      title="Search"
+      placeholder="Search sessions, repos, actions…"
+      inputLabel="Search sessions, repos, actions"
+      listboxLabel="Search results"
+      query={query}
+      onQueryChange={setQuery}
+      resetKey={filter}
+      itemCount={items.length}
+      optionId={(index) => `search-item-${items[index]!.id}`}
+      empty={emptyQuery ? 'Nothing to search yet.' : `No results for “${query.trim()}”.`}
+      footer={
+        <>
           <span>↑↓ Select</span>
           <span>↵ Open</span>
           <span>
             {modifier}⇧[ or {modifier}⇧] Change Filter
           </span>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+      tabs={{
+        value: filter,
+        options: SEARCH_FILTERS.map((id) => ({ id, label: SEARCH_FILTER_LABELS[id] })),
+        onChange: (id) => setFilter(id as SearchFilter),
+      }}
+      onDismiss={onDismiss}
+      onConfirm={(index) => {
+        const item = items[index]
+        if (item) runItem(item)
+      }}
+      onKeyDown={(event) => {
+        const modifierKey = event.metaKey || event.ctrlKey
+        if (
+          modifierKey &&
+          event.shiftKey &&
+          (event.code === 'BracketLeft' || event.code === 'BracketRight')
+        ) {
+          event.preventDefault()
+          setFilter((current) => cycleSearchFilter(current, event.code === 'BracketRight' ? 1 : -1))
+          return true
+        }
+      }}
+    >
+      {({ selectedIndex, setSelectedIndex }) =>
+        groups.map((group) => (
+          <section key={group.id} className="px-1.5 py-1">
+            <h3 className="px-2.5 pt-1.5 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+              {group.heading}
+            </h3>
+            {group.items.map((item) => {
+              const index = items.findIndex((candidate) => candidate.id === item.id)
+              return (
+                <PaletteOption
+                  key={item.id}
+                  id={`search-item-${item.id}`}
+                  active={selectedIndex === index}
+                  onMouseEnter={() => {
+                    if (index >= 0) setSelectedIndex(index)
+                  }}
+                  onClick={() => runItem(item)}
+                >
+                  <SearchItemIcon item={item} />
+                  <SearchItemLabel item={item} />
+                </PaletteOption>
+              )
+            })}
+          </section>
+        ))
+      }
+    </Palette>
   )
 }
 
@@ -285,6 +172,8 @@ function applySearchItem(
   actions: {
     onSelect: (sessionId: string) => void
     onNewSession: (projectId?: string) => void
+    onManageEnvironments?: (projectId: string) => void
+    onArchive?: (sessionId: string) => void
     onOpenSettings: (category: SettingsCategory) => void
   },
 ) {
@@ -301,7 +190,20 @@ function applySearchItem(
       return
     }
     case 'action':
-      actions.onNewSession()
+      switch (item.action) {
+        case 'new-session':
+          actions.onNewSession()
+          return
+        case 'new-session-on-repo':
+          if (item.projectId) actions.onNewSession(item.projectId)
+          return
+        case 'manage-environments':
+          if (item.projectId) actions.onManageEnvironments?.(item.projectId)
+          return
+        case 'archive-session':
+          if (item.sessionId) actions.onArchive?.(item.sessionId)
+          return
+      }
       return
     case 'settings':
       actions.onOpenSettings(item.category)

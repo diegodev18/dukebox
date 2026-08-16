@@ -71,6 +71,13 @@
       "when": 1786570000000,
       "tag": "0009_session_prompt",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786572000000,
+      "tag": "0010_session_model",
+      "breakpoints": true
     }
   ]
 }

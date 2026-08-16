@@ -2,9 +2,19 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { CommandPalette } from '@/components/CommandPalette'
+import { COMMANDS } from '@/lib/commands'
 import { defaultSettings, type Settings } from '@/lib/settings'
 import type { UseUpdate } from '@/lib/useUpdate'
 import { Settings as SettingsScreen, SettingsNav, type SettingsCategory } from '@/screens/Settings'
+
+const { requestNotificationPermission } = vi.hoisted(() => ({
+  requestNotificationPermission: vi.fn(),
+}))
+
+vi.mock('@/lib/waitingNotification', () => ({
+  requestNotificationPermission,
+}))
 
 vi.mock('@/lib/connection', () => ({
   listConnections: vi.fn(),
@@ -221,6 +231,26 @@ describe('Settings', () => {
     expect(onSaveSettings).toHaveBeenCalledWith({ theme: 'dark' })
   })
 
+  it('toggles waiting-input notifications from Appearance', async () => {
+    const { onSaveSettings } = renderSettings()
+    await openCategory('Appearance')
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Notify when a session needs you' }))
+    expect(onSaveSettings).toHaveBeenCalledWith({ notifyWhenWaiting: false })
+    expect(requestNotificationPermission).not.toHaveBeenCalled()
+  })
+
+  it('asks for notification permission when the waiting toggle is turned on', async () => {
+    const { onSaveSettings } = renderSettings({
+      settings: { ...defaultSettings(), notifyWhenWaiting: false },
+    })
+    await openCategory('Appearance')
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Notify when a session needs you' }))
+    expect(onSaveSettings).toHaveBeenCalledWith({ notifyWhenWaiting: true })
+    expect(requestNotificationPermission).toHaveBeenCalled()
+  })
+
   it('toggles git preferences from the Git category', async () => {
     const { onSaveSettings } = renderSettings()
     await openCategory('Git')
@@ -387,6 +417,38 @@ describe('Settings', () => {
     )
   })
 
+  it('does not treat a failed OpenCode list as no providers configured', async () => {
+    const client = clientMock()
+    client.listOpencodeProviders.mockRejectedValue(new Error('network'))
+    renderSettings({ client, category: 'agents' })
+
+    expect(await screen.findByText('Couldn’t load providers.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+    expect(screen.queryByText('No providers configured yet.')).not.toBeInTheDocument()
+  })
+
+  it('does not treat a failed Claude check as not configured', async () => {
+    const client = clientMock()
+    client.agentCredentialsConfigured.mockRejectedValue(new Error('network'))
+    renderSettings({ client, category: 'agents' })
+
+    expect(await screen.findByText('Couldn’t check Claude Code credentials.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+    // Grok still loaded; only its chips may say this.
+    expect(await screen.findAllByText('Not configured')).toHaveLength(2)
+  })
+
+  it('does not treat a failed Grok check as not configured', async () => {
+    const client = clientMock()
+    client.grokCredentialsStatus.mockRejectedValue(new Error('network'))
+    renderSettings({ client, category: 'agents' })
+
+    expect(await screen.findByText('Couldn’t check Grok Build credentials.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+    // Claude still loaded; Grok must not add a false "Not configured".
+    expect(await screen.findAllByText('Not configured')).toHaveLength(1)
+  })
+
   it('opens Appearance when asked to land there', async () => {
     renderSettings({ category: 'appearance' })
 
@@ -534,6 +596,41 @@ describe('Settings', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it('closes on Escape when no other dialog is open', async () => {
+    const { onClose } = renderSettings()
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('lets Escape close a palette without leaving Settings', async () => {
+    function OverlayHarness() {
+      const [paletteOpen, setPaletteOpen] = useState(true)
+      const [settingsOpen, setSettingsOpen] = useState(true)
+      return (
+        <>
+          {settingsOpen && <SettingsHarness onClose={() => setSettingsOpen(false)} />}
+          {paletteOpen && (
+            <CommandPalette
+              commands={COMMANDS}
+              onRun={vi.fn()}
+              onDismiss={() => setPaletteOpen(false)}
+            />
+          )}
+        </>
+      )
+    }
+
+    render(<OverlayHarness />)
+
+    expect(screen.getByRole('heading', { name: 'Account' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Commands' })).toBeInTheDocument()
+
+    await userEvent.keyboard('{Escape}')
+
+    expect(screen.queryByRole('dialog', { name: 'Commands' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Account' })).toBeInTheDocument()
+  })
+
   it('hides owner categories from a member', () => {
     renderSettings({ role: 'member' })
 
@@ -552,5 +649,24 @@ describe('Settings', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Invite a device…' }))
     await waitFor(() => expect(client.createInvite).toHaveBeenCalled())
     expect(screen.getByText(/dukebox:\/\/pair/)).toBeInTheDocument()
+  })
+
+  it('tells the truth when copying an invite link fails', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'))
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    const client = clientMock()
+    renderSettings({ client, category: 'devices' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Invite a device…' }))
+    const url = await screen.findByText(/dukebox:\/\/pair/)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Copy link' }))
+
+    expect(
+      await screen.findByText('Couldn’t copy the invite link. Select it and copy.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Invite link copied.')).not.toBeInTheDocument()
+    expect(url).toBeInTheDocument()
+    expect(url).toHaveAttribute('data-selectable')
   })
 })
