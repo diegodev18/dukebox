@@ -275,12 +275,7 @@ describe('Composer', () => {
     const restore = stubFileReaderFailing('broken.bin')
     try {
       const { container } = render(
-        <Composer
-          onSend={vi.fn()}
-          onInterrupt={vi.fn()}
-          running={false}
-          error="rejected"
-        />,
+        <Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} error="rejected" />,
       )
 
       const input = container.querySelector('input[type="file"]') as HTMLInputElement
