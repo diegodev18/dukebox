@@ -153,7 +153,11 @@ export function Settings({
           />
         )}
         {category === 'appearance' && (
-          <AppearanceSection theme={settings.theme} onSave={onSaveSettings} />
+          <AppearanceSection
+            theme={settings.theme}
+            notifyWhenWaiting={settings.notifyWhenWaiting}
+            onSave={onSaveSettings}
+          />
         )}
         {category === 'updates' && (
           <UpdatesSection
@@ -179,9 +183,11 @@ const THEME_OPTIONS: { value: Theme; label: string }[] = [
 
 function AppearanceSection({
   theme,
+  notifyWhenWaiting,
   onSave,
 }: {
   theme: Theme
+  notifyWhenWaiting: boolean
   onSave: (patch: Partial<Settings>) => void
 }) {
   return (
@@ -215,6 +221,13 @@ function AppearanceSection({
           ))}
         </div>
       </div>
+
+      <ToggleRow
+        label="Notify when a session needs you"
+        description="A desktop notification when an agent is waiting and you are not looking at that session."
+        checked={notifyWhenWaiting}
+        onChange={(checked) => onSave({ notifyWhenWaiting: checked })}
+      />
     </section>
   )
 }

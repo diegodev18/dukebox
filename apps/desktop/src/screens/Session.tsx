@@ -19,6 +19,7 @@ import {
 import { DukeboxClient, isAuthFailure } from '@/lib/client'
 import { removeConnection, type Connection } from '@/lib/connection'
 import { lastNewSessionFromSummary, type LastNewSession, type Settings } from '@/lib/settings'
+import { notifyWaitingInput, shouldNotifyWaiting } from '@/lib/waitingNotification'
 import type { SettingsCategory } from '@/lib/settingsCategories'
 import { INITIAL_RETRY_MS, MAX_RETRY_MS, isStreamConnected } from '@/lib/stream'
 import { NAV_DEFAULT, NAV_MIN, WORKSPACE_MIN } from '@/lib/columnWidths'
@@ -110,6 +111,17 @@ export function Session({
   const [searchOpen, setSearchOpen] = useState(false)
   // Prefill New Session from a merged PR, even before settings persist.
   const [continueFrom, setContinueFrom] = useState<LastNewSession | null>(null)
+
+  // Kept in sync so a session_update can compare against the last status
+  // without waiting for the next render — reconnects echo the same waiting
+  // row and must not toast again.
+  const sessionsRef = useRef<SessionSummary[]>([])
+  const selectedRef = useRef<string | null>(null)
+  const selectSessionRef = useRef<(sessionId: string) => void>(() => undefined)
+  const notifyWhenWaitingRef = useRef(settings.notifyWhenWaiting)
+  sessionsRef.current = sessions
+  selectedRef.current = selected
+  notifyWhenWaitingRef.current = settings.notifyWhenWaiting
 
   const refreshProjects = async () => {
     try {
@@ -210,7 +222,21 @@ export function Session({
     connection,
     selected,
     (updated) => {
+      const previous = sessionsRef.current.find((session) => session.id === updated.id)
       applySessionPatch(updated.id, updated)
+
+      if (
+        shouldNotifyWaiting({
+          previousStatus: previous?.status,
+          nextStatus: updated.status,
+          sessionId: updated.id,
+          selectedId: selectedRef.current,
+          documentHidden: document.visibilityState === 'hidden',
+          enabled: notifyWhenWaitingRef.current,
+        })
+      ) {
+        notifyWaitingInput(updated.title, () => selectSessionRef.current(updated.id))
+      }
     },
     () => {
       void removeConnection(connection.deviceId)
@@ -361,6 +387,7 @@ export function Session({
       }
     })()
   }
+  selectSessionRef.current = selectSession
 
   const startNewSession = (projectId?: string) => {
     setSetupProjectId(null)

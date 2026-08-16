@@ -50,6 +50,7 @@ describe('loadSettings', () => {
     await expect(loadSettings()).resolves.toEqual({
       theme: 'dark',
       checkForUpdatesOnLaunch: true,
+      notifyWhenWaiting: true,
       commitIdentity: null,
       lastNewSession: null,
       git: {
@@ -61,6 +62,13 @@ describe('loadSettings', () => {
         prDescription: 'auto',
       },
     })
+  })
+
+  it('keeps notifyWhenWaiting off when that is what was saved', async () => {
+    const { loadSettings } = await settingsModule()
+    vi.mocked(load).mockResolvedValue(store({ settings: { notifyWhenWaiting: false } }) as never)
+
+    await expect(loadSettings()).resolves.toMatchObject({ notifyWhenWaiting: false })
   })
 
   it('restores the last New Session pickers', async () => {
@@ -116,6 +124,15 @@ describe('saveSettings', () => {
       permissionMode: 'plan',
     }
     await expect(saveSettings({ lastNewSession })).resolves.toMatchObject({ lastNewSession })
+  })
+
+  it('persists turning off waiting-input notifications', async () => {
+    const { saveSettings } = await settingsModule()
+    vi.mocked(load).mockResolvedValue(store() as never)
+
+    await expect(saveSettings({ notifyWhenWaiting: false })).resolves.toMatchObject({
+      notifyWhenWaiting: false,
+    })
   })
 
   it('mirrors a theme change into localStorage for the next boot', async () => {

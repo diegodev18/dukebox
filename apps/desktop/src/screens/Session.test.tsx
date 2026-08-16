@@ -1,5 +1,5 @@
 import type { ProjectSummary, SessionSummary } from '@dukebox/protocol'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defaultSettings } from '@/lib/settings'
@@ -41,21 +41,43 @@ vi.mock('@/screens/NewSession', () => ({
   NewSession: () => <div>new session form</div>,
 }))
 
+const { lastOnSessionUpdate, notifyWaitingInput } = vi.hoisted(() => ({
+  lastOnSessionUpdate: {
+    current: undefined as ((session: SessionSummary) => void) | undefined,
+  },
+  notifyWaitingInput: vi.fn(),
+}))
+
+vi.mock('@/lib/waitingNotification', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/waitingNotification')>()
+  return {
+    ...actual,
+    notifyWaitingInput,
+  }
+})
+
 vi.mock('@/lib/useSession', () => ({
-  useSession: () => ({
-    send: vi.fn(),
-    interrupt: vi.fn(),
-    respond: vi.fn(),
-    setPermissionMode: vi.fn(),
-    openTerminal: vi.fn(),
-    attachTerminal: vi.fn(),
-    detachTerminal: vi.fn(),
-    sendTerminalInput: vi.fn(),
-    resizeTerminal: vi.fn(),
-    closeTerminal: vi.fn(),
-    renameTerminal: vi.fn(),
-    drainTerminal: vi.fn(),
-  }),
+  useSession: (
+    _connection: unknown,
+    _sessionId: unknown,
+    onSessionUpdate?: (session: SessionSummary) => void,
+  ) => {
+    lastOnSessionUpdate.current = onSessionUpdate
+    return {
+      send: vi.fn(),
+      interrupt: vi.fn(),
+      respond: vi.fn(),
+      setPermissionMode: vi.fn(),
+      openTerminal: vi.fn(),
+      attachTerminal: vi.fn(),
+      detachTerminal: vi.fn(),
+      sendTerminalInput: vi.fn(),
+      resizeTerminal: vi.fn(),
+      closeTerminal: vi.fn(),
+      renameTerminal: vi.fn(),
+      drainTerminal: vi.fn(),
+    }
+  },
 }))
 
 vi.mock('@/lib/client', async (importOriginal) => {
@@ -165,6 +187,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks()
+  lastOnSessionUpdate.current = undefined
 })
 
 describe('Session', () => {
@@ -417,6 +440,52 @@ describe('Session', () => {
       screen.queryByRole('button', { name: 'Done, Fix the demux bug' }),
     ).not.toBeInTheDocument()
     expect(screen.queryByText('No session selected')).not.toBeInTheDocument()
+  })
+
+  it('notifies once when a non-selected session starts waiting', async () => {
+    renderSession()
+    await screen.findByRole('button', { name: 'Done, Fix the demux bug' })
+    notifyWaitingInput.mockClear()
+
+    act(() => {
+      lastOnSessionUpdate.current?.({ ...other, status: 'waiting_input' })
+    })
+    act(() => {
+      lastOnSessionUpdate.current?.({ ...other, status: 'waiting_input' })
+    })
+
+    expect(notifyWaitingInput).toHaveBeenCalledTimes(1)
+    expect(notifyWaitingInput).toHaveBeenCalledWith('Add a health check', expect.any(Function))
+  })
+
+  it('does not notify when the selected session is focused and visible', async () => {
+    renderSession()
+    await screen.findByRole('button', { name: 'Done, Fix the demux bug' })
+    notifyWaitingInput.mockClear()
+
+    act(() => {
+      lastOnSessionUpdate.current?.({ ...session, status: 'waiting_input' })
+    })
+
+    expect(notifyWaitingInput).not.toHaveBeenCalled()
+  })
+
+  it('selects the waiting session when the notification is clicked', async () => {
+    renderSession()
+    await screen.findByRole('button', { name: 'Done, Fix the demux bug' })
+
+    act(() => {
+      lastOnSessionUpdate.current?.({ ...other, status: 'waiting_input' })
+    })
+
+    const onClick = notifyWaitingInput.mock.calls[0]?.[1] as (() => void) | undefined
+    act(() => {
+      onClick?.()
+    })
+
+    expect(
+      screen.getByRole('button', { name: /Waiting for you, Add a health check/ }),
+    ).toHaveAttribute('aria-current', 'true')
   })
 
   it('reflects a pull request that was merged on GitHub', async () => {

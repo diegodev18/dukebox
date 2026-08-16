@@ -223,6 +223,14 @@ describe('Settings', () => {
     expect(onSaveSettings).toHaveBeenCalledWith({ theme: 'dark' })
   })
 
+  it('toggles waiting-input notifications from Appearance', async () => {
+    const { onSaveSettings } = renderSettings()
+    await openCategory('Appearance')
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Notify when a session needs you' }))
+    expect(onSaveSettings).toHaveBeenCalledWith({ notifyWhenWaiting: false })
+  })
+
   it('toggles git preferences from the Git category', async () => {
     const { onSaveSettings } = renderSettings()
     await openCategory('Git')
