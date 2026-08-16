@@ -79,6 +79,7 @@ function renderScreen(
     onRemember?: ReturnType<typeof vi.fn>
     preferAgentId?: string | null
     preferProjectId?: string | null
+    preferSetupEnvironmentId?: string | null
     lastNewSession?: LastNewSession | null
     projects?: (typeof project)[]
     disabled?: boolean
@@ -96,6 +97,7 @@ function renderScreen(
       onRemember={extra.onRemember}
       preferAgentId={extra.preferAgentId}
       preferProjectId={extra.preferProjectId}
+      preferSetupEnvironmentId={extra.preferSetupEnvironmentId}
       lastNewSession={extra.lastNewSession}
       disabled={extra.disabled}
       role={extra.role}
@@ -629,6 +631,27 @@ describe('NewSession permission mode', () => {
         expect.objectContaining({ agentId: 'opencode', permissionMode: 'plan' }),
       ),
     )
+  })
+
+  it('re-runs setup on an existing environment without creating another', async () => {
+    const client = makeClient({ createEnvironment: vi.fn() })
+    renderScreen(
+      client,
+      {},
+      { preferSetupEnvironmentId: environments[0].id, preferProjectId: project.id },
+    )
+
+    await userEvent.click(await screen.findByRole('button', { name: /start setup/i }))
+
+    await waitFor(() =>
+      expect(client.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          purpose: 'environment_setup',
+          environmentId: environments[0].id,
+        }),
+      ),
+    )
+    expect(client.createEnvironment).not.toHaveBeenCalled()
   })
 
   it('starts environment setup in bypass even when Plan is selected', async () => {

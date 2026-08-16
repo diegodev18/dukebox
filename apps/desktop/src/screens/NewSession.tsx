@@ -79,6 +79,11 @@ interface Props {
   onCreated: (session: SessionSummary, project: ProjectSummary | null) => void
   /** Prefer starting environment setup for this project (e.g. from sidebar). */
   preferSetupProjectId?: string | null
+  /**
+   * Re-run setup for this existing environment. Unlike preferSetupProjectId,
+   * this must not create a sibling row.
+   */
+  preferSetupEnvironmentId?: string | null
   /** Prefill this project without forcing setup (e.g. from the project menu). */
   preferProjectId?: string | null
   /** Restore this agent after returning from provider settings. */
@@ -116,6 +121,7 @@ export function NewSession({
   gitPreferences,
   onCreated,
   preferSetupProjectId,
+  preferSetupEnvironmentId,
   preferProjectId,
   preferAgentId,
   lastNewSession = null,
@@ -157,7 +163,9 @@ export function NewSession({
   const [prompt, setPrompt] = useState(loadNewSessionDraft)
   const [files, setFiles] = useState<ComposerFile[]>([])
   const [attachError, setAttachError] = useState<string | null>(null)
-  const [forceSetup, setForceSetup] = useState(Boolean(preferSetupProjectId))
+  const [forceSetup, setForceSetup] = useState(
+    Boolean(preferSetupProjectId || preferSetupEnvironmentId),
+  )
   const [newEnvironmentName, setNewEnvironmentName] = useState('Default')
   const [newEnvironmentPattern, setNewEnvironmentPattern] = useState('**')
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
@@ -316,6 +324,11 @@ export function NewSession({
   // selected, keep the environment it ran in — including an explicit base
   // image — rather than overwriting it with the auto-resolved match.
   useEffect(() => {
+    if (preferSetupEnvironmentId) {
+      setEnvironmentId(preferSetupEnvironmentId)
+      return
+    }
+
     const resolved = resolveEnvironment(environments, baseBranch)?.id ?? BASE_IMAGE_VALUE
     const sameContext =
       lastNewSession != null &&
@@ -341,7 +354,7 @@ export function NewSession({
     }
 
     setEnvironmentId(resolved)
-  }, [baseBranch, environments, target, lastNewSession])
+  }, [baseBranch, environments, target, lastNewSession, preferSetupEnvironmentId])
 
   useEffect(() => {
     let cancelled = false
@@ -533,6 +546,25 @@ export function NewSession({
       )
 
       if (needsEnvironment) {
+        if (preferSetupEnvironmentId) {
+          const session = await client.startSession({
+            projectId: project.id,
+            agentId,
+            model,
+            baseBranch,
+            purpose: 'environment_setup',
+            environmentId: preferSetupEnvironmentId,
+            ...(mode ? { permissionMode: mode } : {}),
+            ...(identity ? { commitIdentity: identity } : {}),
+            ...(gitPreferences ? { gitPreferences } : {}),
+          })
+
+          remember(preferSetupEnvironmentId)
+          clearNewSessionDraft()
+          onCreated(session, created)
+          return
+        }
+
         // The environment has to exist before the session starts, so the setup
         // run has somewhere to write its draft. If starting then fails, the row
         // is removed again: a retry with the same name would otherwise collide
@@ -716,35 +748,41 @@ export function NewSession({
 
         {needsEnvironment ? (
           <div className="rounded-[calc(var(--radius)*1.1)] border border-border bg-surface px-3.5 py-3.5">
-            <h2 className="text-[14px] font-medium">Configure environment</h2>
+            <h2 className="text-[14px] font-medium">
+              {preferSetupEnvironmentId ? 'Run setup again' : 'Configure environment'}
+            </h2>
             <p className="mt-1 text-[13px] text-muted-foreground">
               {agentId} will inspect the repository and propose setup commands and environment
               variables. You review and save them, and branches this environment covers use them
               from then on.
             </p>
-            <label className="mt-3 block text-[12px] text-muted-foreground">
-              Name
-              <input
-                value={newEnvironmentName}
-                onChange={(event) => setNewEnvironmentName(event.target.value)}
-                disabled={busy}
-                className={INPUT_CLASS}
-              />
-            </label>
-            <label className="mt-2 block text-[12px] text-muted-foreground">
-              Branches
-              <input
-                value={newEnvironmentPattern}
-                onChange={(event) => setNewEnvironmentPattern(event.target.value)}
-                aria-describedby="pattern-help"
-                disabled={busy}
-                className={INPUT_CLASS}
-              />
-            </label>
-            <p id="pattern-help" className="mt-1 text-[11px] text-muted-foreground">
-              Glob like <code>refact/*</code> or <code>**</code> for every branch. Prefix with{' '}
-              <code>re:</code> for a regular expression.
-            </p>
+            {!preferSetupEnvironmentId && (
+              <>
+                <label className="mt-3 block text-[12px] text-muted-foreground">
+                  Name
+                  <input
+                    value={newEnvironmentName}
+                    onChange={(event) => setNewEnvironmentName(event.target.value)}
+                    disabled={busy}
+                    className={INPUT_CLASS}
+                  />
+                </label>
+                <label className="mt-2 block text-[12px] text-muted-foreground">
+                  Branches
+                  <input
+                    value={newEnvironmentPattern}
+                    onChange={(event) => setNewEnvironmentPattern(event.target.value)}
+                    aria-describedby="pattern-help"
+                    disabled={busy}
+                    className={INPUT_CLASS}
+                  />
+                </label>
+                <p id="pattern-help" className="mt-1 text-[11px] text-muted-foreground">
+                  Glob like <code>refact/*</code> or <code>**</code> for every branch. Prefix with{' '}
+                  <code>re:</code> for a regular expression.
+                </p>
+              </>
+            )}
 
             <div className="mt-3 flex items-center justify-between gap-2">
               <SessionMutablePickers

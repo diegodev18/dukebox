@@ -20,6 +20,35 @@ function makeClient(overrides = {}) {
 }
 
 describe('EnvironmentReview', () => {
+  it('loads a saved environment without a setup session', async () => {
+    const client = makeClient({
+      getEnvironmentProposal: vi.fn(),
+      getEnvironment: vi.fn().mockResolvedValue({
+        config: {
+          image: 'dukebox/base-node:latest',
+          setup: ['pnpm install'],
+          env: { NODE_ENV: 'test' },
+          instructions: '',
+        },
+        draft: null,
+        secretNames: [],
+      }),
+    })
+    render(
+      <EnvironmentReview
+        client={client as never}
+        projectId="p1"
+        environmentId="e1"
+        environmentName="Default"
+        onSaved={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByLabelText(/setup commands/i)).toHaveValue('pnpm install')
+    expect(client.getEnvironmentProposal).not.toHaveBeenCalled()
+    expect(client.getEnvironment).toHaveBeenCalledWith('p1', 'e1')
+  })
+
   it('lets the form be saved again after an edit', async () => {
     const client = makeClient()
     render(

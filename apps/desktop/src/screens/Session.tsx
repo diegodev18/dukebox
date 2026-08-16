@@ -95,6 +95,7 @@ export function Session({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>('account')
   const [setupProjectId, setSetupProjectId] = useState<string | null>(null)
+  const [setupEnvironmentId, setSetupEnvironmentId] = useState<string | null>(null)
   const [preferProjectId, setPreferProjectId] = useState<string | null>(null)
   // Remember OpenCode when new session opens provider settings, so Back
   // restores the form with that agent still selected.
@@ -283,6 +284,7 @@ export function Session({
     setSelected(session.id)
     setCreating(false)
     setSetupProjectId(null)
+    setSetupEnvironmentId(null)
     setPreferProjectId(null)
     setManagingProjectId(null)
     setPreferAgentId(null)
@@ -292,6 +294,7 @@ export function Session({
   const openSettings = (category: SettingsCategory) => {
     setCreating(false)
     setSetupProjectId(null)
+    setSetupEnvironmentId(null)
     setPreferProjectId(null)
     setManagingProjectId(null)
     setPreferAgentId(null)
@@ -306,6 +309,7 @@ export function Session({
     setCreating(false)
     setSettingsOpen(false)
     setSetupProjectId(null)
+    setSetupEnvironmentId(null)
     setPreferProjectId(null)
     setManagingProjectId(null)
     setPreferAgentId(null)
@@ -316,6 +320,7 @@ export function Session({
 
   const startNewSession = (projectId?: string) => {
     setSetupProjectId(null)
+    setSetupEnvironmentId(null)
     setPreferProjectId(projectId ?? null)
     setManagingProjectId(null)
     setPreferAgentId(null)
@@ -328,6 +333,7 @@ export function Session({
   const continueAfterMerge = (session: SessionSummary) => {
     const last = lastNewSessionFromSummary(session, projects)
     setSetupProjectId(null)
+    setSetupEnvironmentId(null)
     setPreferProjectId(session.projectId)
     setManagingProjectId(null)
     setPreferAgentId(session.agentId)
@@ -397,6 +403,7 @@ export function Session({
               onSearch={() => setSearchOpen(true)}
               onConfigureEnvironment={(projectId) => {
                 setSetupProjectId(projectId)
+                setSetupEnvironmentId(null)
                 setPreferProjectId(null)
                 setManagingProjectId(null)
                 setPreferAgentId(null)
@@ -407,6 +414,7 @@ export function Session({
                 setCreating(false)
                 setSettingsOpen(false)
                 setSetupProjectId(null)
+                setSetupEnvironmentId(null)
                 setPreferProjectId(null)
                 setPreferAgentId(null)
                 setManagingProjectId(projectId)
@@ -466,6 +474,7 @@ export function Session({
                   }
                   if (preferProjectId === projectId) {
                     setPreferProjectId(null)
+                    setSetupEnvironmentId(null)
                     setCreating(false)
                   }
                 })()
@@ -533,6 +542,16 @@ export function Session({
               client={client}
               projectId={managingProjectId}
               disabled={disconnected}
+              onRunSetup={(environmentId) => {
+                setSetupProjectId(null)
+                setSetupEnvironmentId(environmentId)
+                setPreferProjectId(managingProjectId)
+                setPreferAgentId(null)
+                setContinueFrom(null)
+                setSettingsOpen(false)
+                setManagingProjectId(null)
+                setCreating(true)
+              }}
             />
           </Suspense>
         ) : creating ? (
@@ -545,6 +564,7 @@ export function Session({
               gitPreferences={settings.git}
               onCreated={onSessionCreated}
               preferSetupProjectId={setupProjectId}
+              preferSetupEnvironmentId={setupEnvironmentId}
               preferProjectId={preferProjectId}
               preferAgentId={preferAgentId}
               lastNewSession={

@@ -1,5 +1,6 @@
 import {
   ENVIRONMENT_SETUP_IMAGE_MISMATCH,
+  parseSecretReference,
   type EnvironmentProposal,
   type EnvironmentSetupVerification,
 } from '@dukebox/protocol'
@@ -10,13 +11,18 @@ import type { DukeboxClient } from '@/lib/client'
  * Review form for an environment_setup session's proposal.
  *
  * Lives in the workspace Environment tab so the transcript stays open for
- * follow-up context while the user edits setup commands and secrets.
+ * follow-up context while the user edits setup commands and secrets. The
+ * environments panel reuses it without a session to edit a saved config.
  */
 
 interface Props {
   client: DukeboxClient
   projectId: string
-  sessionId: string
+  /**
+   * Setup session that produced a proposal. Omitted when editing a saved
+   * environment from the panel — there is no proposal route to call.
+   */
+  sessionId?: string
   /**
    * Which environment this proposal belongs to.
    *
@@ -58,7 +64,7 @@ export function EnvironmentReview({
   // Loaded is per session/environment: Workspace reuses this instance, and a
   // leftover true would leave Save on the previous fields after a later load
   // fails.
-  const identity = `${sessionId}:${environmentId ?? ''}`
+  const identity = `${sessionId ?? ''}:${environmentId ?? ''}`
   const [loadedIdentity, setLoadedIdentity] = useState<string | null>(null)
   const loaded = loadedIdentity === identity
   const [seenIdentity, setSeenIdentity] = useState(identity)
@@ -85,17 +91,19 @@ export function EnvironmentReview({
     const load = async () => {
       try {
         const [proposal, environment] = await Promise.all([
-          client.getEnvironmentProposal(sessionId),
+          sessionId ? client.getEnvironmentProposal(sessionId) : Promise.resolve(null),
           client.getEnvironment(projectId, environmentId),
         ])
 
         if (cancelled) return
 
+        // No session means no proposal route; saved config (or a leftover
+        // draft) is what the person is here to edit.
+        const saved = sessionId ? null : sourceFromSavedConfig(environment.config)
         const source: EnvironmentProposal = proposal ??
-          environment.draft ?? {
-            setup: [],
-            env: {},
-          }
+          environment.draft ??
+          saved?.proposal ?? { setup: [], env: {} }
+        const literals = saved && source === saved.proposal ? saved.literals : {}
 
         setSetupText(source.setup.join('\n'))
         setProposedSetup(source.setup.join('\n'))
@@ -106,7 +114,7 @@ export function EnvironmentReview({
             name,
             secret: meta.secret,
             description: meta.description ?? '',
-            value: '',
+            value: meta.secret ? '' : (literals[name] ?? ''),
             configured: environment.secretNames.includes(name),
           })),
         )
@@ -404,6 +412,33 @@ interface EnvRow {
   description: string
   value: string
   configured: boolean
+}
+
+function sourceFromSavedConfig(
+  config: {
+    setup: string[]
+    env: Record<string, string>
+    instructions: string
+  } | null,
+): { proposal: EnvironmentProposal; literals: Record<string, string> } | null {
+  if (!config) return null
+
+  const env: EnvironmentProposal['env'] = {}
+  const literals: Record<string, string> = {}
+  for (const [name, value] of Object.entries(config.env)) {
+    const secret = parseSecretReference(value) !== null
+    env[name] = { secret }
+    if (!secret) literals[name] = value
+  }
+
+  return {
+    proposal: {
+      setup: config.setup,
+      env,
+      ...(config.instructions ? { instructions: config.instructions } : {}),
+    },
+    literals,
+  }
 }
 
 function VerificationBanner({
