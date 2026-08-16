@@ -52,6 +52,13 @@ export function CommandPalette({ commands, onRun, onDismiss }: Props) {
   useEffect(() => {
     input.current?.focus()
 
+    const focusable = () => {
+      const nodes = panel.current?.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )
+      return nodes ? Array.from(nodes) : []
+    }
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
@@ -79,6 +86,28 @@ export function CommandPalette({ commands, onRun, onDismiss }: Props) {
         if (!item) return
         event.preventDefault()
         run.current(item)
+        return
+      }
+
+      if (event.key !== 'Tab') return
+
+      const nodes = focusable()
+      if (nodes.length === 0) {
+        event.preventDefault()
+        panel.current?.focus()
+        return
+      }
+
+      const first = nodes[0]!
+      const last = nodes[nodes.length - 1]!
+      const active = document.activeElement
+
+      if (event.shiftKey && (active === first || active === panel.current)) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (active === last || active === panel.current)) {
+        event.preventDefault()
+        first.focus()
       }
     }
 

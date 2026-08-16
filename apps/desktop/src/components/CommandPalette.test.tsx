@@ -77,4 +77,14 @@ describe('CommandPalette', () => {
     await userEvent.keyboard('{Escape}')
     expect(onDismiss).toHaveBeenCalled()
   })
+
+  it('returns Tab from the last control to the search field', async () => {
+    renderPalette()
+
+    const options = screen.getAllByRole('option')
+    options[options.length - 1]!.focus()
+    await userEvent.tab()
+
+    expect(screen.getByRole('searchbox', { name: 'Search commands' })).toHaveFocus()
+  })
 })
