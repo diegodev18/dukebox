@@ -127,6 +127,18 @@ describe('useSession', () => {
     expect(useLiveSession.getState().error).toBe('session is not running')
   })
 
+  it('surfaces a send failure as a live session error', () => {
+    renderHook(() => useSession(connection, SESSION))
+
+    act(() => {
+      MockStream.last?.handlers.onFailure?.('the connection was refused before reaching the server')
+    })
+
+    expect(useLiveSession.getState().error).toBe(
+      'the connection was refused before reaching the server',
+    )
+  })
+
   it('forwards revoke from the stream', () => {
     const onRevoked = vi.fn()
     renderHook(() => useSession(connection, SESSION, undefined, onRevoked))

@@ -117,6 +117,9 @@ export function useSession(
           // socket is live it would sit under the composer as if the send failed.
           if (isStreamConnected(next)) useLiveSession.setState({ error: null })
         },
+        onFailure: (reason) => {
+          useLiveSession.setState({ error: reason })
+        },
         onRevoked: () => revokedRef.current?.(),
         onMessage: (message) => {
           switch (message.type) {
