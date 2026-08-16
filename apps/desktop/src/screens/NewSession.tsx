@@ -28,7 +28,7 @@ import {
 import { AttachmentChips } from '@/components/AttachmentChips'
 import { readPickedFiles, type ComposerFile } from '@/components/Composer'
 import { modelsForProvider } from '@/components/OpenCodeProviders'
-import { AttachIcon, SendIcon } from '@/components/icons'
+import { AttachIcon } from '@/components/icons'
 import { filesFromPaste, useFileDrop } from '@/lib/useFileDrop'
 import {
   AgentPicker,
@@ -861,7 +861,12 @@ export function NewSession({
             <textarea
               ref={field}
               value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
+              onChange={(event) => {
+                const element = event.currentTarget
+                setPrompt(element.value)
+                element.style.height = 'auto'
+                element.style.height = `${Math.min(element.scrollHeight, 200)}px`
+              }}
               onKeyDown={(event) => {
                 if (
                   event.key === 'Tab' &&
@@ -898,7 +903,7 @@ export function NewSession({
             )}
 
             <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
-              <div className="flex min-w-0 items-center gap-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-1">
                 <button
                   type="button"
                   onClick={() => picker.current?.click()}
@@ -924,19 +929,20 @@ export function NewSession({
                   permissionMode={permissionMode}
                   onPermissionModeChange={setPermissionMode}
                 />
+                <p className="text-[11.5px] text-muted-foreground">
+                  {agentHasPermissionModes(agentId)
+                    ? '↵ Start · ⇧↵ Newline · ⇧⇥ Mode'
+                    : '↵ Start · ⇧↵ Newline'}
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => void submit()}
                 disabled={!canSend}
                 aria-label={status.kind === 'starting' ? 'Starting' : 'Start session'}
-                className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background disabled:opacity-40"
+                className="shrink-0 rounded-[calc(var(--radius)*0.6)] bg-foreground px-3 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
               >
-                {status.kind === 'starting' ? (
-                  <span className="text-[11px] font-medium">…</span>
-                ) : (
-                  <SendIcon size={16} />
-                )}
+                {status.kind === 'starting' ? 'Starting…' : 'Start'}
               </button>
             </div>
             <input ref={picker} type="file" multiple className="hidden" onChange={handleFiles} />

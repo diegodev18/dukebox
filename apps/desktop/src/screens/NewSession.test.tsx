@@ -766,6 +766,35 @@ describe('NewSession preferProjectId', () => {
   })
 })
 
+describe('NewSession composer chrome', () => {
+  it('uses a labeled Start button like the live composer', async () => {
+    renderScreen(makeClient())
+
+    const start = await screen.findByRole('button', { name: 'Start session' })
+    expect(start).toHaveTextContent('Start')
+    expect(start).toHaveClass('rounded-[calc(var(--radius)*0.6)]')
+  })
+
+  it('labels the start control Starting… while the session is in flight', async () => {
+    const client = makeClient({
+      startSession: vi.fn(() => new Promise(() => undefined)),
+    })
+    renderScreen(client)
+
+    await userEvent.type(await screen.findByLabelText(/what should it do/i), 'do a thing')
+    await userEvent.click(screen.getByRole('button', { name: 'Start session' }))
+
+    expect(await screen.findByRole('button', { name: 'Starting' })).toHaveTextContent('Starting…')
+  })
+
+  it('hints how to start', async () => {
+    renderScreen(makeClient())
+
+    expect(await screen.findByText(/↵ Start/)).toBeInTheDocument()
+    expect(screen.getByText(/⇧⇥ Mode/)).toBeInTheDocument()
+  })
+})
+
 describe('NewSession prompt draft', () => {
   it('restores a stored draft when the form mounts', async () => {
     localStorage.setItem(NEW_SESSION_DRAFT_KEY, 'finish the parser')
