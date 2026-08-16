@@ -8,6 +8,14 @@ import { defaultSettings, type Settings } from '@/lib/settings'
 import type { UseUpdate } from '@/lib/useUpdate'
 import { Settings as SettingsScreen, SettingsNav, type SettingsCategory } from '@/screens/Settings'
 
+const { requestNotificationPermission } = vi.hoisted(() => ({
+  requestNotificationPermission: vi.fn(),
+}))
+
+vi.mock('@/lib/waitingNotification', () => ({
+  requestNotificationPermission,
+}))
+
 vi.mock('@/lib/connection', () => ({
   listConnections: vi.fn(),
   setActiveConnection: vi.fn(),
@@ -229,6 +237,18 @@ describe('Settings', () => {
 
     await userEvent.click(screen.getByRole('switch', { name: 'Notify when a session needs you' }))
     expect(onSaveSettings).toHaveBeenCalledWith({ notifyWhenWaiting: false })
+    expect(requestNotificationPermission).not.toHaveBeenCalled()
+  })
+
+  it('asks for notification permission when the waiting toggle is turned on', async () => {
+    const { onSaveSettings } = renderSettings({
+      settings: { ...defaultSettings(), notifyWhenWaiting: false },
+    })
+    await openCategory('Appearance')
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Notify when a session needs you' }))
+    expect(onSaveSettings).toHaveBeenCalledWith({ notifyWhenWaiting: true })
+    expect(requestNotificationPermission).toHaveBeenCalled()
   })
 
   it('toggles git preferences from the Git category', async () => {

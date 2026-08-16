@@ -116,11 +116,14 @@ export function Session({
   // without waiting for the next render — reconnects echo the same waiting
   // row and must not toast again.
   const sessionsRef = useRef<SessionSummary[]>([])
-  const selectedRef = useRef<string | null>(null)
+  const focusedSessionRef = useRef<string | null>(null)
   const selectSessionRef = useRef<(sessionId: string) => void>(() => undefined)
   const notifyWhenWaitingRef = useRef(settings.notifyWhenWaiting)
   sessionsRef.current = sessions
-  selectedRef.current = selected
+  // Settings / New Session / Environments cover the transcript; leftover
+  // `selected` is not "looking at" that session.
+  focusedSessionRef.current =
+    creating || settingsOpen || managingProjectId !== null ? null : selected
   notifyWhenWaitingRef.current = settings.notifyWhenWaiting
 
   const refreshProjects = async () => {
@@ -224,14 +227,16 @@ export function Session({
     (updated) => {
       const previous = sessionsRef.current.find((session) => session.id === updated.id)
       applySessionPatch(updated.id, updated)
+      sessionsRef.current = sessionsRef.current.map((session) =>
+        session.id === updated.id ? updated : session,
+      )
 
       if (
         shouldNotifyWaiting({
           previousStatus: previous?.status,
           nextStatus: updated.status,
-          sessionId: updated.id,
-          selectedId: selectedRef.current,
-          documentHidden: document.visibilityState === 'hidden',
+          lookingAtSession:
+            focusedSessionRef.current === updated.id && document.visibilityState !== 'hidden',
           enabled: notifyWhenWaitingRef.current,
         })
       ) {

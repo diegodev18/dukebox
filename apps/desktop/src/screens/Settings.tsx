@@ -27,6 +27,7 @@ import {
   type Connection,
 } from '@/lib/connection'
 import type { Settings, Theme } from '@/lib/settings'
+import { requestNotificationPermission } from '@/lib/waitingNotification'
 import { settingsCategoriesFor, type SettingsCategory } from '@/lib/settingsCategories'
 import type { UseUpdate } from '@/lib/useUpdate'
 
@@ -226,7 +227,10 @@ function AppearanceSection({
         label="Notify when a session needs you"
         description="A desktop notification when an agent is waiting and you are not looking at that session."
         checked={notifyWhenWaiting}
-        onChange={(checked) => onSave({ notifyWhenWaiting: checked })}
+        onChange={(checked) => {
+          onSave({ notifyWhenWaiting: checked })
+          if (checked) requestNotificationPermission()
+        }}
       />
     </section>
   )

@@ -1,47 +1,31 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { notifyWaitingInput, shouldNotifyWaiting } from '@/lib/waitingNotification'
-
-const SESSION = '00000000-0000-4000-8000-000000000011'
-const OTHER = '00000000-0000-4000-8000-000000000012'
+import {
+  notifyWaitingInput,
+  requestNotificationPermission,
+  shouldNotifyWaiting,
+} from '@/lib/waitingNotification'
 
 describe('shouldNotifyWaiting', () => {
-  it('notifies when a non-selected session transitions to waiting_input', () => {
+  it('notifies when a session transitions to waiting_input and is not on screen', () => {
     expect(
       shouldNotifyWaiting({
         previousStatus: 'running',
         nextStatus: 'waiting_input',
-        sessionId: OTHER,
-        selectedId: SESSION,
-        documentHidden: false,
+        lookingAtSession: false,
         enabled: true,
       }),
     ).toBe(true)
   })
 
-  it('stays quiet when the selected session is focused and the document is visible', () => {
+  it('stays quiet when the person is looking at that session', () => {
     expect(
       shouldNotifyWaiting({
         previousStatus: 'running',
         nextStatus: 'waiting_input',
-        sessionId: SESSION,
-        selectedId: SESSION,
-        documentHidden: false,
+        lookingAtSession: true,
         enabled: true,
       }),
     ).toBe(false)
-  })
-
-  it('notifies when the selected session waits but the window is hidden', () => {
-    expect(
-      shouldNotifyWaiting({
-        previousStatus: 'running',
-        nextStatus: 'waiting_input',
-        sessionId: SESSION,
-        selectedId: SESSION,
-        documentHidden: true,
-        enabled: true,
-      }),
-    ).toBe(true)
   })
 
   it('does not notify on another echo of the same waiting session', () => {
@@ -49,9 +33,7 @@ describe('shouldNotifyWaiting', () => {
       shouldNotifyWaiting({
         previousStatus: 'waiting_input',
         nextStatus: 'waiting_input',
-        sessionId: OTHER,
-        selectedId: SESSION,
-        documentHidden: false,
+        lookingAtSession: false,
         enabled: true,
       }),
     ).toBe(false)
@@ -62,12 +44,38 @@ describe('shouldNotifyWaiting', () => {
       shouldNotifyWaiting({
         previousStatus: 'running',
         nextStatus: 'waiting_input',
-        sessionId: OTHER,
-        selectedId: SESSION,
-        documentHidden: false,
+        lookingAtSession: false,
         enabled: false,
       }),
     ).toBe(false)
+  })
+})
+
+describe('requestNotificationPermission', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('asks when permission is still default', () => {
+    const requestPermission = vi.fn().mockResolvedValue('granted')
+    const NotificationMock = Object.assign(vi.fn(), {
+      permission: 'default',
+      requestPermission,
+    })
+    vi.stubGlobal('Notification', NotificationMock)
+
+    requestNotificationPermission()
+    expect(requestPermission).toHaveBeenCalled()
+  })
+
+  it('does not ask again once granted or denied', () => {
+    const requestPermission = vi.fn()
+    vi.stubGlobal(
+      'Notification',
+      Object.assign(vi.fn(), { permission: 'granted', requestPermission }),
+    )
+    requestNotificationPermission()
+    expect(requestPermission).not.toHaveBeenCalled()
   })
 })
 
@@ -81,10 +89,13 @@ describe('notifyWaitingInput', () => {
       onclick: null,
       close: vi.fn(),
     }
-    const NotificationMock = vi.fn(function Notification() {
-      return notification
-    })
-    Object.defineProperty(NotificationMock, 'permission', { value: 'granted' })
+    const requestPermission = vi.fn()
+    const NotificationMock = Object.assign(
+      vi.fn(function Notification() {
+        return notification
+      }),
+      { permission: 'granted', requestPermission },
+    )
     vi.stubGlobal('Notification', NotificationMock)
 
     vi.spyOn(window, 'focus').mockImplementation(() => undefined)
@@ -92,22 +103,39 @@ describe('notifyWaitingInput', () => {
     notifyWaitingInput('Fix the demux bug', onClick)
 
     expect(NotificationMock).toHaveBeenCalledWith('Fix the demux bug', { body: 'Waiting for you' })
+    expect(requestPermission).not.toHaveBeenCalled()
     notification.onclick?.()
     expect(onClick).toHaveBeenCalled()
     expect(notification.close).toHaveBeenCalled()
   })
 
   it('is a no-op when permission was denied', () => {
-    const NotificationMock = vi.fn()
-    Object.defineProperty(NotificationMock, 'permission', { value: 'denied' })
+    const NotificationMock = Object.assign(vi.fn(), {
+      permission: 'denied',
+      requestPermission: vi.fn(),
+    })
     vi.stubGlobal('Notification', NotificationMock)
 
     notifyWaitingInput('Fix the demux bug')
     expect(NotificationMock).not.toHaveBeenCalled()
+    expect(NotificationMock.requestPermission).not.toHaveBeenCalled()
+  })
+
+  it('does not prompt from the socket path when permission is still default', () => {
+    const NotificationMock = Object.assign(vi.fn(), {
+      permission: 'default',
+      requestPermission: vi.fn(),
+    })
+    vi.stubGlobal('Notification', NotificationMock)
+
+    notifyWaitingInput('Fix the demux bug')
+    expect(NotificationMock).not.toHaveBeenCalled()
+    expect(NotificationMock.requestPermission).not.toHaveBeenCalled()
   })
 
   it('does not throw when Notification is missing', () => {
     vi.stubGlobal('Notification', undefined)
     expect(() => notifyWaitingInput('Fix the demux bug')).not.toThrow()
+    expect(() => requestNotificationPermission()).not.toThrow()
   })
 })

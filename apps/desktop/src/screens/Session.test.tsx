@@ -470,6 +470,37 @@ describe('Session', () => {
     expect(notifyWaitingInput).not.toHaveBeenCalled()
   })
 
+  it('notifies when the selected session waits while Settings is open', async () => {
+    renderSession()
+    await screen.findByRole('button', { name: 'Done, Fix the demux bug' })
+    await userEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    expect(await screen.findByRole('heading', { name: 'Account' })).toBeInTheDocument()
+    notifyWaitingInput.mockClear()
+
+    act(() => {
+      lastOnSessionUpdate.current?.({ ...session, status: 'waiting_input' })
+    })
+
+    expect(notifyWaitingInput).toHaveBeenCalledTimes(1)
+  })
+
+  it('notifies when the selected session waits while New Session is open', async () => {
+    renderSession()
+    await screen.findByRole('button', { name: 'Done, Fix the demux bug' })
+    await userEvent.click(screen.getByRole('button', { name: 'New session' }))
+    expect(screen.getByRole('button', { name: 'Done, Fix the demux bug' })).not.toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    notifyWaitingInput.mockClear()
+
+    act(() => {
+      lastOnSessionUpdate.current?.({ ...session, status: 'waiting_input' })
+    })
+
+    expect(notifyWaitingInput).toHaveBeenCalledTimes(1)
+  })
+
   it('selects the waiting session when the notification is clicked', async () => {
     renderSession()
     await screen.findByRole('button', { name: 'Done, Fix the demux bug' })
