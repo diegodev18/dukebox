@@ -109,17 +109,24 @@ export function Settings({
   onClose,
   onDisconnected,
 }: Props) {
+  const root = useRef<HTMLDivElement>(null)
+
   // Esc closes from anywhere in the panel, the same way it closes a popover.
+  // A palette stacked on top owns Escape; this listener is on document too, so
+  // it must ignore a modal that is not this panel.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key !== 'Escape') return
+      const modal = document.querySelector('[aria-modal="true"]')
+      if (modal && modal !== root.current) return
+      onClose()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto px-6 py-5">
+    <div ref={root} className="h-full min-h-0 overflow-y-auto px-6 py-5">
       <div className="mx-auto max-w-xl">
         {category === 'account' && (
           <AccountSection

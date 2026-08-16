@@ -91,6 +91,8 @@ export function SearchPalette({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
         dismiss.current()
         return
       }

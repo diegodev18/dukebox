@@ -2,6 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { CommandPalette } from '@/components/CommandPalette'
+import { COMMANDS } from '@/lib/commands'
 import { defaultSettings, type Settings } from '@/lib/settings'
 import type { UseUpdate } from '@/lib/useUpdate'
 import { Settings as SettingsScreen, SettingsNav, type SettingsCategory } from '@/screens/Settings'
@@ -532,6 +534,41 @@ describe('Settings', () => {
     const { onClose } = renderSettings()
     await userEvent.click(screen.getByRole('button', { name: 'Back' }))
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('closes on Escape when no other dialog is open', async () => {
+    const { onClose } = renderSettings()
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('lets Escape close a palette without leaving Settings', async () => {
+    function OverlayHarness() {
+      const [paletteOpen, setPaletteOpen] = useState(true)
+      const [settingsOpen, setSettingsOpen] = useState(true)
+      return (
+        <>
+          {settingsOpen && <SettingsHarness onClose={() => setSettingsOpen(false)} />}
+          {paletteOpen && (
+            <CommandPalette
+              commands={COMMANDS}
+              onRun={vi.fn()}
+              onDismiss={() => setPaletteOpen(false)}
+            />
+          )}
+        </>
+      )
+    }
+
+    render(<OverlayHarness />)
+
+    expect(screen.getByRole('heading', { name: 'Account' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Commands' })).toBeInTheDocument()
+
+    await userEvent.keyboard('{Escape}')
+
+    expect(screen.queryByRole('dialog', { name: 'Commands' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Account' })).toBeInTheDocument()
   })
 
   it('hides owner categories from a member', () => {
