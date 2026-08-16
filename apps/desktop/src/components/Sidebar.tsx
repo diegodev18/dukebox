@@ -64,6 +64,8 @@ interface Props {
   archiveError?: string | null
   /** Creating, archiving, and environment setup talk to the server. */
   disabled?: boolean
+  /** First list has not succeeded; empty projects are not a real empty account. */
+  loading?: boolean
 }
 
 export function Sidebar({
@@ -84,6 +86,7 @@ export function Sidebar({
   onSearch,
   archiveError,
   disabled = false,
+  loading = false,
 }: Props) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [removing, setRemoving] = useState<ProjectSummary | null>(null)
@@ -126,12 +129,14 @@ export function Sidebar({
 
       <div className="min-h-0 flex-1 overflow-y-auto py-2">
         {projects.length === 0 ? (
-          <div className="px-4 py-6 text-center">
-            <DukeMark size={48} className="mx-auto opacity-90" />
-            <p className="mt-2 text-[12.5px] text-muted-foreground">
-              No projects yet. Connect a repository to start.
-            </p>
-          </div>
+          !loading && (
+            <div className="px-4 py-6 text-center">
+              <DukeMark size={48} className="mx-auto opacity-90" />
+              <p className="mt-2 text-[12.5px] text-muted-foreground">
+                No projects yet. Connect a repository to start.
+              </p>
+            </div>
+          )
         ) : (
           <>
             <p className="px-4 pt-3.5 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">

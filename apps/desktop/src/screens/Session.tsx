@@ -380,6 +380,7 @@ export function Session({
               serverName={connection.serverName}
               role={role}
               disabled={disconnected}
+              loading={loading}
               onOpenSettings={openSettings}
               onSelect={selectSession}
               onNewSession={startNewSession}

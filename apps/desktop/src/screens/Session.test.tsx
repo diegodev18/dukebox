@@ -237,6 +237,7 @@ describe('Session', () => {
 
     expect(await screen.findByText('Couldn’t load sessions. Retrying…')).toBeInTheDocument()
     expect(screen.queryByText('No session selected')).not.toBeInTheDocument()
+    expect(screen.queryByText(/No projects yet/)).not.toBeInTheDocument()
 
     expect(
       await screen.findByRole('button', { name: 'Done, Fix the demux bug' }, { timeout: 3000 }),

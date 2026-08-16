@@ -175,6 +175,31 @@ describe('Sidebar', () => {
     expect(screen.getByRole('img', { name: 'Duke' })).toBeInTheDocument()
   })
 
+  it('does not treat an empty list as no projects while loading', () => {
+    render(
+      <Sidebar
+        projects={[]}
+        sessions={[]}
+        selectedId={null}
+        identity={DEFAULT_COMMIT_IDENTITY}
+        serverName="debian-01"
+        role="owner"
+        loading
+        onOpenSettings={vi.fn()}
+        onSelect={vi.fn()}
+        onNewSession={vi.fn()}
+        onSearch={vi.fn()}
+        onConfigureEnvironment={vi.fn()}
+        onManageEnvironments={vi.fn()}
+        onArchive={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveProject={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText(/No projects yet/)).not.toBeInTheDocument()
+  })
+
   it('archives from the row actions menu after confirming', async () => {
     const { onArchive } = renderSidebar()
 
