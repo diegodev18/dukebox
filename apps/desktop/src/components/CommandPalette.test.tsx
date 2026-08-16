@@ -79,11 +79,20 @@ describe('CommandPalette', () => {
   it('runs the highlighted command with Enter', async () => {
     const { onRun, onDismiss } = renderPalette()
 
-    await userEvent.type(screen.getByRole('searchbox', { name: 'Search commands' }), 'reload')
     await userEvent.keyboard('{Enter}')
 
     expect(onRun).toHaveBeenCalledWith(COMMANDS.find((command) => command.id === 'reload-webview'))
     expect(onDismiss).toHaveBeenCalled()
+  })
+
+  it('runs Stop this session with Enter when it can run', async () => {
+    const onRun = vi.fn()
+    const commands = commandsFor(defaultSettings(), { selectedId: 'sess-1', status: 'running' })
+    render(<CommandPalette commands={commands} onRun={onRun} onDismiss={vi.fn()} />)
+
+    await userEvent.keyboard('{Enter}')
+
+    expect(onRun).toHaveBeenCalledWith(commands.find((command) => command.id === 'session:stop'))
   })
 
   it('runs the highlighted command on click', async () => {

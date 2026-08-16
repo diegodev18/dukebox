@@ -51,7 +51,7 @@ export const COMMANDS: Command[] = commandsFor(defaultSettings())
 
 export function commandsFor(settings: Settings, session?: SessionCommandTarget | null): Command[] {
   const git = gitPrefs(settings)
-  return [
+  const commands: Command[] = [
     stopSessionCommand(session),
     RELOAD_WEBVIEW,
     themeCommand('system', 'System', settings.theme),
@@ -117,6 +117,12 @@ export function commandsFor(settings: Settings, session?: SessionCommandTarget |
       git.prDescription === 'heuristic',
       ['pr body', 'title', 'heuristic'],
     ),
+  ]
+  // Disabled rows stay in the list so they can be found, but they must not
+  // steal the default highlight — empty-query Enter should still run something.
+  return [
+    ...commands.filter((command) => !command.disabled),
+    ...commands.filter((command) => command.disabled),
   ]
 }
 

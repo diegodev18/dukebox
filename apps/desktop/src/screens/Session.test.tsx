@@ -39,7 +39,15 @@ vi.mock('@/components/Workspace', () => ({
 }))
 
 vi.mock('@/screens/NewSession', () => ({
-  NewSession: () => <div>new session form</div>,
+  NewSession: ({ preferProjectId }: { preferProjectId?: string | null }) => (
+    <div>new session for {preferProjectId ?? 'none'}</div>
+  ),
+}))
+
+vi.mock('@/components/EnvironmentsPanel', () => ({
+  EnvironmentsPanel: ({ projectId }: { projectId: string }) => (
+    <div>environments for {projectId}</div>
+  ),
 }))
 
 const { lastOnSessionUpdate, notifyWaitingInput } = vi.hoisted(() => ({
@@ -583,5 +591,37 @@ describe('Session', () => {
       await bound.stopSession(session.id)
     })
     expect(stopSession).toHaveBeenCalledWith(session.id)
+  })
+
+  it('targets the on-screen repo from search, not the last session', async () => {
+    const site: ProjectSummary = {
+      ...project,
+      id: '00000000-0000-4000-8000-000000000002',
+      repoFullName: 'acme/site',
+    }
+    listProjects.mockResolvedValueOnce([project, site])
+    renderSession()
+
+    await screen.findByRole('button', { name: 'Done, Fix the demux bug' })
+    await userEvent.click(screen.getByRole('button', { name: 'Environments for acme/site' }))
+    expect(await screen.findByText(`environments for ${site.id}`)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+    await userEvent.click(screen.getByRole('option', { name: 'New session on this repo' }))
+    expect(await screen.findByText(`new session for ${site.id}`)).toBeInTheDocument()
+  })
+
+  it('keeps Tab inside the archive confirm', async () => {
+    renderSession()
+
+    await screen.findByRole('button', { name: 'Done, Fix the demux bug' })
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Archive current session' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Archive this session?' })
+    within(dialog).getByRole('button', { name: 'Archive' }).focus()
+    await userEvent.tab()
+
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus()
   })
 })

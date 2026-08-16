@@ -484,8 +484,15 @@ export function Session({
   const actionSessionActive = actionSession
     ? sessions.some((session) => session.id === actionSession.id)
     : false
+  // The last selected session stays in `current` while New Session or
+  // Environments is on screen. Prefer the pane's repo so search verbs
+  // target what the person is looking at, not the hidden session.
   const actionProjectId =
-    current?.projectId ?? preferProjectId ?? setupProjectId ?? managingProjectId ?? null
+    managingProjectId ??
+    (creating ? null : current?.projectId) ??
+    preferProjectId ??
+    setupProjectId ??
+    null
 
   useEffect(() => {
     if (!onSessionCommands) return
@@ -830,11 +837,40 @@ function ConfirmArchive({
   useEffect(() => {
     panel.current?.querySelector<HTMLButtonElement>('button')?.focus()
 
+    const focusable = () => {
+      const nodes = panel.current?.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )
+      return nodes ? Array.from(nodes) : []
+    }
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
         event.stopPropagation()
         dismiss.current()
+        return
+      }
+
+      if (event.key !== 'Tab') return
+
+      const items = focusable()
+      if (items.length === 0) {
+        event.preventDefault()
+        panel.current?.focus()
+        return
+      }
+
+      const first = items[0]!
+      const last = items[items.length - 1]!
+      const active = document.activeElement
+
+      if (event.shiftKey && (active === first || active === panel.current)) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (active === last || active === panel.current)) {
+        event.preventDefault()
+        first.focus()
       }
     }
 

@@ -101,6 +101,14 @@ describe('commandsFor', () => {
     expect(running?.disabled).toBe(false)
     expect(running?.detail).toBeUndefined()
   })
+
+  it('keeps a disabled Stop out of the default highlight', () => {
+    expect(COMMANDS[0]?.id).toBe('reload-webview')
+    expect(COMMANDS.at(-1)?.id).toBe('session:stop')
+
+    const running = commandsFor(defaultSettings(), { selectedId: 'sess-1', status: 'running' })
+    expect(running[0]?.id).toBe('session:stop')
+  })
 })
 
 describe('runCommand', () => {
