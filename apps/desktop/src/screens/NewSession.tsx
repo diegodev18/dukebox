@@ -3,6 +3,7 @@ import {
   resolveEnvironment,
   resolvePermissionMode,
   type CommitIdentity,
+  type DeviceRole,
   type EnvironmentSummary,
   type GitPreferences,
   type OpencodeProvider,
@@ -88,6 +89,11 @@ interface Props {
   onRemember?: (last: LastNewSession) => void
   /** Open Settings → Agents to add or edit OpenCode providers. */
   onConfigureProviders: () => void
+  /**
+   * Who is paired. Members cannot open Settings → Agents, so a missing-agent
+   * state must not offer a button that no-ops.
+   */
+  role?: DeviceRole | null
   /** Starting a session needs the server. */
   disabled?: boolean
 }
@@ -115,6 +121,7 @@ export function NewSession({
   lastNewSession = null,
   onRemember,
   onConfigureProviders,
+  role = null,
   disabled = false,
 }: Props) {
   const preferredId = preferSetupProjectId ?? preferProjectId
@@ -144,7 +151,8 @@ export function NewSession({
   >('loading')
   const [claudeConfigured, setClaudeConfigured] = useState(false)
   const [grokConfigured, setGrokConfigured] = useState(false)
-  const [agentsStatus, setAgentsStatus] = useState<'loading' | 'loaded'>('loading')
+  const [agentsStatus, setAgentsStatus] = useState<'loading' | 'loaded' | 'failed'>('loading')
+  const [agentsReload, setAgentsReload] = useState(0)
   const [providerId, setProviderId] = useState(initialProviderId(lastNewSession, initialAgent))
   const [prompt, setPrompt] = useState(loadNewSessionDraft)
   const [files, setFiles] = useState<ComposerFile[]>([])
@@ -339,16 +347,24 @@ export function NewSession({
     let cancelled = false
 
     Promise.all([
-      client.agentCredentialsConfigured().catch(() => false),
-      client.grokCredentialsConfigured().catch(() => false),
+      client.agentCredentialsConfigured().then(
+        (configured) => ({ ok: true as const, configured }),
+        () => ({ ok: false as const }),
+      ),
+      client.grokCredentialsConfigured().then(
+        (configured) => ({ ok: true as const, configured }),
+        () => ({ ok: false as const }),
+      ),
       client.listOpencodeProviders().then(
         (found) => ({ ok: true as const, found }),
         () => ({ ok: false as const }),
       ),
     ]).then(([claude, grok, providers]) => {
       if (cancelled) return
-      setClaudeConfigured(claude)
-      setGrokConfigured(grok)
+      const claudeOn = claude.ok && claude.configured
+      const grokOn = grok.ok && grok.configured
+      setClaudeConfigured(claudeOn)
+      setGrokConfigured(grokOn)
       if (providers.ok) {
         setOpencodeProviders(providers.found)
         setOpencodeProvidersStatus('loaded')
@@ -358,13 +374,17 @@ export function NewSession({
         setOpencodeProviders([])
         setOpencodeProvidersStatus('failed')
       }
-      setAgentsStatus('loaded')
+      // A failed check must not look like "none configured": that screen
+      // offers a Settings button members cannot use.
+      const anyConfigured = claudeOn || grokOn || (providers.ok && providers.found.length > 0)
+      const listingFailed = !claude.ok || !grok.ok || !providers.ok
+      setAgentsStatus(anyConfigured ? 'loaded' : listingFailed ? 'failed' : 'loaded')
     })
 
     return () => {
       cancelled = true
     }
-  }, [client])
+  }, [client, agentsReload])
 
   const usingOpenCode = agentId === 'opencode'
   const usingGrokBuild = agentId === 'grok-build'
@@ -388,6 +408,7 @@ export function NewSession({
   }, [agentsStatus, claudeConfigured, grokConfigured, opencodeProviders.length])
 
   const hasNoAgents = agentsStatus === 'loaded' && configuredAgents.length === 0
+  const canConfigureAgents = role === 'owner'
 
   useEffect(() => {
     if (!usingOpenCode) return
@@ -602,22 +623,50 @@ export function NewSession({
       hasModel &&
       prompt.trim() !== ''
 
+  if (agentsStatus === 'failed') {
+    return (
+      <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
+        <div className="w-full max-w-xl rounded-[calc(var(--radius)*1.1)] border border-border bg-surface px-3.5 py-3.5">
+          <h2 className="text-[14px] font-medium">Couldn’t load agents</h2>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            Check the connection and try again.
+          </p>
+          <button
+            type="button"
+            onClick={() => setAgentsReload((current) => current + 1)}
+            className="mt-3 rounded-full bg-foreground px-3.5 py-1.5 text-[13px] font-medium text-background"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (hasNoAgents) {
     return (
       <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
         <div className="w-full max-w-xl rounded-[calc(var(--radius)*1.1)] border border-border bg-surface px-3.5 py-3.5">
           <h2 className="text-[14px] font-medium">Configure an agent</h2>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            Add a Claude Code token, a Grok Build API key, or an OpenCode provider in Settings
-            before starting a session.
-          </p>
-          <button
-            type="button"
-            onClick={onConfigureProviders}
-            className="mt-3 rounded-full bg-foreground px-3.5 py-1.5 text-[13px] font-medium text-background"
-          >
-            Configure agents
-          </button>
+          {canConfigureAgents ? (
+            <>
+              <p className="mt-1 text-[13px] text-muted-foreground">
+                Add a Claude Code token, a Grok Build API key, or an OpenCode provider in Settings
+                before starting a session.
+              </p>
+              <button
+                type="button"
+                onClick={onConfigureProviders}
+                className="mt-3 rounded-full bg-foreground px-3.5 py-1.5 text-[13px] font-medium text-background"
+              >
+                Configure agents
+              </button>
+            </>
+          ) : (
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              Ask the server owner to configure an agent.
+            </p>
+          )}
         </div>
       </div>
     )

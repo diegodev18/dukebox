@@ -1,3 +1,4 @@
+import type { DeviceRole } from '@dukebox/protocol'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -81,6 +82,7 @@ function renderScreen(
     lastNewSession?: LastNewSession | null
     projects?: (typeof project)[]
     disabled?: boolean
+    role?: DeviceRole | null
   } = {},
 ) {
   return render(
@@ -96,6 +98,7 @@ function renderScreen(
       preferProjectId={extra.preferProjectId}
       lastNewSession={extra.lastNewSession}
       disabled={extra.disabled}
+      role={extra.role}
     />,
   )
 }
@@ -271,7 +274,7 @@ describe('NewSession configured agents', () => {
         listOpencodeProviders: vi.fn().mockResolvedValue([]),
       }),
       {},
-      { onConfigureProviders },
+      { onConfigureProviders, role: 'owner' },
     )
 
     expect(await screen.findByRole('heading', { name: /configure an agent/i })).toBeInTheDocument()
@@ -280,6 +283,49 @@ describe('NewSession configured agents', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /configure agents/i }))
     expect(onConfigureProviders).toHaveBeenCalled()
+  })
+
+  it('does not offer Configure agents to a member when none are configured', async () => {
+    const onConfigureProviders = vi.fn()
+    renderScreen(
+      makeClient({
+        agentCredentialsConfigured: vi.fn().mockResolvedValue(false),
+        grokCredentialsConfigured: vi.fn().mockResolvedValue(false),
+        listOpencodeProviders: vi.fn().mockResolvedValue([]),
+      }),
+      {},
+      { onConfigureProviders, role: 'member' },
+    )
+
+    expect(
+      await screen.findByText('Ask the server owner to configure an agent.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /configure agents/i })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/what should it do/i)).not.toBeInTheDocument()
+    expect(onConfigureProviders).not.toHaveBeenCalled()
+  })
+
+  it('shows an error and retry when credential listing fails', async () => {
+    const client = makeClient({
+      agentCredentialsConfigured: vi.fn().mockRejectedValue(new Error('network')),
+      grokCredentialsConfigured: vi.fn().mockRejectedValue(new Error('network')),
+      listOpencodeProviders: vi.fn().mockRejectedValue(new Error('network')),
+    })
+    renderScreen(client, {}, { role: 'owner' })
+
+    expect(
+      await screen.findByRole('heading', { name: /couldn’t load agents/i }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /configure agents/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/ask the server owner/i)).not.toBeInTheDocument()
+
+    client.agentCredentialsConfigured.mockResolvedValue(false)
+    client.grokCredentialsConfigured.mockResolvedValue(false)
+    client.listOpencodeProviders.mockResolvedValue([])
+    await userEvent.click(screen.getByRole('button', { name: /retry/i }))
+
+    expect(await screen.findByRole('heading', { name: /configure an agent/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /configure agents/i })).toBeInTheDocument()
   })
 
   it('falls back when the last agent is no longer configured', async () => {

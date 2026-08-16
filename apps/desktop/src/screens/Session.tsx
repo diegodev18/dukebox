@@ -544,6 +544,7 @@ export function Session({
               }
               onRemember={(last) => onSaveSettings({ lastNewSession: last })}
               disabled={disconnected}
+              role={role}
               onConfigureProviders={() => {
                 if (role !== 'owner') return
                 setPreferAgentId('opencode')
