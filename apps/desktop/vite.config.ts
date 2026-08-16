@@ -36,6 +36,9 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // Default 4kb inlines the smaller JetBrains Mono subsets as data: URLs.
+    // Tauri CSP is font-src 'self', which blocks those.
+    assetsInlineLimit: 0,
     rollupOptions: {
       output: {
         manualChunks(id) {
