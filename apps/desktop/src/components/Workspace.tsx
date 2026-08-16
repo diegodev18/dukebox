@@ -174,6 +174,7 @@ export function Workspace({
   openingRef.current = opening
   const activeKeyRef = useRef(activeKey)
   activeKeyRef.current = activeKey
+  const materializedPlans = useRef<Set<string>>(new Set())
 
   const showPr =
     Boolean(pullRequest) &&
@@ -231,6 +232,17 @@ export function Workspace({
     onOpenTerminal(80, 24)
   }, [terminals.tabs.length, onOpenTerminal])
 
+  // Switching sessions must not leave a dead Environment or PR tab — those
+  // belong to the previous session. Plans and terminals are pruned by the
+  // effects below, which also re-open whatever this session still has.
+  const sessionId = session?.id ?? null
+  useEffect(() => {
+    materializedPlans.current = new Set()
+    setOpening(false)
+    setOpenTabs([{ kind: 'changes' }, { kind: 'files' }])
+    setActiveKey(tabKey({ kind: 'changes' }))
+  }, [sessionId])
+
   // Open the Environment tab when a proposal is ready to review — the form is
   // why this session exists, and burying it behind Changes would look unfinished.
   const reviewSessionId = environmentReview?.sessionId ?? null
@@ -263,7 +275,6 @@ export function Workspace({
   // tab gets one when it first appears, but only then — closing a built plan
   // stays closed.
   const planIdList = plans.map((plan) => plan.id).join('\0')
-  const materializedPlans = useRef<Set<string>>(new Set())
   useEffect(() => {
     const ids = planIdList ? planIdList.split('\0') : []
 
@@ -324,14 +335,6 @@ export function Workspace({
   useEffect(() => {
     if (terminals.tabs.length > 0 || error) setOpening(false)
   }, [terminals.tabs.length, error])
-
-  // A per-session flag: switching sessions must not leave a stale "starting…"
-  // menu item behind, nor plan tabs that belong to another session's plans.
-  const sessionId = session?.id ?? null
-  useEffect(() => {
-    materializedPlans.current = new Set()
-    setOpening(false)
-  }, [sessionId])
 
   // If the focused tab disappears — an environment or PR stops being relevant,
   // a plan is answered, a shell closes — fall back to the tab beside it.
