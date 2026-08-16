@@ -53,7 +53,7 @@ import {
   type TerminalHandle,
   type WorkspaceFile,
 } from '@dukebox/sandbox'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { rm } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { join } from 'node:path'
@@ -366,7 +366,11 @@ export class SessionManager {
     if (updated) await this.deps.bus.publishSessionUpdate(this.liveSummary(updated))
   }
 
-  private async persistModel(sessionId: string, model: string, onlyIfAbsent = false): Promise<void> {
+  private async persistModel(
+    sessionId: string,
+    model: string,
+    onlyIfAbsent = false,
+  ): Promise<void> {
     const [updated] = await this.deps.db
       .update(sessions)
       .set({ model, updatedAt: new Date() })

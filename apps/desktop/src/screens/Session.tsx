@@ -29,7 +29,12 @@ import { useColumnWidths } from '@/lib/useColumnWidths'
 import { useLiveSession } from '@/lib/liveSession'
 import { planTabs } from '@/lib/plans'
 import type { UseUpdate } from '@/lib/useUpdate'
-import { AgentIcon, hasAgentIcon, modelsForAgent, providerIdFromModel } from '@/components/AgentIcon'
+import {
+  AgentIcon,
+  hasAgentIcon,
+  modelsForAgent,
+  providerIdFromModel,
+} from '@/components/AgentIcon'
 import { modelsForProvider } from '@/components/OpenCodeProviders'
 import { DukeHero } from '@/components/Duke'
 import { Composer, type ComposerHandle } from '@/components/Composer'
