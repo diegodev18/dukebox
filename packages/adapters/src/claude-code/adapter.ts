@@ -313,6 +313,12 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     this.emit({ type: 'permission_mode', mode })
   }
 
+  async setModel(model: string): Promise<void> {
+    // Claude takes `--model` at process start. Remember it so the next
+    // `start` (ensureRunning after a pause) uses the new one.
+    if (this.context) this.context.model = model
+  }
+
   async interrupt(): Promise<void> {
     if (!this.stream) return
     this.stream.write(encodeInterrupt())

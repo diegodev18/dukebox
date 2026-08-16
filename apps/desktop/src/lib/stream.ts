@@ -223,6 +223,15 @@ export class SessionStream {
     this.send({ type: 'set_permission_mode', sessionId, mode })
   }
 
+  setModel(sessionId: string, model: string, providerId?: string): void {
+    this.send({
+      type: 'set_model',
+      sessionId,
+      model,
+      ...(providerId ? { providerId } : {}),
+    })
+  }
+
   openTerminal(sessionId: string, cols: number, rows: number): void {
     this.send({ type: 'terminal_open', sessionId, cols, rows })
   }

@@ -327,6 +327,11 @@ export class OpenCodeAdapter implements AgentAdapter {
     this.emit({ type: 'permission_mode', mode })
   }
 
+  async setModel(model: string): Promise<void> {
+    // Each turn is a separate `opencode run`, so this applies on the next send.
+    if (this.context) this.context.model = model
+  }
+
   async *events(): AsyncIterable<AgentEvent> {
     while (true) {
       const queued = this.queue.shift()

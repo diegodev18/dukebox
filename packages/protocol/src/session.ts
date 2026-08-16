@@ -402,6 +402,14 @@ export const sessionSummary = z.object({
    * as `bypass` by the server.
    */
   permissionMode: permissionMode.nullable(),
+  /**
+   * The model this session is running, or null when unknown.
+   *
+   * A mid-session change is held in memory and published here so the composer
+   * picker has a value. After a process restart the last `session_started`
+   * event (or the start-time model) is what resume uses.
+   */
+  model: z.string().nullable().optional(),
 })
 
 export type SessionSummary = z.infer<typeof sessionSummary>

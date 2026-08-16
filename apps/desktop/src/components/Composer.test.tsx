@@ -92,6 +92,118 @@ describe('Composer', () => {
     expect(screen.queryByRole('button', { name: 'Permission mode' })).not.toBeInTheDocument()
   })
 
+  it('shows a model picker when the session has models', () => {
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        model="claude-sonnet-5"
+        models={[
+          { id: 'claude-sonnet-5', label: 'Sonnet 5' },
+          { id: 'claude-opus-5', label: 'Opus 5' },
+        ]}
+        onModelChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Model' })).toBeInTheDocument()
+    expect(screen.getByText('Sonnet 5')).toBeInTheDocument()
+  })
+
+  it('hides the model picker when the agent has no models', () => {
+    render(<Composer onSend={vi.fn()} onInterrupt={vi.fn()} running={false} agentId="codex" />)
+
+    expect(screen.queryByRole('button', { name: 'Model' })).not.toBeInTheDocument()
+  })
+
+  it('notifies when the model changes', async () => {
+    const onModelChange = vi.fn()
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        model="claude-sonnet-5"
+        models={[
+          { id: 'claude-sonnet-5', label: 'Sonnet 5' },
+          { id: 'claude-opus-5', label: 'Opus 5' },
+        ]}
+        onModelChange={onModelChange}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Model' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Opus 5' }))
+
+    expect(onModelChange).toHaveBeenCalledWith('claude-opus-5')
+  })
+
+  it('notifies when the OpenCode provider changes', async () => {
+    const onProviderChange = vi.fn()
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        agentId="opencode"
+        model="anthropic/claude-sonnet-4"
+        models={[{ id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' }]}
+        onModelChange={vi.fn()}
+        providerId="anthropic"
+        providers={[
+          {
+            id: 'anthropic',
+            kind: 'anthropic',
+            name: 'Anthropic',
+            models: [{ id: 'claude-sonnet-4', label: 'Claude Sonnet 4' }],
+          },
+          {
+            id: 'openai',
+            kind: 'openai',
+            name: 'OpenAI',
+            models: [{ id: 'gpt-5', label: 'GPT-5' }],
+          },
+        ]}
+        providersStatus="loaded"
+        onProviderChange={onProviderChange}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Provider' }))
+    await userEvent.click(screen.getByRole('option', { name: 'OpenAI' }))
+
+    expect(onProviderChange).toHaveBeenCalledWith('openai')
+  })
+
+  it('shows an OpenCode provider picker', () => {
+    render(
+      <Composer
+        onSend={vi.fn()}
+        onInterrupt={vi.fn()}
+        running={false}
+        agentId="opencode"
+        model="anthropic/claude-sonnet-4"
+        models={[{ id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' }]}
+        onModelChange={vi.fn()}
+        providerId="anthropic"
+        providers={[
+          {
+            id: 'anthropic',
+            kind: 'anthropic',
+            name: 'Anthropic',
+            models: [{ id: 'claude-sonnet-4', label: 'Claude Sonnet 4' }],
+          },
+        ]}
+        providersStatus="loaded"
+        onProviderChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Provider' })).toBeInTheDocument()
+    expect(screen.getByText('Anthropic')).toBeInTheDocument()
+  })
+
   it('notifies when the mode changes', async () => {
     const onPermissionModeChange = vi.fn()
     render(

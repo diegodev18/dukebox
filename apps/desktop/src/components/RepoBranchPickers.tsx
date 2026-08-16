@@ -5,7 +5,9 @@ import {
   AVAILABLE_AGENTS,
   AVAILABLE_MODELS,
   AVAILABLE_PERMISSION_MODES,
+  agentHasPermissionModes,
   agentLabel,
+  availablePermissionModes,
   modelLabel,
   permissionModeLabel,
   type AvailablePermissionModeId,
@@ -474,6 +476,67 @@ export function PermissionModePicker({
         ))}
       </div>
     </PickerShell>
+  )
+}
+
+export function SessionMutablePickers({
+  busy,
+  usingOpenCode,
+  opencodeProvidersStatus,
+  opencodeProviders,
+  providerId,
+  onProviderChange,
+  onAddProvider,
+  models,
+  model,
+  onModelChange,
+  agentId,
+  permissionMode,
+  onPermissionModeChange,
+  showPermissionMode = true,
+}: {
+  busy: boolean
+  usingOpenCode: boolean
+  opencodeProvidersStatus: 'loading' | 'loaded' | 'failed'
+  opencodeProviders: OpencodeProvider[]
+  providerId: string
+  onProviderChange: (providerId: string) => void
+  onAddProvider: () => void
+  models: readonly { id: string; label: string }[]
+  model: string
+  onModelChange: (modelId: string) => void
+  agentId: string
+  permissionMode?: AvailablePermissionModeId
+  onPermissionModeChange?: (mode: AvailablePermissionModeId) => void
+  /** Setup sessions always run in bypass, so the picker is noise there. */
+  showPermissionMode?: boolean
+}) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1">
+      {usingOpenCode && opencodeProvidersStatus === 'loaded' && opencodeProviders.length > 0 && (
+        <ProviderPicker
+          providers={opencodeProviders}
+          value={providerId}
+          onChange={onProviderChange}
+          onAddProvider={onAddProvider}
+          disabled={busy}
+        />
+      )}
+      {models.length > 0 && (
+        <ModelPicker value={model} onChange={onModelChange} disabled={busy} models={models} />
+      )}
+      {showPermissionMode &&
+        permissionMode &&
+        onPermissionModeChange &&
+        (!agentId || agentHasPermissionModes(agentId)) && (
+          <PermissionModePicker
+            value={permissionMode}
+            onChange={onPermissionModeChange}
+            disabled={busy}
+            {...(agentId ? { modes: availablePermissionModes(agentId) } : {})}
+          />
+        )}
+    </div>
   )
 }
 

@@ -113,6 +113,15 @@ export interface AgentAdapter {
   setPermissionMode(mode: PermissionMode): Promise<void>
 
   /**
+   * Change the model the next turn should use.
+   *
+   * Adapters that spawn a process per prompt apply this on the next `send`.
+   * A long-lived process that takes `--model` at start keeps the current
+   * model until the next `start`.
+   */
+  setModel(model: string): Promise<void>
+
+  /**
    * The normalized event stream.
    *
    * Ends when the agent process exits. Consuming it is what drives the

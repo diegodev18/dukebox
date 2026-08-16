@@ -21,7 +21,6 @@ import {
   DEFAULT_PERMISSION_MODE,
   GROK_BUILD_MODELS,
   agentHasPermissionModes,
-  availablePermissionModes,
   cyclePermissionMode,
   type AvailablePermissionModeId,
 } from '@/components/AgentIcon'
@@ -36,9 +35,7 @@ import {
   BranchPicker,
   EnvironmentPicker,
   InstancePicker,
-  ModelPicker,
-  PermissionModePicker,
-  ProviderPicker,
+  SessionMutablePickers,
   RepoPicker,
 } from '@/components/RepoBranchPickers'
 import type { DukeboxClient } from '@/lib/client'
@@ -995,64 +992,6 @@ export function NewSession({
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-function SessionMutablePickers({
-  busy,
-  usingOpenCode,
-  opencodeProvidersStatus,
-  opencodeProviders,
-  providerId,
-  onProviderChange,
-  onAddProvider,
-  models,
-  model,
-  onModelChange,
-  agentId,
-  permissionMode,
-  onPermissionModeChange,
-  showPermissionMode = true,
-}: {
-  busy: boolean
-  usingOpenCode: boolean
-  opencodeProvidersStatus: 'loading' | 'loaded' | 'failed'
-  opencodeProviders: OpencodeProvider[]
-  providerId: string
-  onProviderChange: (providerId: string) => void
-  onAddProvider: () => void
-  models: readonly { id: string; label: string }[]
-  model: string
-  onModelChange: (modelId: string) => void
-  agentId: string
-  permissionMode: AvailablePermissionModeId
-  onPermissionModeChange: (mode: AvailablePermissionModeId) => void
-  /** Setup sessions always run in bypass, so the picker is noise there. */
-  showPermissionMode?: boolean
-}) {
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1">
-      {usingOpenCode && opencodeProvidersStatus === 'loaded' && (
-        <ProviderPicker
-          providers={opencodeProviders}
-          value={providerId}
-          onChange={onProviderChange}
-          onAddProvider={onAddProvider}
-          disabled={busy}
-        />
-      )}
-      {!(usingOpenCode && models.length === 0) && (
-        <ModelPicker value={model} onChange={onModelChange} disabled={busy} models={models} />
-      )}
-      {showPermissionMode && agentHasPermissionModes(agentId) && (
-        <PermissionModePicker
-          value={permissionMode}
-          onChange={onPermissionModeChange}
-          disabled={busy}
-          modes={availablePermissionModes(agentId)}
-        />
-      )}
     </div>
   )
 }

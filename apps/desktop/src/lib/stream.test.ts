@@ -383,6 +383,33 @@ describe('commands', () => {
       { type: 'set_permission_mode', sessionId: SESSION, mode: 'plan' },
     ])
   })
+
+  it('changes the model', () => {
+    const { stream, socket } = setup()
+    stream.connect()
+    socket().open()
+    stream.setModel(SESSION, 'claude-sonnet-5')
+
+    expect(socket().commands()).toEqual([
+      { type: 'set_model', sessionId: SESSION, model: 'claude-sonnet-5' },
+    ])
+  })
+
+  it('changes the model with an OpenCode provider', () => {
+    const { stream, socket } = setup()
+    stream.connect()
+    socket().open()
+    stream.setModel(SESSION, 'claude-sonnet-4', 'anthropic')
+
+    expect(socket().commands()).toEqual([
+      {
+        type: 'set_model',
+        sessionId: SESSION,
+        model: 'claude-sonnet-4',
+        providerId: 'anthropic',
+      },
+    ])
+  })
 })
 
 describe('bad input', () => {

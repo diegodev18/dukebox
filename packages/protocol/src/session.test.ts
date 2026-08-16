@@ -118,6 +118,16 @@ describe('sessionSummary', () => {
     expect(sessionSummary.parse({ ...summary, permissionMode: null }).permissionMode).toBeNull()
   })
 
+  it('allows an omitted model', () => {
+    expect(sessionSummary.parse(summary).model).toBeUndefined()
+  })
+
+  it('carries the current model', () => {
+    expect(sessionSummary.parse({ ...summary, model: 'claude-sonnet-5' }).model).toBe(
+      'claude-sonnet-5',
+    )
+  })
+
   it('rejects a summary that omits the field', () => {
     const { permissionMode: _omitted, ...rest } = summary
     expect(sessionSummary.safeParse(rest).success).toBe(false)

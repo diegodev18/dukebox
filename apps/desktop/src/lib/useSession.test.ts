@@ -15,6 +15,7 @@ const { MockStream } = vi.hoisted(() => {
     interrupt = vi.fn()
     answerPermission = vi.fn()
     setPermissionMode = vi.fn()
+    setModel = vi.fn()
     handlers!: StreamHandlers
 
     constructor(_address: unknown, _token: unknown, handlers: StreamHandlers, _resume?: unknown) {

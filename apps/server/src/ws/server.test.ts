@@ -31,6 +31,7 @@ const onPrompt = vi.fn(async () => {})
 const onInterrupt = vi.fn(async () => {})
 const onPermissionResponse = vi.fn(async () => {})
 const onSetPermissionMode = vi.fn(async () => {})
+const onSetModel = vi.fn(async () => {})
 
 /**
  * The PTYs handed to the registry, newest last.
@@ -95,6 +96,7 @@ beforeAll(async () => {
     onInterrupt,
     onPermissionResponse,
     onSetPermissionMode,
+    onSetModel,
     terminals,
     auditTerminal,
   })
@@ -107,6 +109,7 @@ beforeEach(async () => {
   onInterrupt.mockClear()
   onPermissionResponse.mockClear()
   onSetPermissionMode.mockClear()
+  onSetModel.mockClear()
   auditTerminal.mockClear()
   fakeTerminals = []
 })
@@ -634,6 +637,33 @@ describe('commands', () => {
     await client.waitFor(() => onSetPermissionMode.mock.calls.length === 1)
 
     expect(onSetPermissionMode).toHaveBeenCalledWith(sessionId, 'plan')
+    client.close()
+  })
+
+  it('forwards a model change to the session', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({ type: 'set_model', sessionId, model: 'claude-sonnet-5' })
+    await client.waitFor(() => onSetModel.mock.calls.length === 1)
+
+    expect(onSetModel).toHaveBeenCalledWith(sessionId, 'claude-sonnet-5', undefined)
+    client.close()
+  })
+
+  it('forwards a model change with an OpenCode provider', async () => {
+    const sessionId = await createSession()
+    const client = await TestClient.connect(await pairDevice())
+
+    client.send({
+      type: 'set_model',
+      sessionId,
+      model: 'claude-sonnet-4',
+      providerId: 'anthropic',
+    })
+    await client.waitFor(() => onSetModel.mock.calls.length === 1)
+
+    expect(onSetModel).toHaveBeenCalledWith(sessionId, 'claude-sonnet-4', 'anthropic')
     client.close()
   })
 

@@ -29,6 +29,7 @@ import {
   type PullRequestSummary,
   type SessionPurpose,
   type SessionStatus,
+  type SessionSummary,
   type PermissionMode,
   DEFAULT_PERMISSION_MODE,
   resolvePermissionMode,
@@ -259,6 +260,12 @@ function grokAuthContext(
   return { grokAuth: grokAuthHooks(secrets) }
 }
 
+/** Compose OpenCode's `provider/model` when the picker sent them separately. */
+function resolveLiveModel(model: string, providerId?: string): string {
+  if (providerId && !model.includes('/')) return `${providerId}/${model}`
+  return model
+}
+
 function permissionModeContext(
   session: Session,
   override?: PermissionMode,
@@ -305,7 +312,24 @@ export class SessionManager {
    */
   private readonly resuming = new Map<string, Promise<RunningSession>>()
 
+  /**
+   * Model chosen mid-session, keyed by session.
+   *
+   * Survives `pause` so the next `ensureRunning` / `adapter.start` uses it.
+   * A process restart forgets this map and falls back to the last
+   * `session_started` event or the start-time model.
+   */
+  private readonly sessionModels = new Map<string, string>()
+
   constructor(private readonly deps: SessionManagerDeps) {}
+
+  private liveSummary(session: Session): SessionSummary {
+    return {
+      ...toSummary(session),
+      model:
+        this.sessionModels.get(session.id) ?? this.running.get(session.id)?.sessionModel ?? null,
+    }
+  }
 
   private createAdapter(agentId: string): AgentAdapter {
     if (this.deps.createAdapter) return this.deps.createAdapter(agentId)
@@ -326,7 +350,7 @@ export class SessionManager {
     // Announced from here because this is the one place a session's state
     // changes. A client that has to poll for this shows whatever was true when
     // it loaded, which for a running session is wrong within seconds.
-    if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
+    if (updated) await this.deps.bus.publishSessionUpdate(this.liveSummary(updated))
   }
 
   private async persistPermissionMode(sessionId: string, mode: PermissionMode): Promise<void> {
@@ -336,7 +360,7 @@ export class SessionManager {
       .where(eq(sessions.id, sessionId))
       .returning()
 
-    if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
+    if (updated) await this.deps.bus.publishSessionUpdate(this.liveSummary(updated))
   }
 
   /**
@@ -369,7 +393,7 @@ export class SessionManager {
         .where(eq(sessions.id, sessionId))
         .returning()
 
-      if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
+      if (updated) await this.deps.bus.publishSessionUpdate(this.liveSummary(updated))
     } catch {
       // Naming is best-effort. The heuristic title already on the row stands.
     }
@@ -603,6 +627,8 @@ export class SessionManager {
       ...grokAuthContext(session.agentId, this.deps.secrets),
     })
 
+    if (model) this.sessionModels.set(session.id, model)
+
     this.running.set(session.id, {
       container,
       workspace,
@@ -647,7 +673,14 @@ export class SessionManager {
           // otherwise lose the id that `--resume` / `--session` needs.
           await this.persistAgentSessionId(sessionId, adapter.agentSessionId())
           const live = this.running.get(sessionId)
-          if (live && event.model) live.sessionModel = event.model
+          // A mid-session set_model is authoritative; a late session_started
+          // from the process that started on the old model must not overwrite it.
+          if (event.model && !this.sessionModels.has(sessionId)) {
+            this.sessionModels.set(sessionId, event.model)
+            if (live) live.sessionModel = event.model
+          } else if (live && event.model && !live.sessionModel) {
+            live.sessionModel = event.model
+          }
         }
 
         if (event.type === 'done') {
@@ -1382,7 +1415,7 @@ export class SessionManager {
       .where(eq(sessions.id, sessionId))
       .returning()
 
-    if (updated) await this.deps.bus.publishSessionUpdate(toSummary(updated))
+    if (updated) await this.deps.bus.publishSessionUpdate(this.liveSummary(updated))
   }
 
   private async repoFullName(projectId: string): Promise<string | null> {
@@ -1621,6 +1654,7 @@ export class SessionManager {
     const purpose = (session.purpose as SessionPurpose) || 'coding'
     const config = await this.configFor(session.environmentId)
 
+    const model = this.sessionModels.get(sessionId)
     const adapter = this.createAdapter(session.agentId)
     await adapter.start({
       sessionId,
@@ -1630,6 +1664,7 @@ export class SessionManager {
       // conversation rather than from nothing.
       ...(session.agentSessionId ? { resumeFrom: session.agentSessionId } : {}),
       ...(config.instructions && purpose === 'coding' ? { instructions: config.instructions } : {}),
+      ...(model ? { model } : {}),
       ...permissionModeContext(session),
       ...grokAuthContext(session.agentId, this.deps.secrets),
     })
@@ -1644,6 +1679,7 @@ export class SessionManager {
       repoFullName: project.repoFullName,
       purpose,
       setupVerifyAttempts: 0,
+      ...(model ? { sessionModel: model } : {}),
       ...(credentials ? { credentials } : {}),
     }
 
@@ -1756,6 +1792,25 @@ export class SessionManager {
     const running = await this.ensureRunning(sessionId)
 
     await running.adapter.setPermissionMode(mode)
+  }
+
+  /**
+   * Remember a mid-session model change.
+   *
+   * Stored in memory so the next `adapter.start` and the next prompt (when
+   * the adapter can apply it) use the new model. A process restart falls
+   * back to the last `session_started` event or the start-time model.
+   */
+  async setModel(sessionId: string, model: string, providerId?: string): Promise<void> {
+    const resolved = resolveLiveModel(model, providerId)
+    this.sessionModels.set(sessionId, resolved)
+
+    const running = await this.ensureRunning(sessionId)
+    running.sessionModel = resolved
+    await running.adapter.setModel(resolved)
+
+    const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
+    if (session) await this.deps.bus.publishSessionUpdate(this.liveSummary(session))
   }
 
   /**

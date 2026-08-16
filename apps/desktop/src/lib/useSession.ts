@@ -33,6 +33,7 @@ export interface LiveSession {
   interrupt: () => void
   respond: (id: string, allow: boolean) => void
   setPermissionMode: (mode: PermissionMode) => void
+  setModel: (model: string, providerId?: string) => void
   openTerminal: (cols: number, rows: number) => void
   attachTerminal: (terminalId: string, cols: number, rows: number) => void
   detachTerminal: (terminalId: string) => void
@@ -248,6 +249,14 @@ export function useSession(
     [sessionId],
   )
 
+  const setModel = useCallback(
+    (model: string, providerId?: string) => {
+      if (!sessionId) return
+      streamRef.current?.setModel(sessionId, model, providerId)
+    },
+    [sessionId],
+  )
+
   const openTerminal = useCallback(
     (cols: number, rows: number) => {
       if (!sessionId) return
@@ -326,6 +335,7 @@ export function useSession(
     interrupt,
     respond,
     setPermissionMode,
+    setModel,
     openTerminal,
     attachTerminal,
     detachTerminal,

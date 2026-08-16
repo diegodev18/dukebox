@@ -65,6 +65,46 @@ describe('permission mode', () => {
   })
 })
 
+describe('set_model', () => {
+  it('parses set_model', () => {
+    const result = clientCommand.safeParse({
+      type: 'set_model',
+      sessionId,
+      model: 'claude-sonnet-5',
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data).toMatchObject({ model: 'claude-sonnet-5' })
+  })
+
+  it('parses an optional OpenCode provider', () => {
+    const result = clientCommand.safeParse({
+      type: 'set_model',
+      sessionId,
+      model: 'claude-sonnet-4',
+      providerId: 'anthropic',
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data).toMatchObject({
+        model: 'claude-sonnet-4',
+        providerId: 'anthropic',
+      })
+    }
+  })
+
+  it('rejects an empty model', () => {
+    const result = clientCommand.safeParse({
+      type: 'set_model',
+      sessionId,
+      model: '',
+    })
+
+    expect(result.success).toBe(false)
+  })
+})
+
 describe('terminal commands', () => {
   it('parses terminal_open with a size', () => {
     const result = clientCommand.safeParse({

@@ -2,6 +2,7 @@ import {
   DEFAULT_COMMIT_IDENTITY,
   isTerminal,
   type DeviceRole,
+  type OpencodeProvider,
   type ProjectSummary,
   type SessionSummary,
 } from '@dukebox/protocol'
@@ -28,7 +29,8 @@ import { useColumnWidths } from '@/lib/useColumnWidths'
 import { useLiveSession } from '@/lib/liveSession'
 import { planTabs } from '@/lib/plans'
 import type { UseUpdate } from '@/lib/useUpdate'
-import { AgentIcon, hasAgentIcon } from '@/components/AgentIcon'
+import { AgentIcon, hasAgentIcon, modelsForAgent, providerIdFromModel } from '@/components/AgentIcon'
+import { modelsForProvider } from '@/components/OpenCodeProviders'
 import { DukeHero } from '@/components/Duke'
 import { Composer, type ComposerHandle } from '@/components/Composer'
 import { AttachIcon } from '@/components/icons'
@@ -736,6 +738,13 @@ export function Session({
               session={current}
               live={live}
               connection={connection}
+              client={client}
+              onConfigureProviders={() => {
+                if (role !== 'owner') return
+                setPreferAgentId('opencode')
+                setSettingsCategory('agents')
+                setSettingsOpen(true)
+              }}
               onContinueAfterMerge={() => continueAfterMerge(current)}
             />
             <ConnectedWorkspace
@@ -928,11 +937,15 @@ function SessionColumn({
   session,
   live,
   connection,
+  client,
+  onConfigureProviders,
   onContinueAfterMerge,
 }: {
   session: SessionSummary
   live: LiveSession
   connection: Connection
+  client: DukeboxClient
+  onConfigureProviders: () => void
   onContinueAfterMerge: () => void
 }) {
   const transcript = useLiveSession((state) => state.transcript)
@@ -949,6 +962,78 @@ function SessionColumn({
     setComposerDraft({ text, key: Date.now() })
   }, [])
   const connected = isStreamConnected(streamStatus)
+  const usingOpenCode = session.agentId === 'opencode'
+  const remoteModel = session.model ?? transcript.model ?? ''
+  const [opencodeProviders, setOpencodeProviders] = useState<OpencodeProvider[]>([])
+  const [opencodeProvidersStatus, setOpencodeProvidersStatus] = useState<
+    'loading' | 'loaded' | 'failed'
+  >(usingOpenCode ? 'loading' : 'loaded')
+  const [model, setModel] = useState(remoteModel)
+  const [providerId, setProviderId] = useState(providerIdFromModel(remoteModel))
+
+  useEffect(() => {
+    if (remoteModel) setModel(remoteModel)
+    const fromRemote = providerIdFromModel(remoteModel)
+    if (fromRemote) setProviderId(fromRemote)
+  }, [remoteModel])
+
+  useEffect(() => {
+    if (!usingOpenCode) return
+    let cancelled = false
+
+    client
+      .listOpencodeProviders()
+      .then((found) => {
+        if (cancelled) return
+        setOpencodeProviders(found)
+        setOpencodeProvidersStatus('loaded')
+      })
+      .catch(() => {
+        if (cancelled) return
+        setOpencodeProviders([])
+        setOpencodeProvidersStatus('failed')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [client, usingOpenCode])
+
+  useEffect(() => {
+    if (!usingOpenCode) return
+    if (opencodeProviders.some((provider) => provider.id === providerId)) return
+    const first = opencodeProviders[0]?.id
+    if (first) setProviderId(first)
+  }, [usingOpenCode, opencodeProviders, providerId])
+
+  const selectedProvider = opencodeProviders.find((provider) => provider.id === providerId)
+  const models = useMemo(() => {
+    if (usingOpenCode) {
+      return selectedProvider ? modelsForProvider(selectedProvider) : []
+    }
+    return modelsForAgent(session.agentId)
+  }, [usingOpenCode, selectedProvider, session.agentId])
+
+  useEffect(() => {
+    if (models.length === 0) return
+    if (models.some((candidate) => candidate.id === model)) return
+    const fallback = models[0]?.id
+    if (fallback) setModel(fallback)
+  }, [models, model])
+
+  const changeModel = (next: string) => {
+    setModel(next)
+    live.setModel(next, usingOpenCode ? providerId : undefined)
+  }
+
+  const changeProvider = (next: string) => {
+    setProviderId(next)
+    const provider = opencodeProviders.find((candidate) => candidate.id === next)
+    const first = provider ? modelsForProvider(provider)[0]?.id : undefined
+    if (!first) return
+    setModel(first)
+    live.setModel(first, next)
+  }
   const { dragging, onDragEnter, onDragOver, onDragLeave, onDrop } = useFileDrop({
     disabled: !connected,
     onFiles: (files) => composer.current?.attachFiles(files),
@@ -1043,6 +1128,22 @@ function SessionColumn({
         disabled={!isStreamConnected(streamStatus)}
         error={error}
         agentId={session.agentId}
+        {...(models.length > 0
+          ? {
+              model,
+              models,
+              onModelChange: changeModel,
+            }
+          : {})}
+        {...(usingOpenCode
+          ? {
+              providerId,
+              providers: opencodeProviders,
+              providersStatus: opencodeProvidersStatus,
+              onProviderChange: changeProvider,
+              onAddProvider: onConfigureProviders,
+            }
+          : {})}
         {...(composerDraft ? { draft: composerDraft } : {})}
         {...(session.purpose !== 'environment_setup' && session.permissionMode
           ? {

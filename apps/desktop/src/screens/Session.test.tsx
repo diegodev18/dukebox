@@ -77,6 +77,7 @@ vi.mock('@/lib/useSession', () => ({
       interrupt: vi.fn(),
       respond: vi.fn(),
       setPermissionMode: vi.fn(),
+      setModel: vi.fn(),
       openTerminal: vi.fn(),
       attachTerminal: vi.fn(),
       detachTerminal: vi.fn(),
@@ -105,6 +106,7 @@ vi.mock('@/lib/client', async (importOriginal) => {
       deleteProject = deleteProject
       getPullRequest = getPullRequest
       listEnvironments = vi.fn().mockResolvedValue([])
+      listOpencodeProviders = vi.fn().mockResolvedValue([])
     },
   }
 })
