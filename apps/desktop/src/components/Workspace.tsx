@@ -24,7 +24,8 @@ const TerminalView = lazy(() =>
 )
 
 /**
- * What the session is changing: files, diffs, a terminal, a preview.
+ * What the session is changing: Changes, Files, Terminal, Environment, Plan,
+ * Pull request.
  *
  * Collapsing it does not hide it. The question it answers — did anything
  * change, and how much — is worth keeping visible, so closed it becomes a list
