@@ -1,5 +1,5 @@
 import type { ProjectSummary, SessionSummary } from '@dukebox/protocol'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defaultSettings } from '@/lib/settings'
@@ -35,6 +35,10 @@ vi.mock('@/components/Composer', () => ({
 
 vi.mock('@/components/Workspace', () => ({
   Workspace: () => <div>workspace</div>,
+}))
+
+vi.mock('@/screens/NewSession', () => ({
+  NewSession: () => <div>new session form</div>,
 }))
 
 vi.mock('@/lib/useSession', () => ({
@@ -155,6 +159,7 @@ beforeEach(() => {
   })
   archiveSession.mockResolvedValue(undefined)
   unarchiveSession.mockResolvedValue(undefined)
+  deleteProject.mockResolvedValue(undefined)
   removeConnection.mockResolvedValue(undefined)
 })
 
@@ -248,6 +253,82 @@ describe('Session', () => {
     await waitFor(() => expect(unarchiveSession).toHaveBeenCalledWith(session.id))
     expect(screen.getByRole('button', { name: 'Done, Fix the demux bug' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Archived' })).not.toBeInTheDocument()
+  })
+
+  it('unarchives when an archived row is opened', async () => {
+    listSessions.mockResolvedValueOnce([other])
+    listArchivedSessions.mockResolvedValueOnce([session])
+    renderSession()
+
+    await screen.findByRole('button', { name: /Done, Add a health check/ })
+    await userEvent.click(screen.getByRole('button', { name: 'Archived' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Done, Fix the demux bug' }))
+
+    await waitFor(() => expect(unarchiveSession).toHaveBeenCalledWith(session.id))
+    expect(screen.getByRole('button', { name: 'Done, Fix the demux bug' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    expect(screen.queryByRole('button', { name: 'Archived' })).not.toBeInTheDocument()
+  })
+
+  it('shows the restored session instead of New Session', async () => {
+    listSessions.mockResolvedValueOnce([other])
+    listArchivedSessions.mockResolvedValueOnce([session])
+    renderSession()
+
+    await screen.findByRole('button', { name: /Done, Add a health check/ })
+    await userEvent.click(screen.getByRole('button', { name: 'New session' }))
+    expect(await screen.findByText('new session form')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Archived' }))
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Session actions for Fix the demux bug' }),
+    )
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Restore' }))
+
+    await waitFor(() => expect(unarchiveSession).toHaveBeenCalledWith(session.id))
+    expect(screen.queryByText('new session form')).not.toBeInTheDocument()
+    expect(screen.getByText('transcript')).toBeInTheDocument()
+  })
+
+  it('keeps an archived selection when another project is removed', async () => {
+    const otherProject: ProjectSummary = {
+      ...project,
+      id: '00000000-0000-4000-8000-000000000002',
+      repoFullName: 'acme/other',
+    }
+    const archived: SessionSummary = {
+      ...session,
+      id: '00000000-0000-4000-8000-000000000013',
+      projectId: otherProject.id,
+      title: 'Old work',
+    }
+    listProjects.mockResolvedValueOnce([project, otherProject])
+    listSessions.mockResolvedValueOnce([other])
+    listArchivedSessions.mockResolvedValueOnce([archived])
+    unarchiveSession.mockImplementationOnce(() => new Promise(() => {}))
+    renderSession()
+
+    await screen.findByRole('button', { name: /Done, Add a health check/ })
+    await userEvent.click(screen.getByRole('button', { name: 'Archived' }))
+    await userEvent.click(screen.getByRole('button', { name: /Done, Old work/ }))
+    expect(screen.getByRole('button', { name: /Done, Old work/ })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+
+    fireEvent.contextMenu(screen.getByText('acme/app'))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Remove' }))
+    const dialog = screen.getByRole('dialog', { name: /remove acme\/app/i })
+    await userEvent.type(within(dialog).getByRole('textbox'), 'acme/app')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Remove' }))
+
+    await waitFor(() => expect(deleteProject).toHaveBeenCalledWith(project.id))
+    expect(screen.getByRole('button', { name: /Done, Old work/ })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
   })
 
   it('shows the empty chrome when there are no sessions', async () => {

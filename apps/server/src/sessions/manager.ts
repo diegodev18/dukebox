@@ -52,7 +52,7 @@ import {
   type TerminalHandle,
   type WorkspaceFile,
 } from '@dukebox/sandbox'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { rm } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { join } from 'node:path'
@@ -1583,6 +1583,11 @@ export class SessionManager {
     const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
     if (!session) throw new SessionError('no such session')
 
+    // A follow-up must not stay hidden: restoreAfterRestart skips nothing that
+    // is in progress, but a row that is still archived would be easy to lose
+    // if a later filter ever excludes it again.
+    if (session.archivedAt) await this.unarchive(sessionId)
+
     const container = await this.deps.sandbox.get(sessionId)
     if (!container) {
       // The container is genuinely gone, so there is no workspace to resume
@@ -1908,7 +1913,7 @@ export class SessionManager {
     const live = await this.deps.db
       .select()
       .from(sessions)
-      .where(and(inArray(sessions.status, IN_PROGRESS_STATUSES), isNull(sessions.archivedAt)))
+      .where(inArray(sessions.status, IN_PROGRESS_STATUSES))
 
     await Promise.all(live.map((session) => this.restoreOne(session)))
   }

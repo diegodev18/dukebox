@@ -199,16 +199,18 @@ export function Session({
 
   // Session summaries arrive over the socket too, so the sidebar's status dots
   // follow a running agent without polling.
+  const applySessionPatch = (sessionId: string, patch: Partial<SessionSummary>) => {
+    const apply = (rows: SessionSummary[]) =>
+      rows.map((session) => (session.id === sessionId ? { ...session, ...patch } : session))
+    setSessions(apply)
+    setArchivedSessions(apply)
+  }
+
   const live = useSession(
     connection,
     selected,
     (updated) => {
-      setSessions((current) =>
-        current.map((session) => (session.id === updated.id ? updated : session)),
-      )
-      setArchivedSessions((current) =>
-        current.map((session) => (session.id === updated.id ? updated : session)),
-      )
+      applySessionPatch(updated.id, updated)
     },
     () => {
       void removeConnection(connection.deviceId)
@@ -247,10 +249,7 @@ export function Session({
     selected,
     !disconnected,
     (sessionId, patch) => {
-      const apply = (rows: SessionSummary[]) =>
-        rows.map((session) => (session.id === sessionId ? { ...session, ...patch } : session))
-      setSessions(apply)
-      setArchivedSessions(apply)
+      applySessionPatch(sessionId, patch)
     },
   )
 
@@ -337,6 +336,30 @@ export function Session({
     setSearchOpen(false)
     setContinueFrom(null)
     setSelected(sessionId)
+
+    // Opening an archived row puts it back. A follow-up would resume the
+    // container; leaving the hide flag set would drop that turn on restart.
+    if (!archivedSessions.some((session) => session.id === sessionId)) return
+
+    void (async () => {
+      try {
+        await client.unarchiveSession(sessionId)
+        setArchiveError(null)
+      } catch (error) {
+        setArchiveError(error instanceof Error ? error.message : 'Could not restore the session.')
+        return
+      }
+
+      const moved = archivedSessions.find((session) => session.id === sessionId) ?? null
+      setArchivedSessions((current) => current.filter((session) => session.id !== sessionId))
+      if (moved) {
+        setSessions((current) =>
+          [moved, ...current.filter((session) => session.id !== moved.id)].sort(
+            (left, right) => right.createdAt - left.createdAt,
+          ),
+        )
+      }
+    })()
   }
 
   const startNewSession = (projectId?: string) => {
@@ -483,14 +506,20 @@ export function Session({
                   }
 
                   const remaining = sessions.filter((session) => session.projectId !== projectId)
+                  const remainingArchived = archivedSessions.filter(
+                    (session) => session.projectId !== projectId,
+                  )
                   setProjects((current) => current.filter((project) => project.id !== projectId))
                   setSessions(remaining)
-                  setArchivedSessions((current) =>
-                    current.filter((session) => session.projectId !== projectId),
-                  )
+                  setArchivedSessions(remainingArchived)
                   setSelected((currentSelected) => {
                     if (!currentSelected) return currentSelected
                     if (remaining.some((session) => session.id === currentSelected)) {
+                      return currentSelected
+                    }
+                    // An archived selection is not in `remaining`. Keep it
+                    // unless this project owned that row.
+                    if (remainingArchived.some((session) => session.id === currentSelected)) {
                       return currentSelected
                     }
                     return remaining[0]?.id ?? null
@@ -507,32 +536,7 @@ export function Session({
                   }
                 })()
               }}
-              onRestore={(sessionId) => {
-                void (async () => {
-                  try {
-                    await client.unarchiveSession(sessionId)
-                    setArchiveError(null)
-                  } catch (error) {
-                    setArchiveError(
-                      error instanceof Error ? error.message : 'Could not restore the session.',
-                    )
-                    return
-                  }
-
-                  const moved = archivedSessions.find((session) => session.id === sessionId) ?? null
-                  setArchivedSessions((current) =>
-                    current.filter((session) => session.id !== sessionId),
-                  )
-                  if (moved) {
-                    setSessions((current) =>
-                      [moved, ...current.filter((session) => session.id !== moved.id)].sort(
-                        (left, right) => right.createdAt - left.createdAt,
-                      ),
-                    )
-                  }
-                  setSelected(sessionId)
-                })()
-              }}
+              onRestore={selectSession}
               onArchive={(sessionId) => {
                 void (async () => {
                   try {
@@ -671,12 +675,10 @@ export function Session({
                 current.purpose === 'coding'
                   ? {
                       client,
-                      onUpdated: (patch) =>
-                        setSessions((sessions) =>
-                          sessions.map((session) =>
-                            session.id === selected ? { ...session, ...patch } : session,
-                          ),
-                        ),
+                      onUpdated: (patch) => {
+                        if (!selected) return
+                        applySessionPatch(selected, patch)
+                      },
                       onContinue: () => continueAfterMerge(current),
                     }
                   : null
