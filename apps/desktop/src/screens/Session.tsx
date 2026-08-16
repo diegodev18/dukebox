@@ -146,8 +146,8 @@ export function Session({
         client.listSessions(),
         client.listArchivedSessions(),
       ])
-      setSessions(active)
-      setArchivedSessions(archived)
+      setSessions((current) => keepKnownModels(current, active))
+      setArchivedSessions((current) => keepKnownModels(current, archived))
     } catch {
       // Same as projects: a blip must not empty the sidebar.
     }
@@ -232,9 +232,10 @@ export function Session({
     selected,
     (updated) => {
       const previous = sessionsRef.current.find((session) => session.id === updated.id)
-      applySessionPatch(updated.id, updated)
+      const merged = keepKnownModel(previous ?? updated, updated)
+      applySessionPatch(updated.id, merged)
       sessionsRef.current = sessionsRef.current.map((session) =>
-        session.id === updated.id ? updated : session,
+        session.id === updated.id ? merged : session,
       )
 
       if (
@@ -999,13 +1000,6 @@ function SessionColumn({
     }
   }, [client, usingOpenCode])
 
-  useEffect(() => {
-    if (!usingOpenCode) return
-    if (opencodeProviders.some((provider) => provider.id === providerId)) return
-    const first = opencodeProviders[0]?.id
-    if (first) setProviderId(first)
-  }, [usingOpenCode, opencodeProviders, providerId])
-
   const selectedProvider = opencodeProviders.find((provider) => provider.id === providerId)
   const models = useMemo(() => {
     if (usingOpenCode) {
@@ -1013,13 +1007,6 @@ function SessionColumn({
     }
     return modelsForAgent(session.agentId)
   }, [usingOpenCode, selectedProvider, session.agentId])
-
-  useEffect(() => {
-    if (models.length === 0) return
-    if (models.some((candidate) => candidate.id === model)) return
-    const fallback = models[0]?.id
-    if (fallback) setModel(fallback)
-  }, [models, model])
 
   const changeModel = (next: string) => {
     setModel(next)
@@ -1182,6 +1169,18 @@ function PaneFallback() {
 
 function NavFallback() {
   return <div className="h-full border-r border-border bg-surface" />
+}
+
+/** Null means unknown, not "clear the picker" — a stale REST snapshot must not clobber a live value. */
+function keepKnownModel(current: SessionSummary, incoming: SessionSummary): SessionSummary {
+  return incoming.model ? incoming : { ...incoming, model: current.model }
+}
+
+function keepKnownModels(current: SessionSummary[], incoming: SessionSummary[]): SessionSummary[] {
+  return incoming.map((row) => {
+    const previous = current.find((session) => session.id === row.id)
+    return previous ? keepKnownModel(previous, row) : row
+  })
 }
 
 function EmptySession({

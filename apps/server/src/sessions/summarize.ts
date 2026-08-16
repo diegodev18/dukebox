@@ -36,7 +36,7 @@ export function toSummary(session: Session): SessionSummary {
     pullRequest,
     environmentId: session.environmentId,
     permissionMode: parsePermissionMode(session.permissionMode, session.agentId),
-    model: null,
+    model: session.model ?? null,
   }
 }
 

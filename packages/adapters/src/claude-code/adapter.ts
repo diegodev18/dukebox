@@ -314,8 +314,9 @@ export class ClaudeCodeAdapter implements AgentAdapter {
   }
 
   async setModel(model: string): Promise<void> {
-    // Claude takes `--model` at process start. Remember it so the next
-    // `start` (ensureRunning after a pause) uses the new one.
+    // Claude takes `--model` at process start and has no hot-swap control.
+    // Restarting here would end the consume loop. The next `start`
+    // (ensureRunning after a pause) uses the new flag.
     if (this.context) this.context.model = model
   }
 

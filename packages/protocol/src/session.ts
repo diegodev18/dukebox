@@ -405,9 +405,8 @@ export const sessionSummary = z.object({
   /**
    * The model this session is running, or null when unknown.
    *
-   * A mid-session change is held in memory and published here so the composer
-   * picker has a value. After a process restart the last `session_started`
-   * event (or the start-time model) is what resume uses.
+   * Written at create and on set_model so REST and live updates agree.
+   * Resume after a restart uses this stored value.
    */
   model: z.string().nullable().optional(),
 })

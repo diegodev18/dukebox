@@ -107,4 +107,12 @@ describe('toSummary', () => {
     expect(toSummary(row({ baseCommit: 'deadbeef' })).baseCommit).toBe('deadbeef')
     expect(toSummary(row({ baseCommit: null })).baseCommit).toBeNull()
   })
+
+  it('carries the stored model', () => {
+    expect(toSummary(row({ model: 'claude-sonnet-5' })).model).toBe('claude-sonnet-5')
+  })
+
+  it('leaves the model null when none is stored', () => {
+    expect(toSummary(row({ model: null })).model).toBeNull()
+  })
 })

@@ -315,9 +315,9 @@ export class SessionManager {
   /**
    * Model chosen mid-session, keyed by session.
    *
-   * Survives `pause` so the next `ensureRunning` / `adapter.start` uses it.
-   * A process restart forgets this map and falls back to the last
-   * `session_started` event or the start-time model.
+   * The session row is the source of truth (list/get/create and resume after
+   * a process restart). This map is the same value for the next adapter.start
+   * in this process without another read.
    */
   private readonly sessionModels = new Map<string, string>()
 
@@ -327,7 +327,10 @@ export class SessionManager {
     return {
       ...toSummary(session),
       model:
-        this.sessionModels.get(session.id) ?? this.running.get(session.id)?.sessionModel ?? null,
+        this.sessionModels.get(session.id) ??
+        this.running.get(session.id)?.sessionModel ??
+        session.model ??
+        null,
     }
   }
 
@@ -358,6 +361,20 @@ export class SessionManager {
       .update(sessions)
       .set({ permissionMode: mode, updatedAt: new Date() })
       .where(eq(sessions.id, sessionId))
+      .returning()
+
+    if (updated) await this.deps.bus.publishSessionUpdate(this.liveSummary(updated))
+  }
+
+  private async persistModel(sessionId: string, model: string, onlyIfAbsent = false): Promise<void> {
+    const [updated] = await this.deps.db
+      .update(sessions)
+      .set({ model, updatedAt: new Date() })
+      .where(
+        onlyIfAbsent
+          ? and(eq(sessions.id, sessionId), isNull(sessions.model))
+          : eq(sessions.id, sessionId),
+      )
       .returning()
 
     if (updated) await this.deps.bus.publishSessionUpdate(this.liveSummary(updated))
@@ -461,12 +478,14 @@ export class SessionManager {
         title: purpose === 'environment_setup' ? 'Configure environment' : titleFromPrompt(prompt),
         prompt,
         permissionMode,
+        model: options.model ?? null,
         gitPreferences: parseGitPreferences(options.gitPreferences),
         createdByDeviceId: options.createdByDeviceId,
       })
       .returning()
 
     if (!session) throw new SessionError('failed to create session')
+    if (options.model) this.sessionModels.set(session.id, options.model)
 
     // Naming is a short model call and must not delay the 202. The heuristic
     // title is already on the row; a better one arrives as a session_update.
@@ -678,6 +697,7 @@ export class SessionManager {
           if (event.model && !this.sessionModels.has(sessionId)) {
             this.sessionModels.set(sessionId, event.model)
             if (live) live.sessionModel = event.model
+            await this.persistModel(sessionId, event.model, true)
           } else if (live && event.model && !live.sessionModel) {
             live.sessionModel = event.model
           }
@@ -1654,7 +1674,8 @@ export class SessionManager {
     const purpose = (session.purpose as SessionPurpose) || 'coding'
     const config = await this.configFor(session.environmentId)
 
-    const model = this.sessionModels.get(sessionId)
+    const model = this.sessionModels.get(sessionId) ?? session.model ?? undefined
+    if (model) this.sessionModels.set(sessionId, model)
     const adapter = this.createAdapter(session.agentId)
     await adapter.start({
       sessionId,
@@ -1797,9 +1818,9 @@ export class SessionManager {
   /**
    * Remember a mid-session model change.
    *
-   * Stored in memory so the next `adapter.start` and the next prompt (when
-   * the adapter can apply it) use the new model. A process restart falls
-   * back to the last `session_started` event or the start-time model.
+   * Persisted on the session row so list/get/create and a process restart
+   * keep it. The next `adapter.start` and the next prompt (when the adapter
+   * can apply it) use the new model.
    */
   async setModel(sessionId: string, model: string, providerId?: string): Promise<void> {
     const resolved = resolveLiveModel(model, providerId)
@@ -1808,9 +1829,7 @@ export class SessionManager {
     const running = await this.ensureRunning(sessionId)
     running.sessionModel = resolved
     await running.adapter.setModel(resolved)
-
-    const [session] = await this.deps.db.select().from(sessions).where(eq(sessions.id, sessionId))
-    if (session) await this.deps.bus.publishSessionUpdate(this.liveSummary(session))
+    await this.persistModel(sessionId, resolved)
   }
 
   /**

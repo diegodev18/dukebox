@@ -329,6 +329,14 @@ export const sessions = pgTable(
     permissionMode: text('permission_mode'),
 
     /**
+     * The model this session should use, or null when the agent default.
+     *
+     * Written at create and on set_model so list/get/create and a resume
+     * after restart keep the last chosen id.
+     */
+    model: text('model'),
+
+    /**
      * Highest seq assigned so far. The source of truth for numbering: a new
      * event takes `last_seq + 1` under a row lock, which keeps sequences gap
      * free even with concurrent writers.
