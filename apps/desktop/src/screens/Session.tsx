@@ -130,6 +130,15 @@ export function Session({
     let timer: ReturnType<typeof setTimeout> | null = null
     let delay = INITIAL_RETRY_MS
 
+    // A leftover selection from the previous server would keep its UUID
+    // after the switch, so the new stream never subscribes and the
+    // sidebar still lists the old sessions.
+    setProjects([])
+    setSessions([])
+    setSelected(null)
+    setLoading(true)
+    setLoadError(null)
+
     const load = async () => {
       try {
         const [loadedProjects, loadedSessions, me] = await Promise.all([
@@ -175,8 +184,9 @@ export function Session({
       if (timer) clearTimeout(timer)
     }
     // The client is derived from the connection, so this reruns when the user
-    // switches servers.
-  }, [client])
+    // switches servers. deviceId is the pairing identity even if host/token
+    // happen to match another entry.
+  }, [client, connection.deviceId])
 
   // Session summaries arrive over the socket too, so the sidebar's status dots
   // follow a running agent without polling.

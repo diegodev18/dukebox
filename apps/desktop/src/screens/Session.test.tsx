@@ -244,6 +244,71 @@ describe('Session', () => {
     ).toBeInTheDocument()
   })
 
+  it('drops the previous server’s sessions when the active server changes', async () => {
+    const connectionB = {
+      serverName: 'debian-02',
+      address: { host: 'debian-02.tailnet.ts.net', port: 7777, tls: false },
+      deviceId: 'device-2',
+      deviceToken: 'token-2',
+      pairedAt: 2,
+    }
+    const sessionB: SessionSummary = {
+      ...session,
+      id: '00000000-0000-4000-8000-000000000021',
+      title: 'Ship the dashboard',
+    }
+
+    const onSwitchServer = vi.fn()
+    const { rerender } = render(
+      <Session
+        connection={connection}
+        settings={defaultSettings()}
+        update={update}
+        onSaveSettings={vi.fn()}
+        onSwitchServer={onSwitchServer}
+        onDisconnected={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByRole('button', { name: 'Done, Fix the demux bug' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: /Done, Add a health check/ })).toBeInTheDocument()
+
+    listProjects.mockResolvedValue([project])
+    listSessions.mockResolvedValue([sessionB])
+
+    // App switches by replacing the connection prop after Settings calls onSwitchServer.
+    onSwitchServer(connectionB)
+    rerender(
+      <Session
+        connection={connectionB}
+        settings={defaultSettings()}
+        update={update}
+        onSaveSettings={vi.fn()}
+        onSwitchServer={onSwitchServer}
+        onDisconnected={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.queryByRole('button', { name: 'Done, Fix the demux bug' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Done, Add a health check/ }),
+    ).not.toBeInTheDocument()
+
+    expect(await screen.findByRole('button', { name: 'Done, Ship the dashboard' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    expect(
+      screen.queryByRole('button', { name: 'Done, Fix the demux bug' }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText('No session selected')).not.toBeInTheDocument()
+  })
+
   it('reflects a pull request that was merged on GitHub', async () => {
     const url = 'https://github.com/acme/app/pull/8'
     listSessions.mockResolvedValueOnce([

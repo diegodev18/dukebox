@@ -185,6 +185,8 @@ export function useSession(
 
   // Switching sessions resets the transcript before subscribing, so the
   // previous session's messages never appear under the new one's header.
+  // The stream is a new instance when the server changes, even if the
+  // id is unchanged — without those deps the subscribe never re-fires.
   useEffect(() => {
     if (!sessionId) return
 
@@ -199,7 +201,14 @@ export function useSession(
       cancelFlush()
       stream?.unsubscribe(sessionId)
     }
-  }, [sessionId, cancelFlush])
+  }, [
+    sessionId,
+    connection.deviceId,
+    connection.deviceToken,
+    connection.address.host,
+    connection.address.port,
+    cancelFlush,
+  ])
 
   const send = useCallback(
     (text: string, files?: { name: string; data: string }[]) => {
