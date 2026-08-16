@@ -137,8 +137,71 @@ describe('EnvironmentReview', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/network down/i)
     expect(screen.queryByRole('button', { name: 'Save environment' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/setup commands/i)).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
     await waitFor(() => expect(client.getEnvironmentProposal).toHaveBeenCalledTimes(2))
+  })
+
+  it('keeps the form when save fails after a successful load', async () => {
+    const client = makeClient({
+      putEnvironment: vi.fn().mockRejectedValue(new Error('disk full')),
+    })
+    render(
+      <EnvironmentReview
+        client={client as never}
+        projectId="p1"
+        sessionId="s1"
+        environmentId="e1"
+        environmentName="Default"
+        onSaved={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Save environment' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/disk full/i)
+    expect(screen.getByLabelText(/setup commands/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save environment' })).toBeEnabled()
+  })
+
+  it('does not keep a previous form after a later load fails', async () => {
+    const client = makeClient({
+      getEnvironmentProposal: vi
+        .fn()
+        .mockResolvedValueOnce({
+          setup: ['pnpm install'],
+          env: {},
+          verification: { ok: true },
+        })
+        .mockRejectedValueOnce(new Error('network down')),
+    })
+    const { rerender } = render(
+      <EnvironmentReview
+        client={client as never}
+        projectId="p1"
+        sessionId="s1"
+        environmentId="e1"
+        environmentName="Default"
+        onSaved={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByLabelText(/setup commands/i)).toBeInTheDocument()
+
+    rerender(
+      <EnvironmentReview
+        client={client as never}
+        projectId="p1"
+        sessionId="s2"
+        environmentId="e2"
+        environmentName="Other"
+        onSaved={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/network down/i)
+    expect(screen.queryByRole('button', { name: 'Save environment' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/setup commands/i)).not.toBeInTheDocument()
   })
 })
