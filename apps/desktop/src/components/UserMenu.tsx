@@ -1,13 +1,7 @@
-import { DEFAULT_COMMIT_IDENTITY, type CommitIdentity, type DeviceRole } from '@dukebox/protocol'
+import type { CommitIdentity, DeviceRole } from '@dukebox/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { AgentIcon } from '@/components/AgentIcon'
-import {
-  CheckIcon,
-  ChevronDownIcon,
-  RefreshIcon,
-  ServerIcon,
-  SettingsIcon,
-} from '@/components/icons'
+import { ChevronDownIcon, RefreshIcon, ServerIcon, SettingsIcon } from '@/components/icons'
 import type { SettingsCategory } from '@/screens/Settings'
 
 /**
@@ -20,8 +14,6 @@ import type { SettingsCategory } from '@/screens/Settings'
  * The identity is a setting, so the menu's real jobs are showing who that is
  * and deep-linking into the settings categories that matter.
  */
-
-export const AVAILABLE_USERS: CommitIdentity[] = [DEFAULT_COMMIT_IDENTITY]
 
 export function UserMenu({
   user,
@@ -59,10 +51,7 @@ export function UserMenu({
 
     const menu = root.current?.querySelector<HTMLElement>('[role="menu"]') ?? null
 
-    const items = () =>
-      Array.from(
-        menu?.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"]') ?? [],
-      )
+    const items = () => Array.from(menu?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])
 
     const highlight = (index: number) => {
       const list = items()
@@ -149,34 +138,12 @@ export function UserMenu({
           style={{ left: anchor.left + 8, bottom: anchor.bottom + 6 }}
           className="fixed z-50 w-60 overflow-hidden rounded-[calc(var(--radius)*0.9)] border border-border bg-background py-1 shadow-md"
         >
-          <p className="px-3 pt-1.5 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-            Accounts
-          </p>
+          <div className="px-3 pt-1.5 pb-1.5">
+            <p className="truncate text-[13px] font-medium">{user.name}</p>
+            <p className="truncate text-[11px] text-muted-foreground">{user.email}</p>
+          </div>
 
-          {AVAILABLE_USERS.map((candidate) => (
-            <button
-              key={candidate.email}
-              type="button"
-              role="menuitemradio"
-              aria-checked={candidate.email === user.email}
-              // Inert until accounts are stored somewhere. Closing the menu is
-              // the whole interaction: picking the account already in use is
-              // not a change, and there is nothing else to pick yet.
-              onClick={() => setOpen(false)}
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] hover:bg-muted data-[highlighted]:bg-muted"
-            >
-              <Avatar name={candidate.name} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate">{candidate.name}</span>
-                <span className="block truncate text-[11px] text-muted-foreground">
-                  {candidate.email}
-                </span>
-              </span>
-              {candidate.email === user.email && <CheckIcon size={14} className="flex-none" />}
-            </button>
-          ))}
-
-          <div className="mt-1 border-t border-border pt-1">
+          <div className="border-t border-border pt-1">
             <button
               type="button"
               role="menuitem"
