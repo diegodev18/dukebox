@@ -25,6 +25,7 @@ import type { SettingsCategory } from '@/lib/settingsCategories'
 
 interface Props {
   sessions: SessionSummary[]
+  archivedSessions?: SessionSummary[]
   projects: ProjectSummary[]
   role: DeviceRole | null
   onSelect: (sessionId: string) => void
@@ -35,6 +36,7 @@ interface Props {
 
 export function SearchPalette({
   sessions,
+  archivedSessions = [],
   projects,
   role,
   onSelect,
@@ -46,8 +48,8 @@ export function SearchPalette({
   const [filter, setFilter] = useState<SearchFilter>('all')
 
   const groups = useMemo(
-    () => searchPalette(query, filter, { sessions, projects, role }),
-    [query, filter, sessions, projects, role],
+    () => searchPalette(query, filter, { sessions, archivedSessions, projects, role }),
+    [query, filter, sessions, archivedSessions, projects, role],
   )
   const items = useMemo(() => flattenSearchGroups(groups), [groups])
 

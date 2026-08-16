@@ -8,13 +8,21 @@ import { settingsCategoriesFor, type SettingsCategory } from '@/lib/settingsCate
  * a filter that fits in memory.
  */
 
-export const SEARCH_FILTERS = ['all', 'sessions', 'repos', 'actions', 'settings'] as const
+export const SEARCH_FILTERS = [
+  'all',
+  'sessions',
+  'archived',
+  'repos',
+  'actions',
+  'settings',
+] as const
 
 export type SearchFilter = (typeof SEARCH_FILTERS)[number]
 
 export const SEARCH_FILTER_LABELS: Record<SearchFilter, string> = {
   all: 'All',
   sessions: 'Sessions',
+  archived: 'Archived',
   repos: 'Repos',
   actions: 'Actions',
   settings: 'Settings',
@@ -67,6 +75,7 @@ export function searchPalette(
   filter: SearchFilter,
   input: {
     sessions: SessionSummary[]
+    archivedSessions?: SessionSummary[]
     projects: ProjectSummary[]
     role: DeviceRole | null
   },
@@ -90,6 +99,26 @@ export function searchPalette(
       groups.push({
         id: 'sessions',
         heading: typed ? 'Sessions' : 'Recent sessions',
+        items,
+      })
+    }
+  }
+
+  if (filter === 'archived') {
+    const items = [...(input.archivedSessions ?? [])]
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .filter((session) => matchSession(query, { session, project: byId.get(session.projectId) }))
+      .map((session): SearchItem => ({
+        kind: 'session',
+        id: `session:${session.id}`,
+        session,
+        project: byId.get(session.projectId),
+      }))
+
+    if (items.length > 0) {
+      groups.push({
+        id: 'sessions',
+        heading: 'Archived',
         items,
       })
     }

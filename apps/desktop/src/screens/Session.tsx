@@ -88,6 +88,7 @@ export function Session({
 
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
+  const [archivedSessions, setArchivedSessions] = useState<SessionSummary[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -120,7 +121,12 @@ export function Session({
 
   const refreshSessions = async () => {
     try {
-      setSessions(await client.listSessions())
+      const [active, archived] = await Promise.all([
+        client.listSessions(),
+        client.listArchivedSessions(),
+      ])
+      setSessions(active)
+      setArchivedSessions(archived)
     } catch {
       // Same as projects: a blip must not empty the sidebar.
     }
@@ -142,9 +148,10 @@ export function Session({
 
     const load = async () => {
       try {
-        const [loadedProjects, loadedSessions, me] = await Promise.all([
+        const [loadedProjects, loadedSessions, loadedArchived, me] = await Promise.all([
           client.listProjects(),
           client.listSessions(),
+          client.listArchivedSessions(),
           client.whoami(),
         ])
 
@@ -152,6 +159,7 @@ export function Session({
 
         setProjects(loadedProjects)
         setSessions(loadedSessions)
+        setArchivedSessions(loadedArchived)
         setRole(me.role)
         setSelected((current) => current ?? loadedSessions[0]?.id ?? null)
         setLoadError(null)
@@ -198,6 +206,9 @@ export function Session({
       setSessions((current) =>
         current.map((session) => (session.id === updated.id ? updated : session)),
       )
+      setArchivedSessions((current) =>
+        current.map((session) => (session.id === updated.id ? updated : session)),
+      )
     },
     () => {
       void removeConnection(connection.deviceId)
@@ -223,15 +234,25 @@ export function Session({
     void refreshSessions()
   }, [disconnected, streamStatus])
 
-  const current = sessions.find((session) => session.id === selected) ?? null
+  const current =
+    sessions.find((session) => session.id === selected) ??
+    archivedSessions.find((session) => session.id === selected) ??
+    null
 
   // A merge or close on GitHub does not arrive over the socket. Refresh the
   // selected session, and every open PR when the window is focused again.
-  useOpenPullRequestRefresh(client, sessions, selected, !disconnected, (sessionId, patch) => {
-    setSessions((rows) =>
-      rows.map((session) => (session.id === sessionId ? { ...session, ...patch } : session)),
-    )
-  })
+  useOpenPullRequestRefresh(
+    client,
+    [...sessions, ...archivedSessions],
+    selected,
+    !disconnected,
+    (sessionId, patch) => {
+      const apply = (rows: SessionSummary[]) =>
+        rows.map((session) => (session.id === sessionId ? { ...session, ...patch } : session))
+      setSessions(apply)
+      setArchivedSessions(apply)
+    },
+  )
 
   // Names for the environment a review session belongs to. Fetched only when a
   // review is on screen, and best-effort: failing to name an environment must
@@ -391,6 +412,7 @@ export function Session({
             <Sidebar
               projects={projects}
               sessions={sessions}
+              archivedSessions={archivedSessions}
               selectedId={creating ? null : selected}
               identity={settings.commitIdentity ?? DEFAULT_COMMIT_IDENTITY}
               serverName={connection.serverName}
@@ -440,6 +462,9 @@ export function Session({
                     fallback = next[0]?.id ?? null
                     return next
                   })
+                  setArchivedSessions((current) =>
+                    current.filter((session) => session.id !== sessionId),
+                  )
                   setSelected((currentSelected) =>
                     currentSelected === sessionId ? fallback : currentSelected,
                   )
@@ -460,6 +485,9 @@ export function Session({
                   const remaining = sessions.filter((session) => session.projectId !== projectId)
                   setProjects((current) => current.filter((project) => project.id !== projectId))
                   setSessions(remaining)
+                  setArchivedSessions((current) =>
+                    current.filter((session) => session.projectId !== projectId),
+                  )
                   setSelected((currentSelected) => {
                     if (!currentSelected) return currentSelected
                     if (remaining.some((session) => session.id === currentSelected)) {
@@ -479,6 +507,32 @@ export function Session({
                   }
                 })()
               }}
+              onRestore={(sessionId) => {
+                void (async () => {
+                  try {
+                    await client.unarchiveSession(sessionId)
+                    setArchiveError(null)
+                  } catch (error) {
+                    setArchiveError(
+                      error instanceof Error ? error.message : 'Could not restore the session.',
+                    )
+                    return
+                  }
+
+                  const moved = archivedSessions.find((session) => session.id === sessionId) ?? null
+                  setArchivedSessions((current) =>
+                    current.filter((session) => session.id !== sessionId),
+                  )
+                  if (moved) {
+                    setSessions((current) =>
+                      [moved, ...current.filter((session) => session.id !== moved.id)].sort(
+                        (left, right) => right.createdAt - left.createdAt,
+                      ),
+                    )
+                  }
+                  setSelected(sessionId)
+                })()
+              }}
               onArchive={(sessionId) => {
                 void (async () => {
                   try {
@@ -493,12 +547,16 @@ export function Session({
                     return
                   }
 
-                  let fallback: string | null = null
-                  setSessions((current) => {
-                    const next = current.filter((session) => session.id !== sessionId)
-                    fallback = next[0]?.id ?? null
-                    return next
-                  })
+                  const moved = sessions.find((session) => session.id === sessionId) ?? null
+                  const fallback = sessions.find((session) => session.id !== sessionId)?.id ?? null
+                  setSessions((current) => current.filter((session) => session.id !== sessionId))
+                  if (moved) {
+                    setArchivedSessions((current) =>
+                      [moved, ...current.filter((session) => session.id !== moved.id)].sort(
+                        (left, right) => right.updatedAt - left.updatedAt,
+                      ),
+                    )
+                  }
                   setSelected((currentSelected) =>
                     currentSelected === sessionId ? fallback : currentSelected,
                   )
@@ -651,6 +709,7 @@ export function Session({
       {searchOpen && (
         <SearchPalette
           sessions={sessions}
+          archivedSessions={archivedSessions}
           projects={projects}
           role={role}
           onSelect={selectSession}

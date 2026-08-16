@@ -112,6 +112,30 @@ describe('SearchPalette', () => {
     expect(screen.getByRole('option', { name: 'acme/notes' })).toBeInTheDocument()
   })
 
+  it('shows archived sessions on the archived tab', async () => {
+    const archived = session({
+      id: '00000000-0000-4000-8000-000000000099',
+      title: 'Old work',
+    })
+    render(
+      <SearchPalette
+        sessions={[demux, health]}
+        archivedSessions={[archived]}
+        projects={[dukebox, notes]}
+        role="owner"
+        onSelect={vi.fn()}
+        onNewSession={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('option', { name: /old work/i })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: 'Archived' }))
+    expect(screen.getByRole('option', { name: /old work/i })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /fix the demux bug/i })).not.toBeInTheDocument()
+  })
+
   it('opens the highlighted session with Enter', async () => {
     const { onSelect, onDismiss } = renderPalette()
 

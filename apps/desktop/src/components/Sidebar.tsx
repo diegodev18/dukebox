@@ -24,6 +24,8 @@ import {
   AlertIcon,
   BookOpenIcon,
   BranchIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
   CloseIcon,
   PlusIcon,
   SearchIcon,
@@ -57,9 +59,12 @@ interface Props {
   onConfigureEnvironment: (projectId: string) => void
   onManageEnvironments: (projectId: string) => void
   onArchive: (sessionId: string) => void
+  onRestore?: (sessionId: string) => void
   onDelete: (sessionId: string) => void
   onRemoveProject: (projectId: string) => void
   onSearch: () => void
+  /** Hidden from the main list; still on the server. */
+  archivedSessions?: SessionSummary[]
   /** Set when an archive or remove request failed; the row stays put. */
   archiveError?: string | null
   /** Creating, archiving, and environment setup talk to the server. */
@@ -81,9 +86,11 @@ export function Sidebar({
   onConfigureEnvironment,
   onManageEnvironments,
   onArchive,
+  onRestore = () => {},
   onDelete,
   onRemoveProject,
   onSearch,
+  archivedSessions = [],
   archiveError,
   disabled = false,
   loading = false,
@@ -94,17 +101,21 @@ export function Sidebar({
   const [viewed, setViewed] = useState(() => {
     const stored = loadViewedSessions()
     if (!selectedId) return stored
-    const selected = sessions.find((session) => session.id === selectedId)
+    const selected =
+      sessions.find((session) => session.id === selectedId) ??
+      archivedSessions.find((session) => session.id === selectedId)
     if (!selected) return stored
     return markViewed(stored, selected.id, selected.lastSeq)
   })
 
   useEffect(() => {
     if (!selectedId) return
-    const selected = sessions.find((session) => session.id === selectedId)
+    const selected =
+      sessions.find((session) => session.id === selectedId) ??
+      archivedSessions.find((session) => session.id === selectedId)
     if (!selected) return
     setViewed((current) => markViewed(current, selected.id, selected.lastSeq))
-  }, [selectedId, sessions])
+  }, [selectedId, sessions, archivedSessions])
 
   return (
     <nav
@@ -157,7 +168,7 @@ export function Sidebar({
                 disabled={disabled}
                 onOpenSessionMenu={(sessionId, x, y) => {
                   if (disabled) return
-                  setMenu({ kind: 'session', sessionId, x, y })
+                  setMenu({ kind: 'session', sessionId, archived: false, x, y })
                 }}
                 onOpenProjectMenu={(x, y) => {
                   if (disabled) return
@@ -165,6 +176,21 @@ export function Sidebar({
                 }}
               />
             ))}
+
+            {archivedSessions.length > 0 && (
+              <ArchivedGroup
+                sessions={archivedSessions}
+                selectedId={selectedId}
+                viewed={viewed}
+                serverName={serverName}
+                disabled={disabled}
+                onSelect={onSelect}
+                onOpenSessionMenu={(sessionId, x, y) => {
+                  if (disabled) return
+                  setMenu({ kind: 'session', sessionId, archived: true, x, y })
+                }}
+              />
+            )}
           </>
         )}
       </div>
@@ -196,12 +222,19 @@ export function Sidebar({
         <SessionContextMenu
           x={menu.x}
           y={menu.y}
+          archived={menu.archived}
           onArchive={() => {
             onArchive(menu.sessionId)
             setMenu(null)
           }}
+          onRestore={() => {
+            onRestore(menu.sessionId)
+            setMenu(null)
+          }}
           onDelete={() => {
-            const session = sessions.find((candidate) => candidate.id === menu.sessionId)
+            const session =
+              sessions.find((candidate) => candidate.id === menu.sessionId) ??
+              archivedSessions.find((candidate) => candidate.id === menu.sessionId)
             setMenu(null)
             if (session) setDeleting(session)
           }}
@@ -272,7 +305,7 @@ export function Sidebar({
 }
 
 type ContextMenuState =
-  | { kind: 'session'; sessionId: string; x: number; y: number }
+  | { kind: 'session'; sessionId: string; archived: boolean; x: number; y: number }
   | { kind: 'project'; projectId: string; x: number; y: number }
 
 function openGitHub(repoFullName: string) {
@@ -384,6 +417,68 @@ function ProjectGroup({
         </button>
       )}
     </>
+  )
+}
+
+/**
+ * Hidden sessions, folded away so they do not compete with the live list.
+ *
+ * Collapsed by default: archive means "out of the way", not gone. Opening
+ * a row from search should still expand this so the current session is visible.
+ */
+function ArchivedGroup({
+  sessions,
+  selectedId,
+  viewed,
+  serverName,
+  disabled,
+  onSelect,
+  onOpenSessionMenu,
+}: {
+  sessions: SessionSummary[]
+  selectedId: string | null
+  viewed: ViewedSessions
+  serverName: string
+  disabled: boolean
+  onSelect: (sessionId: string) => void
+  onOpenSessionMenu: (sessionId: string, x: number, y: number) => void
+}) {
+  const selectedArchived = sessions.some((session) => session.id === selectedId)
+  const [expanded, setExpanded] = useState(selectedArchived)
+
+  useEffect(() => {
+    if (selectedArchived) setExpanded(true)
+  }, [selectedId, selectedArchived])
+
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+        className="flex w-full items-center gap-2 px-4 py-1.5 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase hover:text-foreground"
+      >
+        {expanded ? (
+          <ChevronDownIcon size={13} className="flex-none opacity-70" />
+        ) : (
+          <ChevronRightIcon size={13} className="flex-none opacity-70" />
+        )}
+        Archived
+      </button>
+      {expanded &&
+        sessions.map((session) => (
+          <SessionRow
+            key={session.id}
+            session={session}
+            selected={session.id === selectedId}
+            viewedSeq={viewed[session.id]}
+            serverName={serverName}
+            disabled={disabled}
+            onSelect={() => onSelect(session.id)}
+            onOpenMenu={(x, y) => onOpenSessionMenu(session.id, x, y)}
+          />
+        ))}
+    </div>
   )
 }
 
@@ -558,23 +653,29 @@ function SessionNavTooltip({
 function SessionContextMenu({
   x,
   y,
+  archived,
   onArchive,
+  onRestore,
   onDelete,
   onDismiss,
 }: {
   x: number
   y: number
+  archived: boolean
   onArchive: () => void
+  onRestore: () => void
   onDelete: () => void
   onDismiss: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const dismiss = useRef(onDismiss)
   const archive = useRef(onArchive)
+  const restore = useRef(onRestore)
   const del = useRef(onDelete)
   const [confirming, setConfirming] = useState(false)
   dismiss.current = onDismiss
   archive.current = onArchive
+  restore.current = onRestore
   del.current = onDelete
 
   useEffect(() => {
@@ -643,7 +744,9 @@ function SessionContextMenu({
     >
       {confirming ? (
         <>
-          <p className="px-3 py-1.5 text-[12px] text-muted-foreground">Archive this session?</p>
+          <p className="px-3 py-1.5 text-[12px] text-muted-foreground">
+            Hide from the sidebar. You can restore it later.
+          </p>
           <button
             type="button"
             role="menuitem"
@@ -659,6 +762,26 @@ function SessionContextMenu({
             className="flex w-full items-center px-3 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-muted data-[highlighted]:bg-muted"
           >
             Cancel
+          </button>
+        </>
+      ) : archived ? (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => restore.current()}
+            className="flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-muted data-[highlighted]:bg-muted"
+          >
+            Restore
+          </button>
+          <div className="my-1 border-t border-border" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => del.current()}
+            className="flex w-full items-center px-3 py-1.5 text-left text-[13px] text-destructive hover:bg-muted data-[highlighted]:bg-muted"
+          >
+            Delete
           </button>
         </>
       ) : (

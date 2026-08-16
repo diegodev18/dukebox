@@ -8,8 +8,10 @@ import { ApiFailure } from '@/lib/client'
 
 const listProjects = vi.fn()
 const listSessions = vi.fn()
+const listArchivedSessions = vi.fn()
 const whoami = vi.fn()
 const archiveSession = vi.fn()
+const unarchiveSession = vi.fn()
 const deleteSession = vi.fn()
 const deleteProject = vi.fn()
 const getPullRequest = vi.fn()
@@ -59,8 +61,10 @@ vi.mock('@/lib/client', async (importOriginal) => {
     DukeboxClient: class {
       listProjects = listProjects
       listSessions = listSessions
+      listArchivedSessions = listArchivedSessions
       whoami = whoami
       archiveSession = archiveSession
+      unarchiveSession = unarchiveSession
       deleteSession = deleteSession
       deleteProject = deleteProject
       getPullRequest = getPullRequest
@@ -142,6 +146,7 @@ beforeEach(() => {
   useLiveSession.setState({ status: 'live', error: null })
   listProjects.mockResolvedValue([project])
   listSessions.mockResolvedValue([session, other])
+  listArchivedSessions.mockResolvedValue([])
   whoami.mockResolvedValue({
     deviceId: 'device-1',
     deviceName: 'Mac',
@@ -149,6 +154,7 @@ beforeEach(() => {
     capabilities: { manageDevices: true, manageAgents: true, deleteProjects: true },
   })
   archiveSession.mockResolvedValue(undefined)
+  unarchiveSession.mockResolvedValue(undefined)
   removeConnection.mockResolvedValue(undefined)
 })
 
@@ -219,6 +225,29 @@ describe('Session', () => {
       'aria-current',
       'true',
     )
+  })
+
+  it('puts an archived session back in the list after restore', async () => {
+    listSessions.mockResolvedValueOnce([other])
+    listArchivedSessions.mockResolvedValueOnce([session])
+    renderSession()
+
+    await screen.findByRole('button', { name: /Done, Add a health check/ })
+    expect(
+      screen.queryByRole('button', { name: 'Done, Fix the demux bug' }),
+    ).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Archived' }))
+    expect(screen.getByRole('button', { name: 'Done, Fix the demux bug' })).toBeInTheDocument()
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Session actions for Fix the demux bug' }),
+    )
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Restore' }))
+
+    await waitFor(() => expect(unarchiveSession).toHaveBeenCalledWith(session.id))
+    expect(screen.getByRole('button', { name: 'Done, Fix the demux bug' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Archived' })).not.toBeInTheDocument()
   })
 
   it('shows the empty chrome when there are no sessions', async () => {

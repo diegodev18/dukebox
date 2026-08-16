@@ -1825,6 +1825,28 @@ export class SessionManager {
   }
 
   /**
+   * Put an archived session back in the sidebar.
+   *
+   * History never left the server; this only clears the hide flag. The
+   * container stays stopped — opening the row starts it again, same as any
+   * other stopped session.
+   */
+  async unarchive(sessionId: string): Promise<void> {
+    const [session] = await this.deps.db
+      .select({ id: sessions.id, archivedAt: sessions.archivedAt })
+      .from(sessions)
+      .where(eq(sessions.id, sessionId))
+
+    if (!session) throw new SessionError(`no such session: ${sessionId}`)
+    if (!session.archivedAt) return
+
+    await this.deps.db
+      .update(sessions)
+      .set({ archivedAt: null, updatedAt: new Date() })
+      .where(eq(sessions.id, sessionId))
+  }
+
+  /**
    * Permanently delete a session.
    *
    * Unlike `stop` (the container stays for a follow-up) or `archive` (the row

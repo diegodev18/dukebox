@@ -53,6 +53,7 @@ const sessionManager = {
   start: vi.fn(),
   stop: vi.fn(async () => {}),
   archive: vi.fn(async () => {}),
+  unarchive: vi.fn(async () => {}),
   delete: vi.fn(async () => {}),
   openPullRequest: vi.fn(async () => ({
     url: 'https://github.com/diego/dukebox/pull/1',
@@ -1085,6 +1086,29 @@ describe('POST /api/sessions/:id/archive', () => {
   })
 })
 
+describe('POST /api/sessions/:id/unarchive', () => {
+  it('unarchives the session', async () => {
+    const project = await createProject()
+    const session = await createSession(project.id)
+
+    const response = await post(`/api/sessions/${session.id}/unarchive`, {})
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ unarchived: true })
+    expect(sessionManager.unarchive).toHaveBeenCalledWith(session.id)
+  })
+
+  it('returns 404 for an unknown session', async () => {
+    vi.mocked(sessionManager.unarchive).mockRejectedValueOnce(
+      new SessionError('no such session: 00000000-0000-4000-8000-000000000000'),
+    )
+
+    const response = await post('/api/sessions/00000000-0000-4000-8000-000000000000/unarchive', {})
+
+    expect(response.status).toBe(404)
+  })
+})
+
 describe('POST /api/sessions/:id/delete', () => {
   it('deletes the session permanently', async () => {
     const project = await createProject()
@@ -1119,6 +1143,18 @@ describe('GET /api/sessions archived', () => {
     }
 
     expect(body.sessions.map((session) => session.id)).toEqual([active.id])
+  })
+
+  it('returns only archived sessions when asked', async () => {
+    const project = await createProject()
+    await createSession(project.id, { title: 'Still here' })
+    const archived = await createSession(project.id, { title: 'Gone', archivedAt: new Date() })
+
+    const body = (await (await request('/api/sessions?archived=1')).json()) as {
+      sessions: { id: string; title: string }[]
+    }
+
+    expect(body.sessions.map((session) => session.id)).toEqual([archived.id])
   })
 })
 
