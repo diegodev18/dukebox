@@ -15,7 +15,7 @@ Coding agents like Claude Code live in a terminal. Dukebox gives them a proper h
 - **Sandbox-first.** Every agent session runs in its own Docker container with your repo cloned, your env vars, your setup scripts.
 - **Not a terminal.** Agent output is parsed into structured events and rendered as chat, collapsible tool calls, and reviewable diffs.
 - **Your infrastructure.** One install script sets up your VPS. No SaaS, no telemetry, no accounts.
-- **Native desktop app.** Built with Tauri — small binary, low memory, works on macOS, Windows, and Linux.
+- **Native desktop app.** Built with Tauri — small binary, low memory, works on macOS and Linux.
 
 ## Status
 
@@ -32,17 +32,17 @@ newest one for your machine from the
 | Platform | Asset                                                                 |
 | -------- | --------------------------------------------------------------------- |
 | macOS    | `Dukebox_<version>_aarch64.dmg` (Apple silicon) or `_x64.dmg` (Intel) |
-| Windows  | `Dukebox_<version>_x64-setup.exe`                                     |
 | Linux    | `Dukebox_<version>_amd64.deb` (or the `.AppImage`)                    |
 
 `<version>` is the release you are downloading from — `Dukebox_0.9.0_aarch64.dmg`
 in the 0.9.0 release. Linux builds are x86_64 only: there is no ARM64 desktop
 asset, and an ARM64 machine gets no update notifications either, because the
-update feed has no entry to offer it.
+update feed has no entry to offer it. Windows installers are no longer
+published; existing Windows builds will not receive updates.
 
-The installers are not signed by Apple or Microsoft yet, so the OS will warn
-once per installation. The warning is about the developer's identity, not the
-app's integrity (the macOS bundle is ad-hoc signed; verify with
+The macOS installer is not signed by Apple yet, so the OS will warn once per
+installation. The warning is about the developer's identity, not the app's
+integrity (the macOS bundle is ad-hoc signed; verify with
 `codesign --verify --deep --strict /Applications/Dukebox.app`).
 
 **macOS** — the first launch shows _"Apple could not verify that Dukebox does
@@ -54,8 +54,6 @@ bypass works, once:
 # Right-click the app in Applications → Open → Open, or:
 xattr -dr com.apple.quarantine /Applications/Dukebox.app
 ```
-
-**Windows** — "More info → Run anyway".
 
 First run shows the pairing screen — paste the link a server installer prints
 (below) and the app finds its server.
@@ -92,8 +90,8 @@ compiled into it.
 
 ### Releasing a new desktop version
 
-The `Release desktop app` workflow builds installers for all three platforms
-and uploads them to a GitHub Release — which is also the feed the app's update
+The `Release desktop app` workflow builds installers for macOS and Linux and
+uploads them to a GitHub Release — which is also the feed the app's update
 check reads. To publish:
 
 1. Bump the version to match in `apps/desktop/src-tauri/tauri.conf.json`,

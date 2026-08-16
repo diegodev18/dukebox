@@ -1,7 +1,7 @@
-# Builds the desktop app as native installers for macOS, Windows, and Linux
-# and publishes them to a GitHub Release. The release is the update feed too:
-# every job uploads its updater bundle and signature, and tauri-action merges
-# them into a `latest.json` the app polls at launch.
+# Builds the desktop app as native installers for macOS and Linux and publishes
+# them to a GitHub Release. Windows is not a release target. The release is
+# the update feed too: every job uploads its updater bundle and signature, and
+# tauri-action merges them into a `latest.json` the app polls at launch.
 #
 # Trigger with:
 #   git tag desktop-v0.1.0 && git push origin desktop-v0.1.0
@@ -10,8 +10,8 @@
 # Generate a key with `pnpm tauri signer generate -w ~/.tauri/dukebox.key` and
 # add the private key as the secret, or the build fails at bundle time.
 #
-# macOS/Windows code signing is optional: set the APPLE_*/WINDOWS_* secrets to
-# sign, or leave them unset for unsigned builds (Gatekeeper will warn).
+# macOS code signing is optional: set the APPLE_* secrets to sign, or leave
+# them unset for unsigned builds (Gatekeeper will warn).
 name: Release desktop app
 
 on:
@@ -40,8 +40,6 @@ jobs:
             args: --target x86_64-apple-darwin
           - platform: ubuntu-22.04
             args: --bundles appimage deb
-          - platform: windows-latest
-            args: ''
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -91,18 +89,6 @@ jobs:
             echo "APPLE_ID=$APPLE_ID" >> "$GITHUB_ENV"
             echo "APPLE_PASSWORD=$APPLE_PASSWORD" >> "$GITHUB_ENV"
             echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> "$GITHUB_ENV"
-          fi
-
-      - name: Configure Windows code signing (optional)
-        if: matrix.platform == 'windows-latest'
-        shell: bash
-        env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          if [ -n "$WINDOWS_CERTIFICATE" ]; then
-            echo "WINDOWS_CERTIFICATE=$WINDOWS_CERTIFICATE" >> "$GITHUB_ENV"
-            echo "WINDOWS_CERTIFICATE_PASSWORD=$WINDOWS_CERTIFICATE_PASSWORD" >> "$GITHUB_ENV"
           fi
 
       - name: Build and publish
