@@ -76,6 +76,8 @@ fixtures/local/
 .vscode/
 !.vscode/extensions.json
 .idea/
+.claude/
+docs/superpowers/
 *.swp
 *.swo
 .DS_Store
