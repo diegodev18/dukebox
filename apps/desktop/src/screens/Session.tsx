@@ -38,7 +38,7 @@ import {
 import { modelsForProvider } from '@/components/OpenCodeProviders'
 import { DukeHero } from '@/components/Duke'
 import { Composer, type ComposerHandle } from '@/components/Composer'
-import { AttachIcon } from '@/components/icons'
+import { AttachIcon, ChevronRightIcon } from '@/components/icons'
 import { useFileDrop } from '@/lib/useFileDrop'
 import { ResizeHandle } from '@/components/ResizeHandle'
 import { SessionInfo } from '@/components/SessionInfo'
@@ -55,6 +55,8 @@ import { useOpenPullRequestRefresh } from '@/lib/usePullRequestRefresh'
  * Three columns: the sessions a person has, the conversation with one of them,
  * and the workspace that session is changing.
  */
+
+const NAV_COLLAPSED_KEY = 'dukebox:nav-collapsed'
 
 const SettingsScreen = lazy(() =>
   import('@/screens/Settings').then((module) => ({ default: module.Settings })),
@@ -348,6 +350,13 @@ export function Session({
     setWorkspaceWidth,
   } = useColumnWidths(composing)
 
+  const [navCollapsed, setNavCollapsed] = useState(
+    () => localStorage.getItem(NAV_COLLAPSED_KEY) === 'true',
+  )
+  useEffect(() => {
+    localStorage.setItem(NAV_COLLAPSED_KEY, String(navCollapsed))
+  }, [navCollapsed])
+
   const onSessionCreated = (session: SessionSummary, project: ProjectSummary | null) => {
     // Added locally rather than refetched: the session exists but its
     // container is still building, and a list that only updates on the
@@ -560,14 +569,14 @@ export function Session({
           template. Collapsing the workspace still snaps to the 244px rail. */}
       <div
         ref={containerRef}
-        className={`grid min-h-0 flex-1 overflow-hidden ${
+        className={`relative grid min-h-0 flex-1 overflow-hidden ${
           composing
             ? 'grid-cols-[var(--nav-width)_minmax(0,1fr)]'
             : 'grid-cols-[var(--nav-width)_minmax(0,1fr)_var(--workspace-width)] has-[[data-collapsed]]:grid-cols-[var(--nav-width)_minmax(0,1fr)_244px]'
         }`}
         style={
           {
-            '--nav-width': `${navWidth}px`,
+            '--nav-width': navCollapsed && !settingsOpen ? '0px' : `${navWidth}px`,
             '--workspace-width': `${workspaceWidth}px`,
           } as CSSProperties
         }
@@ -594,6 +603,8 @@ export function Session({
               disabled={disconnected}
               loading={loading}
               offline={loading && loadError !== null}
+              collapsed={navCollapsed}
+              onCollapsedChange={setNavCollapsed}
               onOpenSettings={openSettings}
               onSelect={selectSession}
               onNewSession={startNewSession}
@@ -685,16 +696,28 @@ export function Session({
               onArchive={archiveById}
             />
           )}
-          <ResizeHandle
-            value={navWidth}
-            min={NAV_MIN}
-            max={navMax}
-            defaultValue={NAV_DEFAULT}
-            edge="end"
-            label="Resize sessions"
-            onChange={setNavWidth}
-          />
+          {!(navCollapsed && !settingsOpen) && (
+            <ResizeHandle
+              value={navWidth}
+              min={NAV_MIN}
+              max={navMax}
+              defaultValue={NAV_DEFAULT}
+              edge="end"
+              label="Resize sessions"
+              onChange={setNavWidth}
+            />
+          )}
         </div>
+        {navCollapsed && !settingsOpen && (
+          <button
+            type="button"
+            onClick={() => setNavCollapsed(false)}
+            aria-label="Expand sidebar"
+            className="absolute top-2 left-1.5 z-20 grid size-7 place-items-center rounded-[calc(var(--radius)*0.6)] border border-border bg-surface text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
+          >
+            <ChevronRightIcon size={14} />
+          </button>
+        )}
 
         {loading && !settingsOpen ? (
           loadError ? (

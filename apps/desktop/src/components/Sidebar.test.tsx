@@ -88,6 +88,8 @@ function renderSidebar({
       onSelect={vi.fn()}
       onNewSession={onNewSession}
       onSearch={vi.fn()}
+      collapsed={false}
+      onCollapsedChange={vi.fn()}
       onConfigureEnvironment={onConfigureEnvironment}
       onManageEnvironments={onManageEnvironments}
       onArchive={onArchive}
@@ -141,6 +143,8 @@ function renderRepoSessions(
       onSelect={vi.fn()}
       onNewSession={vi.fn()}
       onSearch={vi.fn()}
+      collapsed={false}
+      onCollapsedChange={vi.fn()}
       onConfigureEnvironment={vi.fn()}
       onManageEnvironments={vi.fn()}
       onArchive={vi.fn()}
@@ -152,9 +156,59 @@ function renderRepoSessions(
 }
 
 describe('Sidebar', () => {
-  it('shows the app name at the top', () => {
-    renderSidebar()
-    expect(screen.getAllByText('Dukebox').length).toBeGreaterThanOrEqual(1)
+  it('asks the parent to collapse when the collapse button is clicked', async () => {
+    const user = userEvent.setup()
+    const onCollapsedChange = vi.fn()
+    render(
+      <Sidebar
+        projects={[project]}
+        sessions={[session]}
+        selectedId={session.id}
+        identity={DEFAULT_COMMIT_IDENTITY}
+        serverName="debian-01"
+        role="owner"
+        onOpenSettings={vi.fn()}
+        onSelect={vi.fn()}
+        onNewSession={vi.fn()}
+        onSearch={vi.fn()}
+        collapsed={false}
+        onCollapsedChange={onCollapsedChange}
+        onConfigureEnvironment={vi.fn()}
+        onManageEnvironments={vi.fn()}
+        onArchive={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveProject={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+    expect(onCollapsedChange).toHaveBeenCalledWith(true)
+  })
+
+  it('renders nothing when collapsed', () => {
+    render(
+      <Sidebar
+        projects={[project]}
+        sessions={[session]}
+        selectedId={session.id}
+        identity={DEFAULT_COMMIT_IDENTITY}
+        serverName="debian-01"
+        role="owner"
+        onOpenSettings={vi.fn()}
+        onSelect={vi.fn()}
+        onNewSession={vi.fn()}
+        onSearch={vi.fn()}
+        collapsed={true}
+        onCollapsedChange={vi.fn()}
+        onConfigureEnvironment={vi.fn()}
+        onManageEnvironments={vi.fn()}
+        onArchive={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveProject={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('navigation', { name: 'Sessions' })).not.toBeInTheDocument()
   })
 
   it('shows Duke when there are no projects', () => {
@@ -170,6 +224,8 @@ describe('Sidebar', () => {
         onSelect={vi.fn()}
         onNewSession={vi.fn()}
         onSearch={vi.fn()}
+        collapsed={false}
+        onCollapsedChange={vi.fn()}
         onConfigureEnvironment={vi.fn()}
         onManageEnvironments={vi.fn()}
         onArchive={vi.fn()}
@@ -198,6 +254,8 @@ describe('Sidebar', () => {
         onSelect={vi.fn()}
         onNewSession={vi.fn()}
         onSearch={vi.fn()}
+        collapsed={false}
+        onCollapsedChange={vi.fn()}
         onConfigureEnvironment={vi.fn()}
         onManageEnvironments={vi.fn()}
         onArchive={vi.fn()}
@@ -225,6 +283,8 @@ describe('Sidebar', () => {
         onSelect={vi.fn()}
         onNewSession={vi.fn()}
         onSearch={vi.fn()}
+        collapsed={false}
+        onCollapsedChange={vi.fn()}
         onConfigureEnvironment={vi.fn()}
         onManageEnvironments={vi.fn()}
         onArchive={vi.fn()}
@@ -365,6 +425,8 @@ describe('Sidebar', () => {
         onSelect={vi.fn()}
         onNewSession={vi.fn()}
         onSearch={onSearch}
+        collapsed={false}
+        onCollapsedChange={vi.fn()}
         onConfigureEnvironment={vi.fn()}
         onManageEnvironments={vi.fn()}
         onArchive={vi.fn()}
@@ -501,6 +563,8 @@ describe('Sidebar', () => {
           onSelect={vi.fn()}
           onNewSession={vi.fn()}
           onSearch={vi.fn()}
+          collapsed={false}
+          onCollapsedChange={vi.fn()}
           onConfigureEnvironment={vi.fn()}
           onManageEnvironments={vi.fn()}
           onArchive={vi.fn()}
@@ -630,6 +694,8 @@ describe('Sidebar', () => {
         onSelect={vi.fn()}
         onNewSession={vi.fn()}
         onSearch={vi.fn()}
+        collapsed={false}
+        onCollapsedChange={vi.fn()}
         onConfigureEnvironment={vi.fn()}
         onManageEnvironments={vi.fn()}
         onArchive={vi.fn()}

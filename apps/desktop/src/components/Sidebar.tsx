@@ -18,13 +18,14 @@ import {
 import { statusLabel } from '@/screens/Session'
 import type { SettingsCategory } from '@/screens/Settings'
 import { agentLabel } from '@/components/AgentIcon'
-import { DukeLive, DukeMark, DukeWordmark } from '@/components/Duke'
+import { DukeLive, DukeMark } from '@/components/Duke'
 import { PullRequestStatusIcon } from '@/components/PullRequestStatusIcon'
 import {
   AlertIcon,
   BookOpenIcon,
   BranchIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   CloseIcon,
   PlusIcon,
@@ -63,6 +64,9 @@ interface Props {
   onDelete: (sessionId: string) => void
   onRemoveProject: (projectId: string) => void
   onSearch: () => void
+  /** Whether the sidebar is fully hidden. Restoring it is the floating button in `Session`. */
+  collapsed: boolean
+  onCollapsedChange: (collapsed: boolean) => void
   /** Hidden from the main list; still on the server. */
   archivedSessions?: SessionSummary[]
   /** Set when an archive or remove request failed; the row stays put. */
@@ -92,6 +96,8 @@ export function Sidebar({
   onDelete,
   onRemoveProject,
   onSearch,
+  collapsed,
+  onCollapsedChange,
   archivedSessions = [],
   archiveError,
   disabled = false,
@@ -120,22 +126,33 @@ export function Sidebar({
     setViewed((current) => markViewed(current, selected.id, selected.lastSeq))
   }, [selectedId, sessions, archivedSessions])
 
+  if (collapsed) return null
+
   return (
     <nav
       aria-label="Sessions"
       className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border bg-surface"
     >
-      <div className="px-3 pt-3 pb-1">
-        <DukeWordmark />
+      <div className="flex items-center gap-1 px-2 pt-2 pb-1">
+        <div className="min-w-0 flex-1">
+          <SidebarAction
+            icon={<PlusIcon size={16} />}
+            {...(disabled ? {} : { onClick: () => onNewSession() })}
+          >
+            New session
+          </SidebarAction>
+        </div>
+        <button
+          type="button"
+          onClick={() => onCollapsedChange(true)}
+          aria-label="Collapse sidebar"
+          className="grid size-8 flex-none place-items-center rounded-[calc(var(--radius)*0.6)] text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <ChevronLeftIcon size={14} />
+        </button>
       </div>
 
       <div className="px-2 pb-1">
-        <SidebarAction
-          icon={<PlusIcon size={16} />}
-          {...(disabled ? {} : { onClick: () => onNewSession() })}
-        >
-          New session
-        </SidebarAction>
         <SidebarAction icon={<SearchIcon size={16} />} onClick={onSearch}>
           Search
         </SidebarAction>
