@@ -182,6 +182,35 @@ describe('Sidebar', () => {
     expect(screen.getByRole('img', { name: 'Duke' })).toBeInTheDocument()
   })
 
+  it('names the offline server and routes to the servers settings', async () => {
+    const onOpenSettings = vi.fn()
+    render(
+      <Sidebar
+        projects={[]}
+        sessions={[]}
+        selectedId={null}
+        identity={DEFAULT_COMMIT_IDENTITY}
+        serverName="debian-01"
+        role="owner"
+        loading
+        offline
+        onOpenSettings={onOpenSettings}
+        onSelect={vi.fn()}
+        onNewSession={vi.fn()}
+        onSearch={vi.fn()}
+        onConfigureEnvironment={vi.fn()}
+        onManageEnvironments={vi.fn()}
+        onArchive={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveProject={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /debian-01 is offline/ }))
+
+    expect(onOpenSettings).toHaveBeenCalledWith('servers')
+  })
+
   it('does not treat an empty list as no projects while loading', () => {
     render(
       <Sidebar

@@ -325,8 +325,14 @@ export function Session({
   // New session has no diffs to show — drop the workspace column so the
   // composer centres in the whole main pane rather than in a squeezed middle.
   // The environments panel and settings are forms too, and want the same width.
+  // An unreachable server has no session either, so its notice gets the pane
+  // rather than centring against a workspace column reserved for diffs that
+  // cannot arrive.
   const composing =
-    !loading && (creating || managingProjectId !== null || settingsOpen || current === null)
+    creating ||
+    managingProjectId !== null ||
+    settingsOpen ||
+    (loading ? loadError !== null : current === null)
 
   const {
     containerRef,
@@ -570,6 +576,7 @@ export function Session({
               role={role}
               disabled={disconnected}
               loading={loading}
+              offline={loading && loadError !== null}
               onOpenSettings={openSettings}
               onSelect={selectSession}
               onNewSession={startNewSession}
@@ -671,10 +678,17 @@ export function Session({
           />
         </div>
 
-        {loading ? (
-          <p role="status" className="grid place-items-center text-[13px] text-muted-foreground">
-            {loadError ?? 'Loading sessions…'}
-          </p>
+        {loading && !settingsOpen ? (
+          loadError ? (
+            <UnreachableServer
+              serverName={connection.serverName}
+              onManageServers={() => openSettings('servers')}
+            />
+          ) : (
+            <p role="status" className="grid place-items-center text-[13px] text-muted-foreground">
+              Loading sessions…
+            </p>
+          )
         ) : settingsOpen ? (
           <Suspense fallback={<PaneFallback />}>
             <SettingsScreen
@@ -1210,6 +1224,41 @@ function EmptySession({
           className="mt-4 rounded-[calc(var(--radius)*0.6)] bg-foreground px-3.5 py-1.5 text-[12.5px] font-medium text-background disabled:opacity-40"
         >
           New session
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The paired server did not answer the first list.
+ *
+ * Retrying alone is a dead end when the server is gone for good — the VPS was
+ * shut down, the address changed. The way out is another server, so the screen
+ * that reports the failure also points at where to pair one.
+ */
+function UnreachableServer({
+  serverName,
+  onManageServers,
+}: {
+  serverName: string
+  onManageServers: () => void
+}) {
+  return (
+    <div className="grid h-full min-h-0 min-w-0 place-items-center px-6">
+      <div className="max-w-sm text-center">
+        <p role="status" className="text-[14px] font-medium">
+          Couldn’t reach {serverName}
+        </p>
+        <p className="mt-1 text-[13px] text-muted-foreground">
+          Dukebox keeps retrying in the background. If the server is gone, pair another one.
+        </p>
+        <button
+          type="button"
+          onClick={onManageServers}
+          className="mt-4 rounded-[calc(var(--radius)*0.6)] bg-foreground px-3.5 py-1.5 text-[12.5px] font-medium text-background"
+        >
+          Manage servers
         </button>
       </div>
     </div>

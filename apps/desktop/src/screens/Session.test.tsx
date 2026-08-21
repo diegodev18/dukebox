@@ -24,6 +24,10 @@ vi.mock('@tauri-apps/plugin-opener', () => ({
 
 vi.mock('@/lib/connection', () => ({
   removeConnection: (...args: unknown[]) => removeConnection(...args),
+  // The servers panel lists pairings on mount; the session screen only needs
+  // it to resolve so opening that category does not throw.
+  listConnections: () => Promise.resolve([]),
+  setActiveConnection: () => Promise.resolve(),
 }))
 
 vi.mock('@/components/Transcript', () => ({
@@ -375,19 +379,36 @@ describe('Session', () => {
     expect(screen.getByRole('img', { name: 'Duke' })).toBeInTheDocument()
   })
 
-  it('shows a retrying status when the first load fails', async () => {
+  it('names the unreachable server when the first load fails', async () => {
     listProjects.mockRejectedValueOnce(new TypeError('network error'))
     listSessions.mockRejectedValueOnce(new TypeError('network error'))
     whoami.mockRejectedValueOnce(new TypeError('network error'))
     renderSession()
 
-    expect(await screen.findByText('Couldn’t load sessions. Retrying…')).toBeInTheDocument()
+    expect(await screen.findByText('Couldn’t reach debian-01')).toBeInTheDocument()
     expect(screen.queryByText('No session selected')).not.toBeInTheDocument()
     expect(screen.queryByText(/No projects yet/)).not.toBeInTheDocument()
 
     expect(
       await screen.findByRole('button', { name: 'Done, Fix the demux bug' }, { timeout: 3000 }),
     ).toBeInTheDocument()
+  })
+
+  it('opens the servers settings from the unreachable screen', async () => {
+    // A server that never comes back is only escapable through pairing
+    // another one, so the failure screen has to reach settings while the
+    // session list is still failing to load.
+    listProjects.mockRejectedValue(new TypeError('network error'))
+    listSessions.mockRejectedValue(new TypeError('network error'))
+    listArchivedSessions.mockRejectedValue(new TypeError('network error'))
+    whoami.mockRejectedValue(new TypeError('network error'))
+    const user = userEvent.setup()
+    renderSession()
+
+    await user.click(await screen.findByRole('button', { name: 'Manage servers' }))
+
+    expect(await screen.findByRole('heading', { name: 'Servers' })).toBeInTheDocument()
+    expect(screen.queryByText('Couldn’t reach debian-01')).not.toBeInTheDocument()
   })
 
   it('drops the previous server’s sessions when the active server changes', async () => {

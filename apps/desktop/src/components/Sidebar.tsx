@@ -71,6 +71,8 @@ interface Props {
   disabled?: boolean
   /** First list has not succeeded; empty projects are not a real empty account. */
   loading?: boolean
+  /** The paired server is unreachable — say so rather than looking empty. */
+  offline?: boolean
 }
 
 export function Sidebar({
@@ -94,6 +96,7 @@ export function Sidebar({
   archiveError,
   disabled = false,
   loading = false,
+  offline = false,
 }: Props) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [removing, setRemoving] = useState<ProjectSummary | null>(null)
@@ -201,9 +204,23 @@ export function Sidebar({
         </p>
       )}
 
+      {offline && (
+        <button
+          type="button"
+          onClick={() => onOpenSettings('servers')}
+          className="flex items-center gap-2 border-t border-border px-4 py-2 text-left hover:bg-muted"
+        >
+          <span aria-hidden="true" className="size-1.5 flex-none rounded-full bg-destructive" />
+          <span className="min-w-0 flex-1 truncate text-[11.5px] text-muted-foreground">
+            <span className="text-foreground">{serverName}</span> is offline
+          </span>
+        </button>
+      )}
+
       {/* Who the work is attributed to. Which server it runs on lives in the
           session header instead: that question is per session and only worth
-          room when asked, not permanently at the foot of the sidebar. */}
+          room when asked, not permanently at the foot of the sidebar — except
+          when it is down, which the row above says. */}
       <div className="flex items-stretch border-t border-border">
         <div className="min-w-0 flex-1">
           <UserMenu user={identity} role={role} onOpenSettings={onOpenSettings} />
