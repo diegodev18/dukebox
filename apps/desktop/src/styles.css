@@ -127,8 +127,8 @@
     background: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
-    /* 14px: a window someone reads for an hour, not a page they skim. */
-    font-size: 14px;
+    /* 13px: a window someone reads for an hour, not a page they skim. */
+    font-size: 13px;
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
   }
