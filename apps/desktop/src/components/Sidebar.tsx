@@ -18,7 +18,8 @@ import {
 import { statusLabel } from '@/screens/Session'
 import type { SettingsCategory } from '@/screens/Settings'
 import { agentLabel } from '@/components/AgentIcon'
-import { DukeLive, DukeMark } from '@/components/Duke'
+import { DukeMark } from '@/components/Duke'
+import { SessionOrb } from '@/components/SessionOrb'
 import { PullRequestStatusIcon } from '@/components/PullRequestStatusIcon'
 import {
   AlertIcon,
@@ -598,7 +599,7 @@ function SessionRow({
         aria-current={selected}
         aria-label={sessionRowLabel(session, viewedSeq)}
         aria-describedby={tooltip ? tooltipId : undefined}
-        className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2.5 py-1.5 pr-8 pl-7.5 text-left text-[13.5px] text-muted-foreground hover:bg-muted hover:text-foreground aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
+        className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-1.5 py-1.5 pr-8 pl-3 text-left text-[13.5px] text-muted-foreground hover:bg-muted hover:text-foreground aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
       >
         <SessionNavIndicator
           status={session.status}
@@ -1161,11 +1162,7 @@ function SessionNavIndicator({
   return (
     <span className="grid size-5 flex-none place-items-center overflow-visible">
       {kind === 'orb' ? (
-        <DukeLive
-          mood={status === 'waiting_input' ? 'listening' : 'working'}
-          size={20}
-          label={statusLabel(status)}
-        />
+        <SessionOrb status={status} label={statusLabel(status)} />
       ) : kind === 'unread' ? (
         <span role="img" aria-label="Unread">
           <BookOpenIcon size={16} />
