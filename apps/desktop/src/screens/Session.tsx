@@ -122,6 +122,10 @@ export function Session({
   const [pendingArchive, setPendingArchive] = useState<string | null>(null)
   // Prefill New Session from a merged PR, even before settings persist.
   const [continueFrom, setContinueFrom] = useState<LastNewSession | null>(null)
+  // Settings opened from New Session (no session selected yet) must return
+  // there on close, not to "no session selected" — `creating` itself gets
+  // cleared so the sidebar shows the settings nav instead of the composer.
+  const [resumeCreating, setResumeCreating] = useState(false)
 
   // Kept in sync so a session_update can compare against the last status
   // without waiting for the next render — reconnects echo the same waiting
@@ -361,6 +365,7 @@ export function Session({
   }
 
   const openSettings = (category: SettingsCategory) => {
+    setResumeCreating(creating)
     setCreating(false)
     setSetupProjectId(null)
     setSetupEnvironmentId(null)
@@ -374,9 +379,18 @@ export function Session({
     if (category === 'updates') update.check(true)
   }
 
+  const closeSettings = () => {
+    setSettingsOpen(false)
+    if (resumeCreating) {
+      setResumeCreating(false)
+      setCreating(true)
+    }
+  }
+
   const selectSession = (sessionId: string) => {
     setCreating(false)
     setSettingsOpen(false)
+    setResumeCreating(false)
     setSetupProjectId(null)
     setSetupEnvironmentId(null)
     setPreferProjectId(null)
@@ -419,6 +433,7 @@ export function Session({
     setManagingProjectId(null)
     setPreferAgentId(null)
     setSettingsOpen(false)
+    setResumeCreating(false)
     setSearchOpen(false)
     setContinueFrom(null)
     setCreating(true)
@@ -427,6 +442,7 @@ export function Session({
   const openEnvironments = (projectId: string) => {
     setCreating(false)
     setSettingsOpen(false)
+    setResumeCreating(false)
     setSetupProjectId(null)
     setPreferProjectId(null)
     setPreferAgentId(null)
@@ -489,6 +505,7 @@ export function Session({
     setManagingProjectId(null)
     setPreferAgentId(session.agentId)
     setSettingsOpen(false)
+    setResumeCreating(false)
     setSearchOpen(false)
     setContinueFrom(last)
     setCreating(true)
@@ -562,7 +579,7 @@ export function Session({
                 category={settingsCategory}
                 role={role}
                 onCategoryChange={setSettingsCategory}
-                onBack={() => setSettingsOpen(false)}
+                onBack={closeSettings}
               />
             </Suspense>
           ) : (
@@ -588,6 +605,7 @@ export function Session({
                 setManagingProjectId(null)
                 setPreferAgentId(null)
                 setSettingsOpen(false)
+                setResumeCreating(false)
                 setCreating(true)
               }}
               onManageEnvironments={openEnvironments}
@@ -700,7 +718,7 @@ export function Session({
               role={role}
               onSaveSettings={onSaveSettings}
               onSwitchServer={onSwitchServer}
-              onClose={() => setSettingsOpen(false)}
+              onClose={closeSettings}
               onDisconnected={onDisconnected}
             />
           </Suspense>
@@ -717,6 +735,7 @@ export function Session({
                 setPreferAgentId(null)
                 setContinueFrom(null)
                 setSettingsOpen(false)
+                setResumeCreating(false)
                 setManagingProjectId(null)
                 setCreating(true)
               }}
