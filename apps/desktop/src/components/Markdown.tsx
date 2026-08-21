@@ -51,7 +51,7 @@ const components: Components = {
     </code>
   ),
   pre: ({ children }) => (
-    <pre className="overflow-x-auto rounded-[var(--radius)] border border-border bg-surface px-3 py-2.5 font-mono text-[12.5px] [&_code]:rounded-none [&_code]:bg-transparent [&_code]:p-0">
+    <pre className="min-w-0 max-w-full overflow-x-auto rounded-[var(--radius)] border border-border bg-surface px-3 py-2.5 font-mono text-[12.5px] [&_code]:rounded-none [&_code]:bg-transparent [&_code]:p-0">
       {children}
     </pre>
   ),
@@ -69,7 +69,7 @@ export const Markdown = memo(function Markdown({ children, className }: Props) {
   return (
     <div
       data-selectable
-      className={['flex flex-col gap-2.5 [&>*:first-child]:mt-0', className]
+      className={['flex min-w-0 max-w-full flex-col gap-2.5 [&>*:first-child]:mt-0', className]
         .filter(Boolean)
         .join(' ')}
     >

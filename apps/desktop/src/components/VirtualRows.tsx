@@ -94,7 +94,10 @@ export function VirtualRows({
     if (gap <= 0) return <>{rows}</>
 
     return (
-      <div data-virtual-list style={{ display: 'flex', flexDirection: 'column', gap: `${gap}px` }}>
+      <div
+        data-virtual-list
+        style={{ display: 'flex', flexDirection: 'column', gap: `${gap}px`, minWidth: 0 }}
+      >
         {rows}
       </div>
     )

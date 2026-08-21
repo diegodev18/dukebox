@@ -303,7 +303,7 @@ function MessageBlock({
   children: ReactNode
 }) {
   return (
-    <div className="group flex flex-col items-start gap-1">
+    <div className="group flex min-w-0 max-w-full flex-col items-start gap-1">
       {children}
       {copyable || onEdit ? (
         <MessageActions
