@@ -19,12 +19,16 @@ export function SessionOrb({
   className?: string
 }) {
   const name = label ?? (status === 'waiting_input' ? 'Waiting for you' : 'Running')
+  const state = status === 'waiting_input' ? 'listening' : 'solving'
 
   return (
     <ThinkingOrb
-      state={status === 'waiting_input' ? 'listening' : 'solving'}
+      state={state}
       size={20}
       aria-label={name}
+      // The orb paints itself on a canvas, so the state is invisible to the
+      // DOM. Mirror it onto an attribute so tests can assert the mapping.
+      data-orb-state={state}
       className={cn('pointer-events-none select-none', className)}
     />
   )
