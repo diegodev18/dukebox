@@ -578,18 +578,21 @@ describe('Sidebar', () => {
     }
   })
 
-  it('shows Duke while a session is in progress', () => {
+  it('shows a solving orb while a session is in progress', () => {
     renderSidebar({ sessionOverride: { status: 'running' } })
 
-    expect(screen.getByRole('img', { name: 'Running' })).toHaveAttribute('data-mood', 'working')
+    expect(screen.getByRole('img', { name: 'Running' })).toHaveAttribute(
+      'data-orb-state',
+      'solving',
+    )
     expect(screen.queryByRole('img', { name: 'Unread' })).not.toBeInTheDocument()
   })
 
-  it('uses the listening mood while the agent is waiting', () => {
+  it('uses the listening orb while the agent is waiting', () => {
     renderSidebar({ sessionOverride: { status: 'waiting_input' } })
 
     expect(screen.getByRole('img', { name: 'Waiting for you' })).toHaveAttribute(
-      'data-mood',
+      'data-orb-state',
       'listening',
     )
   })
